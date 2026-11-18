@@ -31,13 +31,29 @@ var (
 	themeNames   = []string{"深色", "浅色"}
 )
 
+// 主色取 Wails 客户端的绿色令牌（frontend/src/styles/base.css）：
+// 浅色 --app-accent/#18a058，暗色 --app-accent/#36ad6a，按钮文字白色。
+var (
+	accentLight = ui.RGB(0x18, 0xa0, 0x58) // #18a058
+	accentDark  = ui.RGB(0x36, 0xad, 0x6a) // #36ad6a
+	accentText  = ui.RGB(0xff, 0xff, 0xff)
+)
+
 // applyTheme 把设置里的主题落到界面与 Markdown 配色上。
 func (m *Model) applyTheme() {
 	if m.settings.Theme == settings.ThemeLight {
 		m.theme = ui.LightTheme()
+		m.theme.Primary = accentLight
+		m.theme.Selection = ui.RGB(0xe8, 0xf5, 0xee) // --app-accent-tint
+		m.theme.SelectionForeground = ui.RGB(0x20, 0x21, 0x24)
 	} else {
 		m.theme = ui.DarkTheme()
+		m.theme.Primary = accentDark
+		m.theme.Selection = ui.RGBA(0x36, 0xad, 0x6a, 0.4) // --app-selection
+		m.theme.SelectionForeground = ui.RGB(0xfa, 0xfa, 0xfa)
 	}
+	m.theme.PrimaryForeground = accentText
+	m.theme.Ring = m.theme.Primary
 	m.docs.look = components.MarkdownLookFor(m.theme)
 }
 
