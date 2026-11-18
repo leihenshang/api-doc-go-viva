@@ -10,14 +10,14 @@ func TestLoadDefaultsToDarkAndSavesTheme(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	if got := Load(); got.Theme != ThemeDark {
-		t.Fatalf("没有配置文件时应回默认深色：%+v", got)
+	if got := Load(); got.Theme != ThemeLight {
+		t.Fatalf("没有配置文件时应回默认日间模式：%+v", got)
 	}
-	if err := Save(Settings{Theme: ThemeLight}); err != nil {
+	if err := Save(Settings{Theme: ThemeDark}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if got := Load(); got.Theme != ThemeLight {
-		t.Fatalf("保存后应读到浅色：%+v", got)
+	if got := Load(); got.Theme != ThemeDark {
+		t.Fatalf("保存后应读到深色：%+v", got)
 	}
 	info, err := os.Stat(filepath.Join(dir, "api-doc-viva", "settings.json"))
 	if err != nil {
@@ -38,7 +38,7 @@ func TestCorruptSettingsFallBackToDefault(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(path, "settings.json"), []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := Load(); got.Theme != ThemeDark {
+	if got := Load(); got.Theme != ThemeLight {
 		t.Fatalf("坏配置应回默认值：%+v", got)
 	}
 }

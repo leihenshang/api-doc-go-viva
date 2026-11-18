@@ -11,6 +11,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.settingsDialog(c)
 	m.envDialog(c)
 	m.newEnvDialog(c)
+	m.openCollectionDialogs(c)
 }
 
 // newRequestDialog 是「新建请求」：请求名、方法、地址，创建后写进集合并被选中。
@@ -91,6 +92,13 @@ func (m *Model) settingsDialog(c ui.C) {
 				if ui.Button(c, "新建环境").Clicked() {
 					m.ui.newEnvOpen = true
 					m.ui.newEnvErr = ""
+				}
+				if ui.Button(c, "重命名").Clicked() {
+					m.ui.envRenameOpen = true
+					m.ui.envRenameName = m.ui.envPick
+				}
+				if ui.Button(c, "删除").Icon(IconTrash).Destructive().Clicked() {
+					m.ui.envDeleteOpen = true
 				}
 			})
 			ui.Text(c, m.ui.envLine).FontSize(11).Muted()
@@ -177,6 +185,80 @@ func (m *Model) newEnvDialog(c ui.C) {
 			}
 			if ui.Button(c, "创建环境").Clicked() {
 				c.After(m.createEnv)
+			}
+		})
+	})
+}
+
+// openCollectionDialogs 是「打开集合」的三步：手输路径兜底、初始化确认、错误提示。
+func (m *Model) openCollectionDialogs(c ui.C) {
+	ui.Modal(c, &m.ui.pathOpen, "打开集合", func() {
+		ui.Column(c).FillWidth().Gap(10).Children(func() {
+			ui.Text(c, "输入集合目录的绝对路径（目录里应有 opencollection.yml）。").FontSize(11).Muted()
+			ui.TextField(c, &m.ui.pathText, "集合目录", "/home/you/collections/demo").FillWidth()
+			if m.ui.openErr != "" {
+				ui.Text(c, m.ui.openErr).FontSize(11).Color(c.Theme().Danger)
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				m.ui.pathOpen = false
+			}
+			if ui.Button(c, "打开").Clicked() {
+				c.After(m.openPathInput)
+			}
+		})
+	})
+
+	ui.Modal(c, &m.ui.initOpen, "初始化集合", func() {
+		ui.Column(c).FillWidth().Gap(8).Children(func() {
+			ui.Text(c, m.ui.pendingDir).FontSize(11).Muted().Mono()
+			ui.Text(c, "这个目录里没有 opencollection.yml。初始化会在目录里写一份清单，").FontSize(12)
+			ui.Text(c, "目录里已有的 .yml 会被识别为本项目的接口。取消则不载入、不写盘。").FontSize(12)
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				m.ui.initOpen = false
+			}
+			if ui.Button(c, "初始化并打开").Clicked() {
+				c.After(m.confirmInit)
+			}
+		})
+	})
+
+	ui.Modal(c, &m.ui.envRenameOpen, "重命名环境", func() {
+		ui.Column(c).FillWidth().Gap(10).Children(func() {
+			ui.Text(c, "会同时重命名 <名称>.yml 与 <名称>.secrets.yml。").FontSize(11).Muted()
+			ui.TextField(c, &m.ui.envRenameName, "新环境名", "staging").FillWidth()
+			if m.ui.envErr != "" {
+				ui.Text(c, m.ui.envErr).FontSize(11).Color(c.Theme().Danger)
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				m.ui.envRenameOpen = false
+			}
+			if ui.Button(c, "重命名环境").Clicked() {
+				c.After(m.renameEnv)
+			}
+		})
+	})
+
+	ui.Modal(c, &m.ui.envDeleteOpen, "删除环境", func() {
+		ui.Column(c).FillWidth().Gap(8).Children(func() {
+			ui.Text(c, "环境："+m.ui.envPick).FontSize(12).Bold()
+			ui.Text(c, "主文件与密钥文件都会移进集合的 .trash/，不会直接删除。").FontSize(11).Muted()
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				m.ui.envDeleteOpen = false
+			}
+			if ui.Button(c, "删除环境").Destructive().Clicked() {
+				c.After(m.deleteEnv)
 			}
 		})
 	})

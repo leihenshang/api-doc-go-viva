@@ -1,6 +1,7 @@
 package view
 
 import (
+	"errors"
 	"path"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
 )
@@ -150,6 +152,133 @@ func (m *Model) trashEntry(file string) {
 		return
 	}
 	m.reload("", tabRequest)
+}
+
+// chooseCollection 打开系统目录选择框；失败（没有可用的对话框后端）就退回手输路径。
+func (m *Model) chooseCollection() {
+	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "打开集合目录"})
+	if err != nil {
+		m.ui.openErr = err.Error()
+		m.ui.pathText = ""
+		m.ui.pathOpen = true
+		m.invalidator.Invalidate()
+		return
+	}
+	if path == "" {
+		return // 用户取消
+	}
+	m.openCollection(path)
+}
+
+// openPathInput 是手输路径弹窗的「打开」：复用 openCollection 的校验与闸门。
+func (m *Model) openPathInput() {
+	m.openCollection(m.ui.pathText)
+}
+
+// openCollection 打开一个集合目录；缺清单时先问用户，确认后再初始化（与客户端同一条闸门）。
+func (m *Model) openCollection(dir string) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return
+	}
+	col, err := explorer.Load(dir)
+	if errors.Is(err, explorer.ErrNeedsInit) {
+		m.ui.pendingDir = dir
+		m.ui.initOpen = true
+		m.ui.openErr = ""
+		return
+	}
+	if err != nil {
+		m.ui.openErr = err.Error()
+		m.ui.pathOpen = true
+		m.ui.pathText = dir
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.openErr = ""
+	m.ui.pathOpen = false
+	m.ui.initOpen = false
+	m.adoptCollection(col)
+}
+
+// confirmInit 用户确认后写清单并打开；失败就把错误留在手输路径弹窗里。
+func (m *Model) confirmInit() {
+	dir := m.ui.pendingDir
+	m.ui.initOpen = false
+	if err := explorer.InitCollection(dir, ""); err != nil {
+		m.ui.openErr = err.Error()
+		m.ui.pathOpen = true
+		m.ui.pathText = dir
+		m.invalidator.Invalidate()
+		return
+	}
+	m.openCollection(dir)
+}
+
+// adoptCollection 切换到一个新集合：清空所有按旧集合派生的状态，记住上次打开的目录。
+func (m *Model) adoptCollection(col *explorer.Collection) {
+	m.col = col
+	m.filter = ""
+	m.shownOnce = false
+	m.entryFile = ""
+	m.pendingSelect = ""
+	m.tab = tabRequest
+	m.req = requestDraft{}
+	m.editor = docEditor{}
+	m.drafts = map[string]string{}
+	m.docs = docState{look: m.docs.look}
+	m.resetResponse()
+	m.sending = false
+	m.gen++
+	m.createErr = ""
+
+	m.envName = m.settings.Envs[col.Dir]
+	m.vars = map[string]string{}
+	if m.envName != "" {
+		if vars, err := explorer.LoadEnv(col.Dir, m.envName); err == nil {
+			m.vars = vars
+		}
+	}
+	m.settings.LastCollection = col.Dir
+	_ = settings.Save(m.settings)
+	m.refreshEnvs()
+	m.ui.envPick = m.envName
+	m.ui.envErr = ""
+	m.refreshShown()
+	m.invalidator.Invalidate()
+}
+
+// renameEnv 重命名当前环境（两个文件一起改），随后切到新名字。
+func (m *Model) renameEnv() {
+	oldName := m.ui.envPick
+	newName := strings.TrimSpace(m.ui.envRenameName)
+	if err := explorer.RenameEnv(m.col.Dir, oldName, newName); err != nil {
+		m.ui.envErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.envRenameOpen = false
+	m.ui.envErr = ""
+	m.refreshEnvs()
+	m.applyEnv(newName)
+	m.invalidator.Invalidate()
+}
+
+// deleteEnv 删除当前环境（移进 .trash）；删的是正在用的环境就切回「无」。
+func (m *Model) deleteEnv() {
+	name := m.ui.envPick
+	if err := explorer.DeleteEnv(m.col.Dir, name); err != nil {
+		m.ui.envErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.envDeleteOpen = false
+	if m.envName == name {
+		m.applyEnv("")
+	} else {
+		m.refreshEnvs()
+	}
+	m.invalidator.Invalidate()
 }
 
 // loadRequestDraft 把请求文件装进编辑草稿；body 正文保留原来的字段形态。

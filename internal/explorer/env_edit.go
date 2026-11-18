@@ -125,3 +125,51 @@ func CreateEnv(collectionDir, name string) error {
 	}
 	return os.Chmod(main, 0o600)
 }
+
+// DeleteEnv 删除环境：主文件与密钥文件都移进 .trash，不直接抹掉。
+func DeleteEnv(collectionDir, name string) error {
+	if !collection.ValidEnvName(name) {
+		return fmt.Errorf("环境名 %q 不合法", name)
+	}
+	main, secrets := envPaths(collectionDir, name)
+	if _, err := os.Stat(main); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("环境 %q 不存在", name)
+	}
+	if err := moveToTrash(collectionDir, main); err != nil {
+		return err
+	}
+	if _, err := os.Stat(secrets); err == nil {
+		if err := moveToTrash(collectionDir, secrets); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RenameEnv 重命名环境（主文件与密钥文件一起改），目标已存在则拒绝。
+func RenameEnv(collectionDir, oldName, newName string) error {
+	newName = strings.TrimSpace(newName)
+	if !collection.ValidEnvName(newName) {
+		return fmt.Errorf("环境名只能包含中文、字母、数字与 - _ ( ) . 等字符")
+	}
+	if oldName == newName {
+		return nil
+	}
+	oldMain, oldSecrets := envPaths(collectionDir, oldName)
+	newMain, newSecrets := envPaths(collectionDir, newName)
+	if _, err := os.Stat(oldMain); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("环境 %q 不存在", oldName)
+	}
+	if _, err := os.Stat(newMain); err == nil {
+		return fmt.Errorf("环境 %q 已存在", newName)
+	}
+	if err := os.Rename(oldMain, newMain); err != nil {
+		return fmt.Errorf("重命名环境: %w", err)
+	}
+	if _, err := os.Stat(oldSecrets); err == nil {
+		if err := os.Rename(oldSecrets, newSecrets); err != nil {
+			return fmt.Errorf("重命名环境密钥文件: %w", err)
+		}
+	}
+	return nil
+}

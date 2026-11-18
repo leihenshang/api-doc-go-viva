@@ -168,6 +168,16 @@ type workspaceUI struct {
 	envs           []string
 	envPick        string
 
+	pendingDir string
+	initOpen   bool
+	pathOpen   bool
+	pathText   string
+	openErr    string
+
+	envRenameOpen bool
+	envRenameName string
+	envDeleteOpen bool
+
 	envOpen        bool
 	envRows        []*kvRow
 	envSecretCount int

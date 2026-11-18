@@ -32,7 +32,10 @@ func (m *Model) toolbar(c ui.C) {
 			ui.Text(c, m.subtitle).FontSize(11).Muted()
 		})
 		ui.Spacer(c)
-		ui.TextField(c, &m.filter, "搜索条目", "按名称 / URL / 分组过滤").Width(280)
+		ui.TextField(c, &m.filter, "搜索条目", "按名称 / URL / 分组过滤").Width(260)
+		if ui.Button(c, "打开集合").Clicked() {
+			c.After(m.chooseCollection)
+		}
 		themeLabel, themeIcon := "日间", IconSun
 		if m.isLight() {
 			themeLabel, themeIcon = "夜间", IconMoon

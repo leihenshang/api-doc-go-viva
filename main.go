@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/leihenshang/api-doc-go-viva/internal/view"
 )
 
@@ -44,18 +45,23 @@ func main() {
 	}
 }
 
-// resolveDir 解析集合目录：未指定时回落到相邻仓库的示例集合，方便直接验证。
+// resolveDir 解析集合目录：显式 -collection > 上次打开的集合 > 相邻仓库的示例集合。
 func resolveDir(dir string) (string, error) {
 	if dir != "" {
 		return dir, nil
 	}
-	for _, candidate := range []string{
+	candidates := make([]string, 0, 3)
+	if last := settings.Load().LastCollection; last != "" {
+		candidates = append(candidates, last)
+	}
+	candidates = append(candidates,
 		"../api-doc-go-flutter/sample-collection",
 		"../api-doc-go-client/.tmp/sample-collection",
-	} {
+	)
+	for _, candidate := range candidates {
 		if info, err := os.Stat(filepath.Join(candidate, "opencollection.yml")); err == nil && !info.IsDir() {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("请用 -collection 指定集合目录（例如 ../api-doc-go-flutter/sample-collection）")
+	return "", fmt.Errorf("请用 -collection 指定集合目录，或在界面里点「打开集合」")
 }

@@ -26,6 +26,8 @@ type Settings struct {
 	NoFollowRedirects bool `json:"noFollowRedirects"`
 	// Envs 记住每个集合根上次选中的环境名（键是集合目录的绝对路径）。
 	Envs map[string]string `json:"envs,omitempty"`
+	// LastCollection 是上次打开的集合目录（启动时没给 -collection 就用它）。
+	LastCollection string `json:"lastCollection,omitempty"`
 }
 
 // 默认值：深色主题、20 秒超时、跟随重定向。
@@ -34,9 +36,9 @@ const (
 	MaxTimeoutSec     = 600
 )
 
-// Default 返回默认偏好：与客户端一致的深色。
+// Default 返回默认偏好：日间模式、20 秒超时、跟随重定向。
 func Default() Settings {
-	return Settings{Theme: ThemeDark, TimeoutSec: DefaultTimeoutSec, Envs: map[string]string{}}
+	return Settings{Theme: ThemeLight, TimeoutSec: DefaultTimeoutSec, Envs: map[string]string{}}
 }
 
 // FollowRedirects 报告是否跟随重定向（默认跟随）。
@@ -73,7 +75,7 @@ func Load() Settings {
 		return Default()
 	}
 	if out.Theme != ThemeLight && out.Theme != ThemeDark {
-		out.Theme = ThemeDark
+		out.Theme = ThemeLight
 	}
 	if out.TimeoutSec <= 0 {
 		out.TimeoutSec = DefaultTimeoutSec

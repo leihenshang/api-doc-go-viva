@@ -154,21 +154,21 @@ func TestThemeTogglePersists(t *testing.T) {
 	}
 	model := New(col, "", nil)
 	driver := openWindow(t, model)
-	if model.isLight() {
-		t.Fatal("默认应是深色")
-	}
-	click(t, driver, "日间")
-	pump(t, driver)
 	if !model.isLight() {
-		t.Fatal("点「日间」后应切到浅色")
-	}
-	if settings.Load().Theme != settings.ThemeLight {
-		t.Fatalf("主题没有落盘：%+v", settings.Load())
+		t.Fatal("默认应是日间模式")
 	}
 	click(t, driver, "夜间")
 	pump(t, driver)
 	if model.isLight() {
-		t.Fatal("点「夜间」后应切回深色")
+		t.Fatal("点「夜间」后应切到深色")
+	}
+	if settings.Load().Theme != settings.ThemeDark {
+		t.Fatalf("主题没有落盘：%+v", settings.Load())
+	}
+	click(t, driver, "日间")
+	pump(t, driver)
+	if !model.isLight() {
+		t.Fatal("点「日间」后应切回浅色")
 	}
 }
 

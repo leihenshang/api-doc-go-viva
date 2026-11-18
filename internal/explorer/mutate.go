@@ -134,6 +134,11 @@ func TrashEntry(collectionDir string, entry *Entry) error {
 	if err != nil {
 		return err
 	}
+	return moveToTrash(collectionDir, full)
+}
+
+// moveToTrash 把一个集合内的文件移进 .trash（时间戳前缀，重名再补序号）。
+func moveToTrash(collectionDir, full string) error {
 	trash := filepath.Join(collectionDir, trashDirName)
 	if err := os.MkdirAll(trash, 0o755); err != nil {
 		return fmt.Errorf("创建回收站: %w", err)
