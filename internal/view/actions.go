@@ -126,7 +126,7 @@ func (m *Model) createRequest() {
 	}
 	m.ui.newReqOpen = false
 	m.ui.newErr = ""
-	m.reload(file, tabRequest)
+	m.reload(file, tabParams)
 }
 
 // openRename 打开重命名弹窗（文件名不动，只改显示名）。
@@ -168,7 +168,7 @@ func (m *Model) trashEntry(file string) {
 		m.invalidator.Invalidate()
 		return
 	}
-	m.reload("", tabRequest)
+	m.reload("", tabParams)
 }
 
 // chooseCollection 打开系统目录选择框；失败（没有可用的对话框后端）就退回手输路径。
@@ -248,7 +248,7 @@ func (m *Model) syncRoot() {
 func (m *Model) resetCollectionState() {
 	m.entryFile = ""
 	m.pendingSelect = ""
-	m.tab = tabRequest
+	m.tab = tabParams
 	m.req = requestDraft{}
 	m.editor = docEditor{}
 	m.drafts = map[string]string{}
@@ -469,7 +469,7 @@ func (m *Model) saveRequest() {
 	}
 	m.req.err = ""
 	m.req.dirty = false
-	m.reload(entry.File, tabRequest)
+	m.reload(entry.File, tabParams)
 }
 
 // applyEnv 切换当前环境：重新读变量、记住到偏好（按集合根记），发送立即生效。

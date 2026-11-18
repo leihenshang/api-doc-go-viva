@@ -40,21 +40,20 @@ func TestClickingSendShowsTheResponse(t *testing.T) {
 		t.Fatalf("详情没有显示 URL：%v", painted(driver))
 	}
 
-	// 页签是组件目录的 Tabs：点「响应」才该看到空状态，点「文档」才该看到概述。
-	click(t, driver, "响应")
-	pump(t, driver)
+	// 响应区常驻在下方：还没发过就是「尚未发送」。
 	if !shows(driver, "尚未发送") {
-		t.Fatalf("响应页签应提示尚未发送：%v", painted(driver))
+		t.Fatalf("响应区应提示尚未发送：%v", painted(driver))
 	}
+	// 分段页签换成 Wails 的顺序：点「文档」看概述与 Markdown 预览。
 	click(t, driver, "文档")
 	pump(t, driver)
 	if !shows(driver, "服务探活") {
-		t.Fatalf("文档页签应显示概述：%v", painted(driver))
+		t.Fatalf("文档分段应显示概述：%v", painted(driver))
 	}
 	if !shows(driver, "渲染检查") {
 		t.Fatalf("Docs 应按 Markdown 排版（标题未画出）：%v", painted(driver))
 	}
-	click(t, driver, "请求")
+	click(t, driver, "参数")
 	pump(t, driver)
 
 	click(t, driver, "发送")
@@ -132,8 +131,8 @@ func TestCreateRequestFromSidebar(t *testing.T) {
 	click(t, driver, "创建")
 
 	waitForControl(t, driver, "POST 新接口")
-	if model.tab != tabRequest {
-		t.Fatalf("新请求应停在请求页签，实际 %v", model.tab)
+	if model.tab != tabParams {
+		t.Fatalf("新请求应停在参数页签，实际 %v", model.tab)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "新接口.yml"))
 	if err != nil {

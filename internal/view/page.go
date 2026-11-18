@@ -148,7 +148,7 @@ func (m *Model) row(r ui.ListRow) {
 	})
 }
 
-// detail 是右侧：文档走编辑 / 预览，请求走请求 / 响应 / 文档。
+// detail 是右侧：请求按 Wails 的排版——标题、地址栏、分段页签、响应区（可拖拽分隔）。
 func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 	if entry == nil {
 		ui.Column(c).Fill().Pad(24).Children(func() {
@@ -161,55 +161,49 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 		m.docDetail(c, entry)
 		return
 	}
-	ui.Column(c).Fill().Pad(20).Gap(12).Children(func() {
-		m.detailHeader(c, entry)
-		ui.Tabs(c, &m.tab, httpTabs, tabLabel)
-		ui.Scroll(c).Grow(1).Children(func() {
-			ui.Column(c).FillWidth().Gap(12).Children(func() {
-				switch m.tab {
-				case tabRequest:
-					m.requestTab(c, entry)
-				case tabResponse:
-					m.responseTab(c, entry)
-				default:
-					m.docsTab(c, entry)
-				}
+	if entry.Kind != explorer.KindHTTP {
+		ui.Column(c).Fill().Pad(20).Gap(12).Children(func() {
+			ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+				methodBadge(c, entry)
+				ui.Text(c, entry.Name).FontSize(17).Bold()
+				ui.Spacer(c)
+				ui.Text(c, "gRPC 只读").FontSize(11).Muted()
+			})
+			ui.Text(c, m.tables.metaLine).FontSize(11).Muted().Mono()
+			ui.Scroll(c).Grow(1).Children(func() {
+				m.grpcTab(c, entry)
 			})
 		})
-	})
-}
-
-// detailHeader 是请求的标题行：方法徽标、名称、路径与发送按钮。
-func (m *Model) detailHeader(c ui.C, entry *explorer.Entry) {
-	ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
-		methodBadge(c, entry)
-		ui.Text(c, entry.Name).FontSize(18).Bold()
-		ui.Spacer(c)
-		if entry.Kind == explorer.KindHTTP {
-			if m.req.dirty {
-				ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
-				if ui.Button(c, "保存请求").Icon(IconFilePlus).Clicked() {
-					c.After(m.saveRequest)
-				}
-			}
-			m.sendButton(c, entry)
-		} else {
-			ui.Text(c, "gRPC 只读").FontSize(11).Muted()
-		}
-	})
-	if entry.Summary != "" {
-		ui.Text(c, entry.Summary).FontSize(13).Muted()
-	}
-	ui.Text(c, m.tables.metaLine).FontSize(11).Muted().Mono()
-}
-
-// sendButton 是唯一的写操作入口；发送中禁用，避免并发覆盖响应。
-func (m *Model) sendButton(c ui.C, entry *explorer.Entry) {
-	if m.sending {
-		ui.Button(c, "发送中…").Disabled(true)
 		return
 	}
-	if ui.Button(c, "发送").Icon(IconSend).Clicked() {
-		m.start(entry)
-	}
+	ui.Column(c).Fill().Pad(16).Gap(10).Children(func() {
+		m.requestTitle(c, entry)
+		m.requestBar(c, entry)
+		ui.Tabs(c, &m.tab, httpSegments, tabLabel).Line()
+		ui.Column(c).FillWidth().Height(m.rsplit.Pos).Children(func() {
+			ui.Scroll(c).Fill().Children(func() {
+				ui.Column(c).FillWidth().Gap(10).Children(func() {
+					switch m.tab {
+					case tabBody:
+						m.bodyTab(c)
+					case tabHeaders:
+						m.kvEditor(c, &m.req.headers, "添加请求头")
+					case tabAuth:
+						m.authTab(c)
+					case tabDocs:
+						m.docsTab(c, entry)
+					default:
+						m.kvEditor(c, &m.req.params, "添加参数")
+					}
+					if m.req.err != "" {
+						ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
+					}
+				})
+			})
+		})
+		ui.Splitter(c, &m.rsplit).Mins(200, 120)
+		ui.Column(c).Grow(1).FillWidth().Children(func() {
+			m.responsePanel(c, entry)
+		})
+	})
 }

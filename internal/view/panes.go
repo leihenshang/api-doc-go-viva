@@ -8,61 +8,30 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-// 表头与列宽是包级常量：每帧声明 Table 时复用，不再逐帧拼切片。
+// fieldHeaders / fieldColumns 是请求体字段表的列（只读展示，body.fields 是文档生成的真源）。
 var (
-	kvHeaders    = []string{"名称", "值", "说明"}
-	kvColumns    = []components.TableColumn{{Width: 200}, {}, {Width: 200}}
 	fieldHeaders = []string{"字段", "类型", "必填", "说明"}
 	fieldColumns = []components.TableColumn{{Width: 180}, {Width: 90}, {Width: 60}, {}}
 )
 
-// docDetail 是一篇 Markdown 的编辑 / 预览。
-func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
-	if ui.Shortcut(c, ui.Primary, "s") {
-		c.After(m.saveDoc)
-	}
-	dirty := m.docDirty()
-	ui.Column(c).Fill().Pad(20).Gap(12).Children(func() {
-		ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
-			methodBadge(c, entry)
-			ui.Text(c, entry.Name).FontSize(18).Bold()
-			ui.Spacer(c)
-			switch {
-			case dirty:
-				ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
-			case m.editor.status != "":
-				ui.Text(c, m.editor.status).FontSize(11).Muted()
-			}
-			save := ui.Button(c, "保存")
-			if !dirty {
-				save.Disabled(true)
-			}
-			if save.Clicked() {
-				c.After(m.saveDoc)
-			}
-		})
-		ui.Text(c, m.editor.metaLine).FontSize(11).Muted().Mono()
-		ui.Tabs(c, &m.tab, docTabs, tabLabel)
-		if m.tab == tabEdit {
-			ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").FillWidth().Grow(1)
-			return
+// requestTitle 是请求标题行：方法角标、名称、概述与脏状态。
+func (m *Model) requestTitle(c ui.C, entry *explorer.Entry) {
+	ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+		methodBadge(c, entry)
+		ui.Text(c, entry.Name).FontSize(17).Bold()
+		if entry.Summary != "" {
+			ui.Text(c, entry.Summary).FontSize(12).Muted().Ellipsis()
 		}
-		if strings.TrimSpace(m.editor.text) == "" {
-			emptyBox(c, "空文档", "在「编辑」页签里写内容，这里会实时预览")
-			return
+		ui.Spacer(c)
+		if m.req.dirty {
+			ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
 		}
-		ui.Scroll(c).Grow(1).Children(func() {
-			m.previewBlock(c, m.editor.text, m.editor.previewKey)
-		})
 	})
+	ui.Text(c, m.tables.metaLine).FontSize(11).Muted().Mono()
 }
 
-// requestTab 是请求编辑器：方法/地址、参数、请求头、请求体、认证都可改，保存写回文件。
-func (m *Model) requestTab(c ui.C, entry *explorer.Entry) {
-	if entry.Kind != explorer.KindHTTP {
-		m.grpcTab(c, entry)
-		return
-	}
+// requestBar 是地址栏：方法 + 地址 + 保存 + 发送，与 Wails 的 RequestBar 同一排。
+func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 		if ui.Select(c, &m.req.method, httpMethods, nil).Width(120).Changed() {
 			m.req.dirty = true
@@ -70,32 +39,30 @@ func (m *Model) requestTab(c ui.C, entry *explorer.Entry) {
 		if ui.TextField(c, &m.req.url, "地址", "{{host}}/api/users").Grow(1).Changed() {
 			m.req.dirty = true
 		}
-	})
-	m.kvEditor(c, "查询参数", &m.req.params, "添加参数")
-	m.kvEditor(c, "请求头", &m.req.headers, "添加请求头")
-	m.bodyEditor(c)
-	m.authEditor(c)
-	if m.req.err != "" {
-		ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
-	}
-	// 请求体字段表格（body.fields）目前只读：它是文档生成的真源，编辑入口留到下一轮。
-	m.tableSection(c, 2, "请求体字段（只读）", &m.tables.fields, fieldHeaders, fieldColumns)
-}
-
-// kvEditor 是可编辑的键值区：每行一个启用勾选 + 名称/值/说明 + 删除。
-func (m *Model) kvEditor(c ui.C, title string, rows *[]*kvRow, addLabel string) {
-	ui.Row(c).FillWidth().Items(ui.Center).Children(func() {
-		ui.Text(c, title).FontSize(12).Bold().Muted()
-		ui.Spacer(c)
-		if ui.Button(c, addLabel).Icon(IconPlus).Clicked() {
-			*rows = append(*rows, &kvRow{enabled: true})
-			m.req.dirty = true
+		save := ui.Button(c, "保存请求")
+		if !m.req.dirty {
+			save.Disabled(true)
+		}
+		if save.Clicked() {
+			c.After(m.saveRequest)
+		}
+		if m.sending {
+			ui.Button(c, "发送中…").Disabled(true)
+		} else if ui.Button(c, "发送").Icon(IconSend).Clicked() {
+			m.start(entry)
 		}
 	})
-	if len(*rows) == 0 {
-		ui.Text(c, "（没有）").FontSize(11).Muted()
-		return
-	}
+}
+
+// kvEditor 是表格式键值编辑：表头 + 每行（启用 / 名称 / 值 / 说明 / 删除）+ 底部添加。
+func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
+	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Slot(c).Width(24)
+		ui.Text(c, "名称").FontSize(11).Muted().Width(150)
+		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
+		ui.Text(c, "说明").FontSize(11).Muted().Width(160)
+		ui.Slot(c).Width(32)
+	})
 	for index, row := range *rows {
 		slot := index
 		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
@@ -119,43 +86,54 @@ func (m *Model) kvEditor(c ui.C, title string, rows *[]*kvRow, addLabel string) 
 			}
 		})
 	}
-}
-
-// bodyEditor 编辑请求体类型与原文；表单/多文件逐行编辑暂未支持，但原数据会保留。
-func (m *Model) bodyEditor(c ui.C) {
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "请求体").FontSize(12).Bold().Muted()
-		ui.Spacer(c)
-		if ui.Select(c, &m.req.bodyType, bodyTypes, nil).Width(130).Changed() {
+	ui.Row(c).FillWidth().Children(func() {
+		if ui.Button(c, addLabel).Icon(IconPlus).Ghost().Clicked() {
+			*rows = append(*rows, &kvRow{enabled: true})
 			m.req.dirty = true
 		}
+	})
+}
+
+// bodyTab 编辑请求体：类型 + 原文（json/text），并只读展示 body.fields。
+func (m *Model) bodyTab(c ui.C) {
+	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Text(c, "类型").FontSize(11).Muted()
+		if ui.Select(c, &m.req.bodyType, bodyTypes, nil).Width(140).Changed() {
+			m.req.dirty = true
+		}
+		ui.Spacer(c)
 	})
 	switch m.req.bodyType {
 	case "", "none":
-		ui.Text(c, "无请求体（`''` 与 `none` 同义）").FontSize(11).Muted()
+		ui.Text(c, "无请求体（空字符串与 `none` 同义）。").FontSize(11).Muted()
 	case "form", "multipart":
 		ui.Text(c, "表单 / 多文件的逐行编辑暂未支持；保存时保留文件里原有的 form 数据。").FontSize(11).Muted()
 	default:
-		if ui.TextArea(c, &m.req.bodyRaw, "请求体", `{"name": "value"}`).FillWidth().Height(170).Changed() {
+		if ui.TextArea(c, &m.req.bodyRaw, "请求体", `{"name": "value"}`).FillWidth().Height(240).Changed() {
 			m.req.dirty = true
 		}
 	}
+	if len(m.tables.fields) == 0 {
+		return
+	}
+	ui.Text(c, "请求体字段（只读，body.fields 是文档生成的真源）").FontSize(11).Muted()
+	table(c, &m.tableStates[2], &m.tables.fields, fieldHeaders, fieldColumns)
 }
 
-// authEditor 编辑认证；none 表示文件里不写 auth 段，inherit 表示继承集合默认。
-func (m *Model) authEditor(c ui.C) {
+// authTab 编辑认证；none 不写 auth 段，inherit 表示继承集合默认。
+func (m *Model) authTab(c ui.C) {
 	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "认证").FontSize(12).Bold().Muted()
-		ui.Spacer(c)
-		if ui.Select(c, &m.req.authType, authTypes, nil).Width(130).Changed() {
+		ui.Text(c, "类型").FontSize(11).Muted()
+		if ui.Select(c, &m.req.authType, authTypes, nil).Width(140).Changed() {
 			m.req.dirty = true
 		}
+		ui.Spacer(c)
 	})
 	switch m.req.authType {
 	case "", "none":
-		ui.Text(c, "不发送认证信息").FontSize(11).Muted()
+		ui.Text(c, "不发送认证信息。").FontSize(11).Muted()
 	case "inherit":
-		ui.Text(c, "沿用集合清单 defaults.auth（值支持 {{变量}}）").FontSize(11).Muted()
+		ui.Text(c, "沿用集合清单 defaults.auth（值支持 {{变量}}）。").FontSize(11).Muted()
 	case "basic":
 		ui.Row(c).FillWidth().Gap(8).Children(func() {
 			if ui.TextField(c, &m.req.authUser, "用户名", "{{username}}").Grow(1).Changed() {
@@ -184,13 +162,69 @@ func (m *Model) authEditor(c ui.C) {
 	}
 }
 
-// tableSection 有行才画：空表头比不画更吵。
-func (m *Model) tableSection(c ui.C, slot int, title string, rows *ui.TableRows, headers []string, columns []components.TableColumn) {
-	if rows == nil || len(*rows) == 0 {
+// docsTab 编辑概述与详细说明，下面实时预览 Markdown 排版结果。
+func (m *Model) docsTab(c ui.C, entry *explorer.Entry) {
+	ui.Text(c, "概述").FontSize(11).Muted()
+	if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").FillWidth().Changed() {
+		m.req.dirty = true
+	}
+	ui.Text(c, "详细说明（Markdown）").FontSize(11).Muted()
+	if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").FillWidth().Height(200).Changed() {
+		m.req.dirty = true
+	}
+	ui.Text(c, "预览").FontSize(11).Muted()
+	if strings.TrimSpace(m.req.docs) == "" {
+		ui.Text(c, "（没有详细说明）").Muted()
 		return
 	}
-	ui.Text(c, title).FontSize(12).Bold().Muted()
-	table(c, &m.tableStates[slot], rows, headers, columns)
+	m.previewBlock(c, m.req.docs, m.tables.docsKey)
+}
+
+// responsePanel 是请求页下方的响应区：状态行固定，正文滚动。
+func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
+	theme := c.Theme()
+	ui.Column(c).Fill().Pad(12).Gap(8).Radius(theme.Metrics.RadiusSurface).
+		Background(theme.Card).Border(1, m.pal.border).Children(func() {
+		ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+			ui.Text(c, "响应").FontSize(12).Bold()
+			switch {
+			case entry.Kind != explorer.KindHTTP:
+				ui.Text(c, "gRPC 只读").FontSize(11).Muted()
+			case m.sending:
+				ui.Spinner(c)
+			case m.hasResp && m.failText == "":
+				statusTint := theme.Success
+				if !m.statusOK {
+					statusTint = theme.Danger
+				}
+				ui.Text(c, m.status).FontSize(12).Bold().Color(statusTint)
+				ui.Text(c, m.reason).FontSize(11).Muted()
+				ui.Spacer(c)
+				ui.Text(c, m.elapsed+" · "+m.size).FontSize(11).Muted().Mono()
+			}
+		})
+		ui.Scroll(c).Grow(1).Children(func() {
+			switch {
+			case entry.Kind != explorer.KindHTTP:
+				ui.Text(c, "验证版只读展示 gRPC 元数据，不发起调用。").FontSize(11).Muted()
+			case m.sending:
+				ui.Text(c, "请求中…").Muted()
+			case !m.hasResp:
+				ui.Text(c, "尚未发送：点右上角「发送」运行这条请求。").FontSize(12).Muted()
+			case m.failText != "":
+				ui.Text(c, "请求失败："+m.failText).FontSize(11).Color(theme.Danger)
+			default:
+				if m.missing != "" {
+					ui.Text(c, m.missing).FontSize(11).Color(theme.Danger)
+				}
+				if m.bodyText == "" {
+					ui.Text(c, "响应体为空").Muted()
+					return
+				}
+				ui.Paragraph(c, m.bodyText, 0).Mono().FontSize(11)
+			}
+		})
+	})
 }
 
 // grpcTab 只读展示 gRPC 元数据：调用不在这次框架验证的范围。
@@ -212,56 +246,45 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 	ui.Text(c, "验证版只读展示 gRPC 元数据；发送能力未接。").FontSize(11).Muted()
 }
 
-// responseTab 是响应区：gRPC 只读 / 发送中 / 尚未发送 / 失败 / 结果（三张数字卡 + 响应体卡片）。
-func (m *Model) responseTab(c ui.C, entry *explorer.Entry) {
-	switch {
-	case entry.Kind != explorer.KindHTTP:
-		emptyBox(c, "gRPC 没有响应", "验证版只读展示 gRPC 元数据，不发起调用")
-	case m.sending:
-		ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-			ui.Spinner(c)
-			ui.Text(c, "请求中…").Muted()
+// docDetail 是一篇 Markdown 的编辑 / 预览。
+func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
+	if ui.Shortcut(c, ui.Primary, "s") {
+		c.After(m.saveDoc)
+	}
+	dirty := m.docDirty()
+	ui.Column(c).Fill().Pad(20).Gap(12).Children(func() {
+		ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+			methodBadge(c, entry)
+			ui.Text(c, entry.Name).FontSize(18).Bold()
+			ui.Spacer(c)
+			switch {
+			case dirty:
+				ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
+			case m.editor.status != "":
+				ui.Text(c, m.editor.status).FontSize(11).Muted()
+			}
+			save := ui.Button(c, "保存")
+			if !dirty {
+				save.Disabled(true)
+			}
+			if save.Clicked() {
+				c.After(m.saveDoc)
+			}
 		})
-	case !m.hasResp:
-		emptyBox(c, "尚未发送", "点右上角「发送」运行这条请求")
-	case m.failText != "":
-		ui.Column(c).FillWidth().Pad(14).Gap(6).Draw(cardDraw).Children(func() {
-			ui.Text(c, "请求失败").FontSize(13).Bold().Color(c.Theme().Danger)
-			ui.Text(c, m.failText).Mono().FontSize(11).Muted()
-		})
-	default:
-		ui.Row(c).FillWidth().Gap(12).Children(func() {
-			metric(c, "状态", m.status, m.reason, m.statusOK)
-			metric(c, "耗时", m.elapsed, "单次请求", true)
-			metric(c, "体积", m.size, "响应体", true)
-		})
-		if m.missing != "" {
-			ui.Text(c, m.missing).FontSize(11).Color(c.Theme().Danger)
-		}
-		if m.bodyText == "" {
-			ui.Text(c, "响应体为空").Muted()
+		ui.Text(c, m.editor.metaLine).FontSize(11).Muted().Mono()
+		ui.Tabs(c, &m.tab, docTabs, tabLabel).Line()
+		if m.tab == tabEdit {
+			ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").FillWidth().Grow(1)
 			return
 		}
-		m.codeCard(c, m.bodyText)
-	}
-}
-
-// docsTab 编辑概述与详细说明，下面实时预览 Markdown 排版结果。
-func (m *Model) docsTab(c ui.C, entry *explorer.Entry) {
-	ui.Text(c, "概述").FontSize(12).Bold().Muted()
-	if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").FillWidth().Changed() {
-		m.req.dirty = true
-	}
-	ui.Text(c, "详细说明（Markdown）").FontSize(12).Bold().Muted()
-	if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").FillWidth().Height(200).Changed() {
-		m.req.dirty = true
-	}
-	ui.Text(c, "预览").FontSize(12).Bold().Muted()
-	if strings.TrimSpace(m.req.docs) == "" {
-		ui.Text(c, "（没有详细说明）").Muted()
-		return
-	}
-	m.previewBlock(c, m.req.docs, m.tables.docsKey)
+		if strings.TrimSpace(m.editor.text) == "" {
+			emptyBox(c, "空文档", "在「编辑」页签里写内容，这里会实时预览")
+			return
+		}
+		ui.Scroll(c).Grow(1).Children(func() {
+			m.previewBlock(c, m.editor.text, m.editor.previewKey)
+		})
+	})
 }
 
 // previewBlock 把一段 Markdown 排好版画进当前布局（不加滚动容器，由调用方决定）。
@@ -276,15 +299,7 @@ func (m *Model) previewBlock(c ui.C, source, key string) {
 	})
 }
 
-// urlCard 是地址卡片：组件目录的卡片底 + 等宽 URL。
-func (m *Model) urlCard(c ui.C, url string) {
-	ui.Column(c).FillWidth().Pad(12).Gap(4).Draw(cardDraw).Children(func() {
-		ui.Text(c, "地址").FontSize(11).Muted()
-		ui.Text(c, url).Mono().FontSize(12)
-	})
-}
-
-// codeCard 是等宽长文卡片：请求体原文与响应体共用。
+// codeCard 是等宽长文卡片（请求体原文与响应体共用）。
 func (m *Model) codeCard(c ui.C, text string) {
 	ui.Column(c).FillWidth().Pad(12).Draw(cardDraw).Children(func() {
 		ui.Paragraph(c, text, 0).Mono().FontSize(11)

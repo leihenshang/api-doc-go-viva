@@ -26,7 +26,7 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 | 读集合 | 复用 `share/collection` 解析 `opencollection.yml`、`folder.yml`、请求文件与环境变量（含 `*.secrets.yml`）；缺清单一律 `ErrNeedsInit`，与客户端同一条闸门 |
 | 集合树 | 同时打开**多个集合根**（各留自己的过滤词 / 环境 / 选中项，右键可关闭，至少留一个）；树内就地搜索当前集合；分组/`seq` 排序、方法角标、可拖拽分栏 |
 | 界面配色 | 按 Wails 的面板令牌分三层：窗口 `#f5f5f5`/`#17181a`、集合树 `#f5f5f5`/`#17181a`、请求页 `#ffffff`/`#1e1f22`，树与内容区不再是一片同色 |
-| 请求编辑 | 方法 / 地址 / 查询参数 / 请求头（启用勾选、增删行、说明列）/ 请求体类型与原文 / 认证（none / inherit / basic / bearer / apikey）/ 概述与 Markdown 说明；脏状态提示，「保存请求」写回原文件，`meta`、`settings`、未知字段与 `body.fields` 原样保留 |
+| 请求编辑 | 排版对齐 Wails：标题（名称 + 概述）→ 地址栏（方法 + 地址 + 保存 + 发送）→ 下划线分段「参数 / 请求体 / 请求头 / 认证 / 文档」→ 下方常驻响应区（可拖拽分隔条）。参数与请求头是表格式编辑（启用勾选、行内说明、底部添加行）；保存写回原文件，`meta`、`settings`、未知字段与 `body.fields` 原样保留 |
 | 环境变量 | 设置里选环境、编辑普通变量（启用 / 名称 / 值）、新建空环境、**重命名**（主文件与 `.secrets.yml` 一起改）、**删除**（两个文件都移进 `.trash/`）；保存写回 `environments/<名>.yml`（0600），密钥变量不碰；选中的环境按集合根记进偏好，发送立即使用 |
 | 真实发送 | `{{变量}}` 替换（含 `$uuid`/`$timestamp`）、basic/bearer/apikey、json/text/form 正文、超时与 `insecureSsl`、状态码/耗时/体积/响应体 |
 | 请求文档 | Docs 用 `markdown` 解析 + `components.MarkdownView` 排版：标题、列表、引用、行内代码、表格、代码块；排版结果按「源文本 + 可用宽度」缓存，绘制只画不算 |
@@ -55,6 +55,7 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 | 接口文档 | `markdown.Document` + `components.MarkdownView` | Layout 只在源文本或宽度变化时重排，Paint 每帧复用；配色来自 `MarkdownLookFor(theme)` |
 | 文档编辑 | `ui.TextArea` + `ui.Shortcut(Ctrl+S)` | 编辑与预览同一份内容，预览实时跟随；脏状态与保存状态在标题行提示 |
 | 请求编辑 | `ui.Select` + `ui.TextField` + `ui.TextArea` + `ui.Checkbox` | 键值行用指针存进切片，增删行不会重置其它行的编辑器状态 |
+| 分段与响应区 | `ui.Tabs(...).Line()` + `ui.Splitter` | 下划线分段对齐 Wails；响应区高度可拖，最小 120 |
 | 列表、分栏、搜索 | `ui.List` / `ui.Splitter` / `ui.TextField` | 行虚拟化、可拖拽分栏、即时过滤 |
 
 组件是 canvas 级 API（自己算尺寸、自己画），页面负责布局，所以统一走 `ui.Box.Draw` 钩子：
@@ -139,7 +140,8 @@ GOWORK=off go run . -collection ../api-doc-go-flutter/sample-collection -env dev
 16. 打开另一个集合后，树里的条目整个换掉且偏好记住新目录；
 17. 打开没有清单的空目录：先停在确认态、**不写盘**；确认后写出 `opencollection.yml` 并切过去；
 18. 环境重命名会带走 `.secrets.yml`，删除把两个文件都移进 `.trash/` 并把当前环境切回「无」；
-19. 同时打开两个集合：两个根都出现在树里，切换回来过滤词与条目都恢复；关掉当前集合落到剩下的那个，最后一个不能关。
+19. 同时打开两个集合：两个根都出现在树里，切换回来过滤词与条目都恢复；关掉当前集合落到剩下的那个，最后一个不能关；
+20. 响应区常驻（不再是页签）：选中请求就能看到「尚未发送」，点分段「文档」能看到概述与 Markdown 预览，切回「参数」再发送。
 
 另外 `internal/explorer` 覆盖清单闸门、分组/`seq` 排序、坏 YAML 只跳过、环境与密文合并；
 `internal/send` 覆盖变量替换、参数/头/正文/认证真实抵达服务端、连接失败与不支持正文类型的报错。

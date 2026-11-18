@@ -27,21 +27,35 @@ import (
 type detailTab uint8
 
 const (
-	tabRequest detailTab = iota
+	// http 请求的四个分段（顺序对齐 Wails：参数 / 请求体 / 请求头 / 认证），外加文档。
+	tabParams detailTab = iota
+	tabBody
+	tabHeaders
+	tabAuth
+	// gRPC 仍用「请求 / 响应 / 文档」三页签。
+	tabRequest
 	tabResponse
 	tabDocs
 	tabEdit
 	tabPreview
 )
 
-// 两个页签集合是包级切片：Tabs 每帧都要它，放这里避免每帧分配。
+// 页签集合是包级切片：Tabs 每帧都要它，放这里避免每帧分配。
 var (
-	httpTabs = []detailTab{tabRequest, tabResponse, tabDocs}
-	docTabs  = []detailTab{tabEdit, tabPreview}
+	httpSegments = []detailTab{tabParams, tabBody, tabHeaders, tabAuth, tabDocs}
+	docTabs      = []detailTab{tabEdit, tabPreview}
 )
 
 func tabLabel(tab detailTab) string {
 	switch tab {
+	case tabParams:
+		return "参数"
+	case tabBody:
+		return "请求体"
+	case tabHeaders:
+		return "请求头"
+	case tabAuth:
+		return "认证"
 	case tabRequest:
 		return "请求"
 	case tabResponse:
@@ -232,11 +246,12 @@ type Model struct {
 	envName string
 	vars    map[string]string
 
-	theme ui.Theme
-	pal   palette
-	split ui.SplitterState
-	list  ui.ListState
-	tab   detailTab
+	theme  ui.Theme
+	pal    palette
+	split  ui.SplitterState
+	rsplit ui.SplitterState
+	list   ui.ListState
+	tab    detailTab
 
 	filter    string
 	shown     []*explorer.Entry
@@ -306,6 +321,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.applyTheme()
 	m.ui.imeDetail = ime.Detect().Detail
 	m.split.Pos = 320
+	m.rsplit.Pos = 320
 	m.list.Label = func(i int) string { return m.shown[i].Name }
 	m.list.Name = func(i int) string { return m.shown[i].Title() }
 	m.refreshShown()
@@ -424,7 +440,7 @@ func (m *Model) ensureEntry(entry *explorer.Entry) {
 		return
 	}
 	if m.tab == tabEdit || m.tab == tabPreview {
-		m.tab = tabRequest
+		m.tab = tabParams
 	}
 	// 换了一条请求：上一次的响应不再属于它，在途结果也作废。
 	m.gen++
@@ -436,6 +452,7 @@ func (m *Model) ensureEntry(entry *explorer.Entry) {
 	}
 	m.loadRequestDraft(entry)
 	if entry.Kind != explorer.KindHTTP {
+		m.tab = tabRequest
 		m.fillGRPC(entry)
 		return
 	}
@@ -574,7 +591,6 @@ func (m *Model) collect() {
 	out := result.out
 	m.resp = out
 	m.hasResp, m.sending = true, false
-	m.tab = tabResponse
 	if out.Err != "" {
 		m.failText = out.Err
 		return
