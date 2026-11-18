@@ -1,0 +1,21 @@
+info:
+  name: 列表
+  type: http
+  seq: 1
+meta:
+  uid: viva-poc-user-list
+summary: 分页查询用户
+http:
+  method: GET
+  url: '{{host}}/api/users'
+  params:
+    - name: page
+      value: '1'
+      enabled: true
+  headers:
+    - name: Accept
+      value: application/json
+      enabled: true
+  body:
+    type: none
+docs: ''

@@ -1,0 +1,13 @@
+info:
+  name: 删除
+  type: http
+  seq: 1
+meta:
+  uid: viva-poc-order-delete
+http:
+  method: DELETE
+  url: '{{host}}/api/orders/{{$uuid}}'
+  headers: []
+  body:
+    type: none
+docs: ''

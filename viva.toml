@@ -1,0 +1,7 @@
+# viva 命令行（viva dev / viva build / viva package）读的配置。
+[app]
+name = "API-DOC Viva"
+id = "go.apidoc.viva"
+version = "0.1.0"
+executable = "api-doc-viva"
+package = "."

@@ -1,0 +1,38 @@
+info:
+  name: 创建
+  type: http
+  seq: 2
+meta:
+  uid: viva-poc-user-create
+summary: 新建一个用户
+http:
+  method: POST
+  url: '{{host}}/api/users'
+  headers: []
+  body:
+    type: json
+    raw: '{"name": "{{username}}"}'
+    fields:
+      - name: name
+        type: string
+        required: true
+        description: 登录名
+docs: |-
+  ## 创建用户
+
+  用 `POST` 提交 **JSON**，成功后返回新用户的 id。请求体字段见下表，值支持 `{{变量}}`。
+
+  - 用户名 3–32 个字符
+  - 口令至少 12 位，含大小写与数字
+  - ~~邮箱可留空~~ 邮箱必填
+
+  > 失败时统一返回 `code`，不要只看 HTTP 状态码。
+
+  | 字段 | 类型 | 必填 |
+  |:--|:-:|--:|
+  | name | string | 是 |
+  | password | string | 是 |
+
+  ```json
+  {"name": "admin", "password": "***"}
+  ```

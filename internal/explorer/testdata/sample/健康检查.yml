@@ -1,0 +1,13 @@
+info:
+  name: 健康检查
+  type: http
+  seq: 1
+meta:
+  uid: viva-poc-health
+http:
+  method: GET
+  url: '{{host}}/healthz'
+  headers: []
+  body:
+    type: none
+docs: ''

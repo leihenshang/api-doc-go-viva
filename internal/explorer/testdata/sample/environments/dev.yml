@@ -1,0 +1,16 @@
+info:
+  name: dev
+uid: viva-poc-env-dev
+vars:
+  - name: host
+    value: 'http://127.0.0.1:18080'
+    enabled: true
+    secret: false
+  - name: username
+    value: admin
+    enabled: true
+    secret: false
+  - name: off
+    value: ignored
+    enabled: false
+    secret: false
