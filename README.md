@@ -51,7 +51,7 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 | 参数表、请求头表、请求体字段表 | `ui.Table` + `ui.TableRows`（表头 / 斑马纹 / 选中 / 横向滚动） | 列宽与表头是包级常量，不再逐帧拼切片 |
 | 卡片底 | `components.Card` | 地址块、正文块、文档块统一走同一套背景/边框/阴影 |
 | 空状态 | `components.Empty` | 未选中、无匹配、尚未发送、gRPC 无响应 |
-| 响应指标 | `components.MetricCard` | 状态 / 耗时 / 体积三张数字卡，2xx 绿色、4xx/5xx 红色 |
+| 响应状态行 | 主题色 + 等宽字号 | 状态码按 2xx/4xx 取绿/红，右侧是耗时与体积；正文用 `Paragraph` 等宽滚动 |
 | 接口文档 | `markdown.Document` + `components.MarkdownView` | Layout 只在源文本或宽度变化时重排，Paint 每帧复用；配色来自 `MarkdownLookFor(theme)` |
 | 文档编辑 | `ui.TextArea` + `ui.Shortcut(Ctrl+S)` | 编辑与预览同一份内容，预览实时跟随；脏状态与保存状态在标题行提示 |
 | 请求编辑 | `ui.Select` + `ui.TextField` + `ui.TextArea` + `ui.Checkbox` | 键值行用指针存进切片，增删行不会重置其它行的编辑器状态 |

@@ -38,13 +38,6 @@ func cardDraw(d *ui.DrawContext) {
 	components.Card(d.Canvas, *d.Theme, d.Rect)
 }
 
-// metric 是组件目录的数字卡：标题、数值与一行趋势说明。
-func metric(c ui.C, title, value, trend string, positive bool) ui.Box {
-	return ui.Column(c).Grow(1).Height(96).Draw(func(d *ui.DrawContext) {
-		components.MetricCard(d.Canvas, *d.Theme, d.Rect, title, value, trend, positive)
-	})
-}
-
 // table 是 ui.Table（可选中、可排序、行虚拟化）的薄封装；列与表头由调用方给。
 func table(c ui.C, state *ui.TableState, source ui.TableSource, headers []string, columns []components.TableColumn) ui.Box {
 	return ui.Table(c, state, ui.TableSpec{
