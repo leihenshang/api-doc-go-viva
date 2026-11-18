@@ -115,6 +115,19 @@ func renameRequest(collectionDir string, entry *Entry, name string) error {
 	return writeAtomic(full, encoded)
 }
 
+// SaveRequest 把编辑后的请求写回原文件（Meta/Extra/Settings 由调用方原样带上）。
+func SaveRequest(collectionDir, rel string, file *collection.RequestFile) error {
+	full, err := safeJoin(collectionDir, rel)
+	if err != nil {
+		return err
+	}
+	data, err := file.Encode()
+	if err != nil {
+		return fmt.Errorf("编码 %s: %w", rel, err)
+	}
+	return writeAtomic(full, data)
+}
+
 // TrashEntry 把条目文件移到 <集合>/.trash/<时间戳>.<文件名>，与客户端同一个回收站。
 func TrashEntry(collectionDir string, entry *Entry) error {
 	full, err := safeJoin(collectionDir, entry.File)

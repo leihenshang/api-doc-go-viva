@@ -147,6 +147,12 @@ func (m *Model) detailHeader(c ui.C, entry *explorer.Entry) {
 		ui.Text(c, entry.Name).FontSize(18).Bold()
 		ui.Spacer(c)
 		if entry.Kind == explorer.KindHTTP {
+			if m.req.dirty {
+				ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
+				if ui.Button(c, "保存请求").Icon(IconFilePlus).Clicked() {
+					c.After(m.saveRequest)
+				}
+			}
 			m.sendButton(c, entry)
 		} else {
 			ui.Text(c, "gRPC 只读").FontSize(11).Muted()

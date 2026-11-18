@@ -33,6 +33,8 @@ type Plan struct {
 	Vars    map[string]string
 	Timeout time.Duration
 	MaxBody int64
+	// FollowRedirects 是全局默认；请求文件里的 settings.followRedirects 优先。
+	FollowRedirects *bool
 }
 
 // Outcome 一次发送的结果；Err 非空表示根本没拿到响应。
@@ -90,7 +92,17 @@ func newClient(plan Plan) *http.Client {
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
+	follow := true
+	if plan.FollowRedirects != nil {
+		follow = *plan.FollowRedirects
+	}
+	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.FollowRedirects != nil {
+		follow = *plan.File.Settings.FollowRedirects
+	}
 	client := &http.Client{Timeout: timeout}
+	if !follow {
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.InsecureSSL != nil &&
 		*plan.File.Settings.InsecureSSL {
 		transport := http.DefaultTransport.(*http.Transport).Clone()

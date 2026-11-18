@@ -8,7 +8,7 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 
 ![响应页：状态 / 耗时 / 体积三张数字卡 + 响应体](doc/viva-window.png)
 
-![请求页：地址、请求头、认证与请求体字段表](doc/viva-request.png)
+![请求页：方法 / 地址 / 参数 / 请求头 / 请求体 / 认证都可编辑，保存写回集合文件](doc/viva-request.png)
 
 ![文档页：Docs 按 Markdown 排版（标题 / 列表 / 引用 / 表格 / 代码块）](doc/viva-docs.png)
 
@@ -24,7 +24,8 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 |---|---|
 | 读集合 | 复用 `share/collection` 解析 `opencollection.yml`、`folder.yml`、请求文件与环境变量（含 `*.secrets.yml`）；缺清单一律 `ErrNeedsInit`，与客户端同一条闸门 |
 | 请求列表 | 分组/`seq` 排序、方法角标、按名称/URL/分组过滤、可拖拽分栏 |
-| 请求详情 | URL、启用中的查询参数与请求头、认证类型、请求体（`body.type` 口径同客户端：`''`/`none` 都表示无请求体） |
+| 请求编辑 | 方法 / 地址 / 查询参数 / 请求头（启用勾选、增删行、说明列）/ 请求体类型与原文 / 认证（none / inherit / basic / bearer / apikey）/ 概述与 Markdown 说明；脏状态提示，「保存请求」写回原文件，`meta`、`settings`、未知字段与 `body.fields` 原样保留 |
+| 环境变量 | 设置里选环境、编辑普通变量（启用 / 名称 / 值）、新建空环境；保存写回 `environments/<名>.yml`（0600），密钥变量与 `.secrets.yml` 不碰；选中的环境按集合根记进偏好，发送立即使用 |
 | 真实发送 | `{{变量}}` 替换（含 `$uuid`/`$timestamp`）、basic/bearer/apikey、json/text/form 正文、超时与 `insecureSsl`、状态码/耗时/体积/响应体 |
 | 请求文档 | Docs 用 `markdown` 解析 + `components.MarkdownView` 排版：标题、列表、引用、行内代码、表格、代码块；排版结果按「源文本 + 可用宽度」缓存，绘制只画不算 |
 | Markdown 条目 | 集合里的 `.md` 也是树里的条目（子目录 README 除外，与客户端同规则）；`MD` 角标、分组/`seq` 排序一致 |
@@ -32,7 +33,7 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 | 新建请求 | 弹窗填名称 / 方法 / 地址，落进当前选中条目所在分组（根目录则落根）；默认值与客户端一致（`Content-Type: application/json`、一行空参数、`body.type: none`），重名 `-2` |
 | 集合树操作 | 右键菜单：新建请求、新建文档、重命名（只改显示名，文件名不动）、删除到回收站（`<集合>/.trash/<时间戳>.<文件名>`，与客户端同一个回收站） |
 | 主题 | 工具条「日间 / 夜间」即时切换，Markdown 配色一起换；偏好写 `~/.config/api-doc-viva/settings.json`，下次启动沿用 |
-| 设置 | 面板展示外观、集合路径、当前环境与**输入法状态**（见下节） |
+| 设置 | 外观（主题）、默认超时（秒）、是否跟随重定向、环境选择与编辑入口、集合路径 / 当前环境 / 输入法状态；偏好落 `settings.json` |
 | 编辑 / 预览 | 「编辑」是 `ui.TextArea`，「预览」是同一个 Markdown 渲染器；Ctrl+S 或「保存」原子写回，frontmatter 原样保留；未保存有提示，切走再回来草稿还在 |
 | gRPC | 只读展示 target/service/method/proto/message（发送不在本次验证范围） |
 
@@ -50,6 +51,7 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 | 响应指标 | `components.MetricCard` | 状态 / 耗时 / 体积三张数字卡，2xx 绿色、4xx/5xx 红色 |
 | 接口文档 | `markdown.Document` + `components.MarkdownView` | Layout 只在源文本或宽度变化时重排，Paint 每帧复用；配色来自 `MarkdownLookFor(theme)` |
 | 文档编辑 | `ui.TextArea` + `ui.Shortcut(Ctrl+S)` | 编辑与预览同一份内容，预览实时跟随；脏状态与保存状态在标题行提示 |
+| 请求编辑 | `ui.Select` + `ui.TextField` + `ui.TextArea` + `ui.Checkbox` | 键值行用指针存进切片，增删行不会重置其它行的编辑器状态 |
 | 列表、分栏、搜索 | `ui.List` / `ui.Splitter` / `ui.TextField` | 行虚拟化、可拖拽分栏、即时过滤 |
 
 组件是 canvas 级 API（自己算尺寸、自己画），页面负责布局，所以统一走 `ui.Box.Draw` 钩子：
@@ -127,7 +129,10 @@ GOWORK=off go run . -collection ../api-doc-go-flutter/sample-collection -env dev
 9. 换到另一篇文档再换回来，断言未保存的草稿还在；
 10. 「新建请求」弹窗创建后，断言 `新接口.yml` 落盘、树里出现 `POST 新接口`；
 11. 「日间 / 夜间」切换后断言主题变了且偏好文件已写入；
-12. 设置面板能打开、显示输入法状态、点「完成」关闭。
+12. 设置面板能打开、显示输入法状态、点「完成」关闭；
+13. 改 URL / 方法后「保存请求」，断言文件里确实是新值、草稿回到干净状态；
+14. `applyEnv` 后 `vars` 与偏好里的「上次环境」都更新；环境变量改完保存，发送用的变量立即变新；
+15. 设置里把默认超时改成 35，断言内存与偏好的值都变了。
 
 另外 `internal/explorer` 覆盖清单闸门、分组/`seq` 排序、坏 YAML 只跳过、环境与密文合并；
 `internal/send` 覆盖变量替换、参数/头/正文/认证真实抵达服务端、连接失败与不支持正文类型的报错。
@@ -161,7 +166,8 @@ GOWORK=off go test -race ./...
 
 ## 明确没做的部分
 
-- 请求编辑与回写（本版请求只读；文档可编辑保存）；
+- 请求体字段表格（`body.fields`）的编辑：它目前只读展示，保存时原样保留；
+- 表单（form）与多文件（multipart）的逐行编辑：保存时保留原有数据，但界面上还不能增删行；
 - Markdown 的链接点击与文档图片（渲染器支持 `Links` scope 与 `Image` 回调，验证版没接；图片位显示 alt 文本）；
 - 文档 / 请求的**移动**与拖拽排序（新建、重命名、删除已接；跨目录移动仍在客户端做）；
 - 回收站索引（`.trash/index.json`）与恢复：这里只做「移进回收站」，恢复请回客户端；

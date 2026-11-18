@@ -270,6 +270,119 @@ func TestSwitchDocKeepsDraft(t *testing.T) {
 	}
 }
 
+// TestEditRequestAndSave 编辑 URL 后保存，文件真的变了，草稿回到干净状态。
+func TestEditRequestAndSave(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 待编辑\n")
+	writeFile(t, filepath.Join(dir, "请求.yml"), `info:
+  name: 请求
+  type: http
+  seq: 1
+meta:
+  uid: edit-1
+http:
+  method: GET
+  url: '{{host}}/old'
+  params: []
+  headers: []
+  body:
+    type: none
+`)
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "GET 请求")
+	pump(t, driver)
+	model.req.url = "{{host}}/new"
+	model.req.method = "PUT"
+	model.req.dirty = true
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	click(t, driver, "保存请求")
+	pump(t, driver)
+	pump(t, driver)
+
+	data, err := os.ReadFile(filepath.Join(dir, "请求.yml"))
+	if err != nil {
+		t.Fatalf("读回请求: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "{{host}}/new") || !strings.Contains(text, "method: PUT") {
+		t.Fatalf("保存内容 = %s", text)
+	}
+	if model.req.dirty {
+		t.Fatal("保存后草稿应回到干净状态")
+	}
+}
+
+// TestEnvSelectionAndEdit 切环境、改变量、保存后发送用的是新值。
+func TestEnvSelectionAndEdit(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 环境集合\n")
+	writeFile(t, filepath.Join(dir, "environments", "dev.yml"), `info:
+  name: dev
+uid: env-1
+vars:
+  - name: host
+    value: http://old
+    enabled: true
+    secret: false
+`)
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	openWindow(t, model)
+
+	model.applyEnv("dev")
+	if model.vars["host"] != "http://old" {
+		t.Fatalf("环境变量没装上：%v", model.vars)
+	}
+	if settings.Load().Envs[col.Dir] != "dev" {
+		t.Fatalf("选中的环境没记住：%+v", settings.Load().Envs)
+	}
+
+	model.ui.envPick = "dev"
+	model.openEnvEditor()
+	if len(model.ui.envRows) != 1 {
+		t.Fatalf("环境行 = %d", len(model.ui.envRows))
+	}
+	model.ui.envRows[0].value = "http://new"
+	model.saveEnv()
+	if model.vars["host"] != "http://new" {
+		t.Fatalf("保存后发送变量应更新：%v", model.vars)
+	}
+}
+
+// TestSettingsTimeoutPersists 设置里的默认超时立即生效并落盘。
+func TestSettingsTimeoutPersists(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\n")
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "设置")
+	pump(t, driver)
+	model.ui.timeoutText = "35"
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	if model.settings.TimeoutSec != 35 {
+		t.Fatalf("超时没生效：%d", model.settings.TimeoutSec)
+	}
+	if settings.Load().TimeoutSec != 35 {
+		t.Fatalf("超时没落盘：%+v", settings.Load())
+	}
+}
+
 // TestFilterNarrowsTheList 确认搜索框真的驱动了列表内容，而不只是装饰。
 func TestFilterNarrowsTheList(t *testing.T) {
 	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "sample"))
@@ -429,6 +542,9 @@ http:
 
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("建目录 %s: %v", filepath.Dir(path), err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("写 %s: %v", path, err)
 	}

@@ -9,6 +9,8 @@ func (m *Model) dialogs(c ui.C) {
 	m.newRequestDialog(c)
 	m.renameDialog(c)
 	m.settingsDialog(c)
+	m.envDialog(c)
+	m.newEnvDialog(c)
 }
 
 // newRequestDialog 是「新建请求」：请求名、方法、地址，创建后写进集合并被选中。
@@ -72,6 +74,27 @@ func (m *Model) settingsDialog(c ui.C) {
 			ui.Text(c, m.ui.dirLine).FontSize(11).Muted().Mono()
 			ui.Text(c, m.ui.envLine).FontSize(11).Muted()
 			ui.Divider(c)
+			ui.Text(c, "请求").FontSize(12).Bold().Muted()
+			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "默认超时（秒）").FontSize(11).Muted()
+				ui.TextField(c, &m.ui.timeoutText, "默认超时", "20").Width(90).Changed()
+				ui.Spacer(c)
+				ui.Switch(c, &m.ui.follow, "跟随重定向").Changed()
+			})
+			ui.Divider(c)
+			ui.Text(c, "环境").FontSize(12).Bold().Muted()
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Select(c, &m.ui.envPick, m.ui.envs, nil).Width(170)
+				if ui.Button(c, "编辑变量").Clicked() {
+					c.After(m.openEnvEditor)
+				}
+				if ui.Button(c, "新建环境").Clicked() {
+					m.ui.newEnvOpen = true
+					m.ui.newEnvErr = ""
+				}
+			})
+			ui.Text(c, m.ui.envLine).FontSize(11).Muted()
+			ui.Divider(c)
 			ui.Text(c, "输入法").FontSize(12).Bold().Muted()
 			ui.Text(c, m.ui.imeDetail).FontSize(11).Muted()
 			ui.Text(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").FontSize(11).Muted()
@@ -83,9 +106,78 @@ func (m *Model) settingsDialog(c ui.C) {
 			}
 		})
 	})
+	if !m.ui.settingsOpen {
+		return
+	}
 	// Choice 在声明时就写回了 themePick：这里跟随切换，保证点一下立即生效。
 	// 只在面板开着时同步，否则会拿旧 themePick 把工具条的切换撤销掉。
-	if m.ui.settingsOpen && (m.ui.themePick == 1) != m.isLight() {
+	if (m.ui.themePick == 1) != m.isLight() {
 		m.setTheme(m.ui.themePick == 1)
 	}
+	if m.ui.envPick != m.envName {
+		m.applyEnv(m.ui.envPick)
+	}
+	m.applySettingsEdits()
+}
+
+// envDialog 编辑环境里的普通变量；密钥变量只显示数量（值由客户端管理）。
+func (m *Model) envDialog(c ui.C) {
+	ui.Modal(c, &m.ui.envOpen, "编辑环境变量", func() {
+		ui.Column(c).FillWidth().Gap(10).Children(func() {
+			ui.Text(c, "环境："+m.ui.envPick).FontSize(12).Bold()
+			if m.ui.envSecretLine != "" {
+				ui.Text(c, m.ui.envSecretLine).FontSize(11).Muted()
+			}
+			for index, row := range m.ui.envRows {
+				slot := index
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					ui.Checkbox(c, &row.enabled, "")
+					ui.TextField(c, &row.name, "名称", "host").Width(160)
+					ui.TextField(c, &row.value, "值", "http://127.0.0.1:8080").Grow(1)
+					if ui.Button(c, "删除").Icon(IconTrash).IconOnly().Clicked() {
+						m.ui.envRows = append(m.ui.envRows[:slot], m.ui.envRows[slot+1:]...)
+					}
+				})
+			}
+			ui.Row(c).FillWidth().Children(func() {
+				if ui.Button(c, "添加变量").Icon(IconPlus).Clicked() {
+					m.ui.envRows = append(m.ui.envRows, &kvRow{enabled: true})
+				}
+			})
+			if m.ui.envErr != "" {
+				ui.Text(c, m.ui.envErr).FontSize(11).Color(c.Theme().Danger)
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				m.ui.envOpen = false
+			}
+			if ui.Button(c, "保存变量").Clicked() {
+				c.After(m.saveEnv)
+			}
+		})
+	})
+}
+
+// newEnvDialog 新建一个空环境（同名拒绝，不覆盖）。
+func (m *Model) newEnvDialog(c ui.C) {
+	ui.Modal(c, &m.ui.newEnvOpen, "新建环境", func() {
+		ui.Column(c).FillWidth().Gap(10).Children(func() {
+			ui.Text(c, "环境是 environments/<名称>.yml，与客户端同一个位置。").FontSize(11).Muted()
+			ui.TextField(c, &m.ui.newEnvName, "环境名", "例如：staging").FillWidth()
+			if m.ui.newEnvErr != "" {
+				ui.Text(c, m.ui.newEnvErr).FontSize(11).Color(c.Theme().Danger)
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				m.ui.newEnvOpen = false
+			}
+			if ui.Button(c, "创建环境").Clicked() {
+				c.After(m.createEnv)
+			}
+		})
+	})
 }

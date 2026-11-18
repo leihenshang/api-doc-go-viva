@@ -20,10 +20,27 @@ const (
 // Settings 是可持久化的偏好。
 type Settings struct {
 	Theme string `json:"theme"`
+	// TimeoutSec 是发送请求的默认超时（秒）；请求文件里的 settings.timeout 优先。
+	TimeoutSec int `json:"timeoutSec"`
+	// NoFollowRedirects 为真时不自动跟随重定向（同样可被请求文件的设置覆盖）。
+	NoFollowRedirects bool `json:"noFollowRedirects"`
+	// Envs 记住每个集合根上次选中的环境名（键是集合目录的绝对路径）。
+	Envs map[string]string `json:"envs,omitempty"`
 }
 
+// 默认值：深色主题、20 秒超时、跟随重定向。
+const (
+	DefaultTimeoutSec = 20
+	MaxTimeoutSec     = 600
+)
+
 // Default 返回默认偏好：与客户端一致的深色。
-func Default() Settings { return Settings{Theme: ThemeDark} }
+func Default() Settings {
+	return Settings{Theme: ThemeDark, TimeoutSec: DefaultTimeoutSec, Envs: map[string]string{}}
+}
+
+// FollowRedirects 报告是否跟随重定向（默认跟随）。
+func (s Settings) FollowRedirects() bool { return !s.NoFollowRedirects }
 
 // Dir 返回配置目录：$XDG_CONFIG_HOME/api-doc-viva，缺省 ~/.config/api-doc-viva。
 func Dir() (string, error) {
@@ -57,6 +74,12 @@ func Load() Settings {
 	}
 	if out.Theme != ThemeLight && out.Theme != ThemeDark {
 		out.Theme = ThemeDark
+	}
+	if out.TimeoutSec <= 0 {
+		out.TimeoutSec = DefaultTimeoutSec
+	}
+	if out.Envs == nil {
+		out.Envs = map[string]string{}
 	}
 	return out
 }

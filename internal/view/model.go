@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
@@ -106,6 +107,43 @@ type requestTables struct {
 	fields       ui.TableRows
 }
 
+// kvRow 是一行可编辑的键值（查询参数 / 请求头 / 环境变量）：指针存进切片，
+// 文本输入绑定 &row.name 时指针稳定，删行/加行不会重置其它行的编辑器状态。
+type kvRow struct {
+	enabled bool
+	name    string
+	value   string
+	desc    string
+}
+
+// requestDraft 是一条 http 请求的编辑草稿；保存时写回集合文件。
+type requestDraft struct {
+	file   string
+	method string
+	url    string
+
+	params  []*kvRow
+	headers []*kvRow
+
+	bodyType  string
+	bodyRaw   string
+	bodyField string // raw | data：保留 Bruno 的 data 字段形态
+
+	authType  string
+	authUser  string
+	authPass  string
+	authToken string
+	authKey   string
+	authValue string
+	authIn    string
+
+	summary string
+	docs    string
+
+	dirty bool
+	err   string
+}
+
 // workspaceUI 是弹窗与设置面板的输入状态（不参与集合语义，只是界面状态）。
 type workspaceUI struct {
 	newReqOpen bool
@@ -125,6 +163,19 @@ type workspaceUI struct {
 	dirLine        string
 	envLine        string
 	collectionName string
+	timeoutText    string
+	follow         bool
+	envs           []string
+	envPick        string
+
+	envOpen        bool
+	envRows        []*kvRow
+	envSecretCount int
+	envSecretLine  string
+	envErr         string
+	newEnvOpen     bool
+	newEnvName     string
+	newEnvErr      string
 }
 
 // Model 一次运行的界面状态。
@@ -156,6 +207,7 @@ type Model struct {
 	docs     docState
 	editor   docEditor
 	drafts   map[string]string
+	req      requestDraft
 	settings settings.Settings
 	ui       workspaceUI
 
@@ -189,6 +241,16 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 		settings: settings.Load(),
 	}
 	m.ui.newMethod = "GET"
+	m.ui.newEnvName = "dev"
+	// 没显式指定环境时沿用该集合上次的选择（偏好按集合根记）。
+	if m.envName == "" {
+		m.envName = m.settings.Envs[m.col.Dir]
+		if m.envName != "" {
+			if loaded, err := explorer.LoadEnv(m.col.Dir, m.envName); err == nil {
+				m.vars = loaded
+			}
+		}
+	}
 	m.applyTheme()
 	m.ui.imeDetail = ime.Detect().Detail
 	m.split.Pos = 320
@@ -320,6 +382,7 @@ func (m *Model) ensureEntry(entry *explorer.Entry) {
 		metaLine: entry.File + " · " + orDash(entry.Group),
 		docsKey:  entry.File + "#docs",
 	}
+	m.loadRequestDraft(entry)
 	if entry.Kind != explorer.KindHTTP {
 		m.fillGRPC(entry)
 		return
@@ -422,7 +485,14 @@ func (m *Model) start(entry *explorer.Entry) {
 	}
 	m.resetResponse()
 	m.sending = true
-	plan := send.Plan{File: entry.Payload, Vars: m.vars, MaxBody: 1 << 20}
+	follow := m.settings.FollowRedirects()
+	plan := send.Plan{
+		File:            entry.Payload,
+		Vars:            m.vars,
+		Timeout:         time.Duration(m.settings.TimeoutSec) * time.Second,
+		MaxBody:         1 << 20,
+		FollowRedirects: &follow,
+	}
 	gen := m.gen
 	go func() {
 		m.results <- sendResult{gen: gen, out: send.Do(context.Background(), plan)}
