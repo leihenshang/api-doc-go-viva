@@ -122,3 +122,52 @@ func TestEnvRenameAndDelete(t *testing.T) {
 		t.Fatalf("环境文件应移进 .trash：%v %v", entries, err)
 	}
 }
+
+// TestMultipleCollectionsKeepTheirOwnState 多个集合根各自保留过滤词与选中项，可来回切。
+func TestMultipleCollectionsKeepTheirOwnState(t *testing.T) {
+	first := makeCollection(t, "甲", "旧接口")
+	second := makeCollection(t, "乙", "新接口")
+	col, err := explorer.Load(first)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	// 在第一个集合里搜索，然后打开第二个集合。
+	model.filter = "旧"
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	model.openCollection(second)
+	pump(t, driver)
+	if len(model.roots) != 2 {
+		t.Fatalf("应有两个集合根：%d", len(model.roots))
+	}
+	if !hasControl(driver, "集合 甲") || !hasControl(driver, "集合 乙") {
+		t.Fatalf("集合列表应同时出现两个根：%v", painted(driver))
+	}
+	if !hasControl(driver, "GET 新接口") {
+		t.Fatalf("第二个集合的条目没显示：%v", painted(driver))
+	}
+
+	// 切回第一个：过滤词要恢复，列表只剩匹配项。
+	model.activateRoot(0)
+	pump(t, driver)
+	if model.filter != "旧" {
+		t.Fatalf("切回来过滤词丢了：%q", model.filter)
+	}
+	if !hasControl(driver, "GET 旧接口") || hasControl(driver, "GET 新接口") {
+		t.Fatalf("切回后树内容不对：%v", painted(driver))
+	}
+
+	// 关掉当前集合：落到剩下的那个；最后一个不能关。
+	model.closeRoot(0)
+	pump(t, driver)
+	if len(model.roots) != 1 || model.col.Dir != second {
+		t.Fatalf("关闭后应只剩第二个集合：%d %q", len(model.roots), model.col.Dir)
+	}
+	model.closeRoot(0)
+	if len(model.roots) != 1 {
+		t.Fatal("最后一个集合不应被关闭")
+	}
+}

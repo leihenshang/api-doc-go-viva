@@ -107,6 +107,40 @@ type requestTables struct {
 	fields       ui.TableRows
 }
 
+// palette 是 Wails 客户端的面板色令牌：浅色 sidebar #f5f5f5 / panel #ffffff，
+// 暗色 #17181a / #1e1f22，让集合树与请求页有明确的层次，而不是同一块白底。
+type palette struct {
+	bg      ui.Color
+	sidebar ui.Color
+	panel   ui.Color
+	border  ui.Color
+}
+
+func paletteFor(light bool) palette {
+	if light {
+		return palette{
+			bg:      ui.RGB(0xf5, 0xf5, 0xf5),
+			sidebar: ui.RGB(0xf5, 0xf5, 0xf5),
+			panel:   ui.RGB(0xff, 0xff, 0xff),
+			border:  ui.RGB(0xe3, 0xe3, 0xe3),
+		}
+	}
+	return palette{
+		bg:      ui.RGB(0x17, 0x18, 0x1a),
+		sidebar: ui.RGB(0x17, 0x18, 0x1a),
+		panel:   ui.RGB(0x1e, 0x1f, 0x22),
+		border:  ui.RGB(0x2b, 0x2d, 0x31),
+	}
+}
+
+// rootState 是一个已打开的集合根，以及它自己的过滤词、环境与选中项。
+type rootState struct {
+	col    *explorer.Collection
+	env    string
+	filter string
+	file   string
+}
+
 // kvRow 是一行可编辑的键值（查询参数 / 请求头 / 环境变量）：指针存进切片，
 // 文本输入绑定 &row.name 时指针稳定，删行/加行不会重置其它行的编辑器状态。
 type kvRow struct {
@@ -190,11 +224,16 @@ type workspaceUI struct {
 
 // Model 一次运行的界面状态。
 type Model struct {
-	col     *explorer.Collection
+	// 多个集合根：roots 按打开顺序排，col 始终是 active 指向的那个（界面只读 col）。
+	roots  []*rootState
+	active int
+	col    *explorer.Collection
+
 	envName string
 	vars    map[string]string
 
 	theme ui.Theme
+	pal   palette
 	split ui.SplitterState
 	list  ui.ListState
 	tab   detailTab
@@ -250,6 +289,9 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 		drafts:   map[string]string{},
 		settings: settings.Load(),
 	}
+	m.roots = []*rootState{{col: col}}
+	m.active = 0
+	m.col = col
 	m.ui.newMethod = "GET"
 	m.ui.newEnvName = "dev"
 	// 没显式指定环境时沿用该集合上次的选择（偏好按集合根记）。
@@ -272,7 +314,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 
 // config 是窗口与页面的接线：Run 与无头测试共用，免得两处配置漂移。
 func (m *Model) config() app.Config {
-	page := ui.NewPage(ui.PageConfig{View: m.Page, Theme: &m.theme})
+	page := ui.NewPage(ui.PageConfig{View: m.Page, Theme: &m.theme, Background: &m.pal.bg})
 	return page.Config(app.Config{
 		Title:       "API-DOC · Viva 验证版",
 		Class:       "api-doc-viva",

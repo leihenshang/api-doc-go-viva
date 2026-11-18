@@ -54,6 +54,7 @@ func (m *Model) applyTheme() {
 	}
 	m.theme.PrimaryForeground = accentText
 	m.theme.Ring = m.theme.Primary
+	m.pal = paletteFor(m.settings.Theme == settings.ThemeLight)
 	m.docs.look = components.MarkdownLookFor(m.theme)
 }
 
@@ -231,11 +232,20 @@ func (m *Model) confirmInit() {
 	m.openCollection(dir)
 }
 
-// adoptCollection 切换到一个新集合：清空所有按旧集合派生的状态，记住上次打开的目录。
-func (m *Model) adoptCollection(col *explorer.Collection) {
-	m.col = col
-	m.filter = ""
-	m.shownOnce = false
+// syncRoot 把当前界面状态存回活动根（切走前调用，切换回来能接着用）。
+func (m *Model) syncRoot() {
+	if m.active < 0 || m.active >= len(m.roots) {
+		return
+	}
+	root := m.roots[m.active]
+	root.col = m.col
+	root.env = m.envName
+	root.filter = m.filter
+	root.file = m.entryFile
+}
+
+// resetCollectionState 清空所有按「当前集合 / 当前条目」派生的状态。
+func (m *Model) resetCollectionState() {
 	m.entryFile = ""
 	m.pendingSelect = ""
 	m.tab = tabRequest
@@ -247,21 +257,73 @@ func (m *Model) adoptCollection(col *explorer.Collection) {
 	m.sending = false
 	m.gen++
 	m.createErr = ""
+	m.shownOnce = false
+}
 
-	m.envName = m.settings.Envs[col.Dir]
+// installRoot 装上一个根：集合、过滤词、环境、选中项都来自它自己的状态。
+func (m *Model) installRoot(root *rootState) {
+	m.col = root.col
+	m.filter = root.filter
+	m.envName = root.env
 	m.vars = map[string]string{}
 	if m.envName != "" {
-		if vars, err := explorer.LoadEnv(col.Dir, m.envName); err == nil {
+		if vars, err := explorer.LoadEnv(m.col.Dir, m.envName); err == nil {
 			m.vars = vars
 		}
 	}
-	m.settings.LastCollection = col.Dir
+	m.resetCollectionState()
+	m.pendingSelect = root.file
+	m.settings.LastCollection = m.col.Dir
 	_ = settings.Save(m.settings)
 	m.refreshEnvs()
 	m.ui.envPick = m.envName
 	m.ui.envErr = ""
 	m.refreshShown()
 	m.invalidator.Invalidate()
+}
+
+// activateRoot 切到第 i 个集合；先存旧的过滤 / 环境 / 选中，再装新的。
+func (m *Model) activateRoot(i int) {
+	if i < 0 || i >= len(m.roots) || i == m.active {
+		return
+	}
+	m.syncRoot()
+	m.active = i
+	m.installRoot(m.roots[i])
+}
+
+// closeRoot 关掉第 i 个集合（至少留一个）；关的是活动的就切到邻位。
+func (m *Model) closeRoot(i int) {
+	if i < 0 || i >= len(m.roots) || len(m.roots) <= 1 {
+		return
+	}
+	closingActive := m.active == i
+	m.roots = append(m.roots[:i], m.roots[i+1:]...)
+	switch {
+	case closingActive:
+		if i >= len(m.roots) {
+			i = len(m.roots) - 1
+		}
+		m.active = i
+		m.installRoot(m.roots[i])
+	case m.active > i:
+		m.active--
+	}
+	m.invalidator.Invalidate()
+}
+
+// adoptCollection 打开一个集合：已打开过就切过去，否则追加成一个新的根。
+func (m *Model) adoptCollection(col *explorer.Collection) {
+	for i, root := range m.roots {
+		if root.col.Dir == col.Dir {
+			m.activateRoot(i)
+			return
+		}
+	}
+	m.syncRoot()
+	m.roots = append(m.roots, &rootState{col: col, env: m.settings.Envs[col.Dir]})
+	m.active = len(m.roots) - 1
+	m.installRoot(m.roots[m.active])
 }
 
 // renameEnv 重命名当前环境（两个文件一起改），随后切到新名字。

@@ -1,6 +1,8 @@
 package view
 
 import (
+	"strconv"
+
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/vivaui/viva/ui"
 )
@@ -13,11 +15,11 @@ func (m *Model) Page(c ui.C) {
 	m.applyPendingSelect()
 	current := m.current()
 	ui.Row(c).Fill().Children(func() {
-		ui.Column(c).Width(m.split.Pos).FillHeight().Background(c.Theme().Card).Children(func() {
+		ui.Column(c).Width(m.split.Pos).FillHeight().Background(m.pal.sidebar).Children(func() {
 			m.sidebar(c)
 		})
 		ui.Splitter(c, &m.split).Mins(240, 420)
-		ui.Column(c).Grow(1).FillHeight().Children(func() {
+		ui.Column(c).Grow(1).FillHeight().Background(m.pal.panel).Children(func() {
 			m.detail(c, current)
 		})
 	})
@@ -32,7 +34,6 @@ func (m *Model) toolbar(c ui.C) {
 			ui.Text(c, m.subtitle).FontSize(11).Muted()
 		})
 		ui.Spacer(c)
-		ui.TextField(c, &m.filter, "搜索条目", "按名称 / URL / 分组过滤").Width(260)
 		if ui.Button(c, "打开集合").Clicked() {
 			c.After(m.chooseCollection)
 		}
@@ -50,9 +51,12 @@ func (m *Model) toolbar(c ui.C) {
 	ui.Divider(c)
 }
 
-// sidebar 是左侧集合树：新建入口 + 条目列表；空集合与无匹配都走组件目录的空状态。
+// sidebar 是左侧：已打开的集合根、当前集合的搜索、以及条目列表。
 func (m *Model) sidebar(c ui.C) {
-	ui.Column(c).Fill().Pad(10).Gap(8).Children(func() {
+	ui.Column(c).Fill().Pad(8).Gap(8).Children(func() {
+		ui.Text(c, "集合").FontSize(11).Bold().Muted().PadX(6)
+		m.rootsPane(c)
+		ui.TextField(c, &m.filter, "搜索条目", "搜索当前集合").FillWidth()
 		ui.Row(c).FillWidth().PadX(6).Gap(8).Items(ui.Center).Children(func() {
 			ui.Text(c, "内容").FontSize(11).Bold().Muted()
 			ui.Spacer(c)
@@ -68,13 +72,45 @@ func (m *Model) sidebar(c ui.C) {
 		}
 		switch {
 		case len(m.col.Entries) == 0:
-			emptyBox(c, "集合里没有条目", "点「新建文档」或在桌面客户端里新建请求")
+			emptyBox(c, "集合里没有条目", "点「新建请求 / 新建文档」或在桌面客户端里新建")
 		case len(m.shown) == 0:
 			emptyBox(c, "没有匹配的条目", "换个关键字，或清空搜索框")
 		default:
 			ui.List(c, &m.list, len(m.shown), m.row).Label("条目列表").Grow(1)
 		}
 	})
+}
+
+// rootsPane 列出已打开的集合根：点一行切过去，右键可以关掉（至少留一个）。
+func (m *Model) rootsPane(c ui.C) {
+	theme := c.Theme()
+	for index, root := range m.roots {
+		slot := index
+		row := ui.Row(c).FillWidth().PadX(8).PadY(5).Gap(6).Items(ui.Center).
+			Radius(theme.Metrics.RadiusControl).
+			Hover(ui.Look{}.Background(theme.Hover)).
+			Hit(ui.ID(c), "集合 "+root.col.Name)
+		if index == m.active {
+			row.Background(theme.Accent)
+		}
+		row.Children(func() {
+			ui.Text(c, root.col.Name).FontSize(12).Ellipsis()
+			ui.Spacer(c)
+			ui.Text(c, strconv.Itoa(len(root.col.Entries))).FontSize(10).Muted().Mono()
+		})
+		ui.ContextMenu(c, row, func(menu *ui.MenuItems) {
+			item := menu.Item("关闭集合")
+			if len(m.roots) <= 1 {
+				item.Disabled(true)
+			}
+			if item.Clicked() {
+				c.After(func() { m.closeRoot(slot) })
+			}
+		})
+		if row.Clicked() {
+			c.After(func() { m.activateRoot(slot) })
+		}
+	}
 }
 
 // row 是一行：类型徽标（组件目录 Badge）+ 名称 + 分组。
