@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -112,13 +114,58 @@ func TestDoReportsConnectionFailure(t *testing.T) {
 	}
 }
 
+func TestDoSendsMultipartForm(t *testing.T) {
+	var got captured
+	srv := server(t, &got)
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "note.txt"), "附件内容")
+	file := &collection.RequestFile{
+		Info: collection.FileInfo{Type: "http"},
+		HTTP: collection.HTTPBlock{Method: "POST", URL: srv.URL + "/upload", Body: collection.Body{
+			Type: "multipart",
+			Form: []collection.KV{
+				{Name: "title", Value: "{{name}}", Enabled: true},
+				{Name: "file", Value: "note.txt", Type: "file", Enabled: true},
+				{Name: "off", Value: "no", Enabled: false},
+			},
+		}},
+	}
+	out := Do(context.Background(), Plan{File: file, Vars: map[string]string{"name": "报告"}, Dir: dir})
+	if out.Err != "" {
+		t.Fatalf("发送失败: %s", out.Err)
+	}
+	if !strings.HasPrefix(got.contentType, "multipart/form-data") {
+		t.Fatalf("Content-Type = %q", got.contentType)
+	}
+	if !strings.Contains(got.body, "name=\"title\"") || !strings.Contains(got.body, "报告") {
+		t.Fatalf("表单缺少文本字段：%q", got.body)
+	}
+	if !strings.Contains(got.body, "filename=\"note.txt\"") || !strings.Contains(got.body, "附件内容") {
+		t.Fatalf("表单缺少文件：%q", got.body)
+	}
+	if strings.Contains(got.body, "name=\"off\"") {
+		t.Fatalf("禁用的表单行不应发送：%q", got.body)
+	}
+	if len(out.Headers) == 0 {
+		t.Fatal("响应头应被记录")
+	}
+}
+
 func TestDoRejectsUnsupportedBody(t *testing.T) {
 	file := &collection.RequestFile{
 		Info: collection.FileInfo{Type: "http"},
-		HTTP: collection.HTTPBlock{Method: "POST", URL: "http://example.invalid", Body: collection.Body{Type: "multipart"}},
+		HTTP: collection.HTTPBlock{Method: "POST", URL: "http://example.invalid", Body: collection.Body{Type: "xml"}},
 	}
 	out := Do(context.Background(), Plan{File: file})
-	if !strings.Contains(out.Err, "multipart") {
+	if !strings.Contains(out.Err, "xml") {
 		t.Fatalf("Err = %q", out.Err)
+	}
+}
+
+// writeFile 是测试里落一个文件（multipart 的 file 行要从磁盘读）。
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("写 %s: %v", path, err)
 	}
 }

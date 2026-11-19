@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# dev 是调试应用的启动 / 停止脚本：构建到 bin/.cache，后台运行并记 pid，
+# 避免每次都手写 go build、goroutine 结束不干净，也避免直接 kill 触发权限审核。
+#
+#   bin/dev start            构建并后台启动（默认示例集合 + dev 环境）
+#   bin/dev stop             停止（SIGTERM，等不到再 SIGKILL）
+#   bin/dev restart
+#   bin/dev status
+#   bin/dev log              跟踪日志
+#
+# 可用环境变量：
+#   COLLECTION=../api-doc-go-flutter/sample-collection
+#   ENV_NAME=dev
+#   EXTRA_ARGS="-collection ..."（追加到启动命令，可覆盖上面的默认值）
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CACHE="$ROOT/bin/.cache"
+BIN="$CACHE/api-doc-viva"
+LOG="$CACHE/dev.log"
+PIDFILE="$CACHE/dev.pid"
+
+COLLECTION="${COLLECTION:-../api-doc-go-flutter/sample-collection}"
+ENV_NAME="${ENV_NAME:-dev}"
+EXTRA_ARGS="${EXTRA_ARGS:-}"
+
+mkdir -p "$CACHE"
+
+running_pid() {
+	if [[ -f "$PIDFILE" ]]; then
+		local pid
+		pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+		if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+			printf '%s' "$pid"
+			return 0
+		fi
+	fi
+	return 1
+}
+
+cmd_start() {
+	if pid="$(running_pid)"; then
+		echo "已在运行：pid=$pid（日志 $LOG）"
+		return 0
+	fi
+	echo "构建…"
+	( cd "$ROOT" && GOWORK=off go build -o "$BIN" . )
+	echo "启动：集合 $COLLECTION，环境 $ENV_NAME"
+	(
+		cd "$ROOT"
+		# shellcheck disable=SC2086
+		setsid "$BIN" -collection "$COLLECTION" -env "$ENV_NAME" $EXTRA_ARGS \
+			>"$LOG" 2>&1 </dev/null &
+		echo $! >"$PIDFILE"
+	)
+	sleep 0.3
+	if pid="$(running_pid)"; then
+		echo "已启动：pid=$pid"
+	else
+		echo "启动失败，日志尾部：" >&2
+		tail -n 20 "$LOG" >&2 || true
+		rm -f "$PIDFILE"
+		return 1
+	fi
+}
+
+cmd_stop() {
+	if ! pid="$(running_pid)"; then
+		echo "没有在运行的调试实例"
+		rm -f "$PIDFILE"
+		return 0
+	fi
+	echo "停止：pid=$pid"
+	kill "$pid" 2>/dev/null || true
+	for _ in $(seq 1 50); do
+		kill -0 "$pid" 2>/dev/null || break
+		sleep 0.1
+	done
+	if kill -0 "$pid" 2>/dev/null; then
+		echo "未响应，强制结束"
+		kill -9 "$pid" 2>/dev/null || true
+	fi
+	rm -f "$PIDFILE"
+}
+
+cmd_status() {
+	if pid="$(running_pid)"; then
+		echo "运行中：pid=$pid"
+		echo "集合：$COLLECTION · 环境：$ENV_NAME"
+		echo "日志：$LOG"
+	else
+		echo "未运行"
+		return 1
+	fi
+}
+
+cmd_log() {
+	[[ -f "$LOG" ]] || { echo "还没有日志：$LOG" >&2; return 1; }
+	tail -f "$LOG"
+}
+
+case "${1:-}" in
+start) cmd_start ;;
+stop) cmd_stop ;;
+restart) cmd_stop; cmd_start ;;
+status) cmd_status ;;
+log) cmd_log ;;
+*)
+	echo "用法：bin/dev {start|stop|restart|status|log}" >&2
+	exit 2
+	;;
+esac

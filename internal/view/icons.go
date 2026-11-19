@@ -5,6 +5,60 @@ package view
 
 import "github.com/vivaui/viva/gfx"
 
+// icon-chevron-left is a compiled vector icon.
+var IconChevronLeft = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(15.0, 18.0),
+		gfx.LineTo(9.0, 12.0),
+		gfx.LineTo(15.0, 6.0),
+	},
+}
+
+// icon-chevron-right is a compiled vector icon.
+var IconChevronRight = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(9.0, 18.0),
+		gfx.LineTo(15.0, 12.0),
+		gfx.LineTo(9.0, 6.0),
+	},
+}
+
+// icon-ellipsis is a compiled vector icon.
+var IconEllipsis = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(13.0, 12.0),
+		gfx.CubicTo(13.0, 12.5523, 12.5523, 13.0, 12.0, 13.0),
+		gfx.CubicTo(11.4477, 13.0, 11.0, 12.5523, 11.0, 12.0),
+		gfx.CubicTo(11.0, 11.4477, 11.4477, 11.0, 12.0, 11.0),
+		gfx.CubicTo(12.5523, 11.0, 13.0, 11.4477, 13.0, 12.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(20.0, 12.0),
+		gfx.CubicTo(20.0, 12.5523, 19.5523, 13.0, 19.0, 13.0),
+		gfx.CubicTo(18.4477, 13.0, 18.0, 12.5523, 18.0, 12.0),
+		gfx.CubicTo(18.0, 11.4477, 18.4477, 11.0, 19.0, 11.0),
+		gfx.CubicTo(19.5523, 11.0, 20.0, 11.4477, 20.0, 12.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(6.0, 12.0),
+		gfx.CubicTo(6.0, 12.5523, 5.55228, 13.0, 5.0, 13.0),
+		gfx.CubicTo(4.44772, 13.0, 4.0, 12.5523, 4.0, 12.0),
+		gfx.CubicTo(4.0, 11.4477, 4.44772, 11.0, 5.0, 11.0),
+		gfx.CubicTo(5.55228, 11.0, 6.0, 11.4477, 6.0, 12.0),
+		gfx.ClosePath(),
+	},
+}
+
 // icon-file-plus is a compiled vector icon.
 var IconFilePlus = gfx.Icon{
 	ViewBox: 24.0,
@@ -28,6 +82,56 @@ var IconFilePlus = gfx.Icon{
 		gfx.LineTo(12.0, 18.0),
 		gfx.MoveTo(9.0, 15.0),
 		gfx.LineTo(15.0, 15.0),
+	},
+}
+
+// icon-folder-open is a compiled vector icon.
+var IconFolderOpen = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(6.0, 14.0),
+		gfx.LineTo(7.5, 11.1),
+		gfx.CubicTo(7.83229, 10.4401, 8.50134, 10.0171, 9.24, 10.0),
+		gfx.LineTo(20.0, 10.0),
+		gfx.CubicTo(20.6192, 9.99891, 21.204, 10.2847, 21.5836, 10.7739),
+		gfx.CubicTo(21.9632, 11.263, 22.0948, 11.9005, 21.94, 12.5),
+		gfx.LineTo(20.4, 18.5),
+		gfx.CubicTo(20.1708, 19.3879, 19.367, 20.0062, 18.45, 20.0),
+		gfx.LineTo(4.0, 20.0),
+		gfx.CubicTo(2.89543, 20.0, 2.0, 19.1046, 2.0, 18.0),
+		gfx.LineTo(2.0, 5.0),
+		gfx.CubicTo(2.0, 3.89543, 2.89543, 3.0, 4.0, 3.0),
+		gfx.LineTo(7.9, 3.0),
+		gfx.CubicTo(8.57967, 2.99334, 9.2162, 3.33232, 9.59, 3.9),
+		gfx.LineTo(10.4, 5.1),
+		gfx.CubicTo(10.7699, 5.66172, 11.3974, 5.99989, 12.07, 6.0),
+		gfx.LineTo(18.0, 6.0),
+		gfx.CubicTo(19.1046, 6.0, 20.0, 6.89543, 20.0, 8.0),
+		gfx.LineTo(20.0, 10.0),
+	},
+}
+
+// icon-globe is a compiled vector icon.
+var IconGlobe = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(22.0, 12.0),
+		gfx.CubicTo(22.0, 17.5228, 17.5228, 22.0, 12.0, 22.0),
+		gfx.CubicTo(6.47715, 22.0, 2.0, 17.5228, 2.0, 12.0),
+		gfx.CubicTo(2.0, 6.47715, 6.47715, 2.0, 12.0, 2.0),
+		gfx.CubicTo(17.5228, 2.0, 22.0, 6.47715, 22.0, 12.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(12.0, 2.0),
+		gfx.CubicTo(6.66667, 7.6, 6.66667, 16.4, 12.0, 22.0),
+		gfx.CubicTo(17.3333, 16.4, 17.3333, 7.6, 12.0, 2.0),
+		gfx.MoveTo(2.0, 12.0),
+		gfx.LineTo(22.0, 12.0),
 	},
 }
 
@@ -59,6 +163,24 @@ var IconPlus = gfx.Icon{
 		gfx.LineTo(19.0, 12.0),
 		gfx.MoveTo(12.0, 5.0),
 		gfx.LineTo(12.0, 19.0),
+	},
+}
+
+// icon-search is a compiled vector icon.
+var IconSearch = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(19.0, 11.0),
+		gfx.CubicTo(19.0, 15.4183, 15.4183, 19.0, 11.0, 19.0),
+		gfx.CubicTo(6.58172, 19.0, 3.0, 15.4183, 3.0, 11.0),
+		gfx.CubicTo(3.0, 6.58172, 6.58172, 3.0, 11.0, 3.0),
+		gfx.CubicTo(15.4183, 3.0, 19.0, 6.58172, 19.0, 11.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(21.0, 21.0),
+		gfx.LineTo(16.7, 16.7),
 	},
 }
 
@@ -160,5 +282,19 @@ var IconTrash = gfx.Icon{
 		gfx.LineTo(8.0, 22.0),
 		gfx.CubicTo(6.89543, 22.0, 6.0, 21.1046, 6.0, 20.0),
 		gfx.LineTo(5.0, 6.0),
+	},
+}
+
+// icon-x is a compiled vector icon.
+var IconX = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(18.0, 6.0),
+		gfx.LineTo(6.0, 18.0),
+		gfx.MoveTo(6.0, 6.0),
+		gfx.LineTo(18.0, 18.0),
 	},
 }

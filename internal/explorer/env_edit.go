@@ -101,6 +101,124 @@ func SaveEnvVars(collectionDir, name string, vars []collection.EnvVar) error {
 	return os.Chmod(main, 0o600)
 }
 
+// LoadEnvVars 读环境变量（含密钥值），供环境变量弹窗编辑。
+func LoadEnvVars(collectionDir, name string) ([]collection.EnvVar, error) {
+	env, err := LoadEnvFile(collectionDir, name)
+	if err != nil {
+		return nil, err
+	}
+	secrets := map[string]string{}
+	_, secretPath := envPaths(collectionDir, name)
+	if data, readErr := os.ReadFile(secretPath); readErr == nil {
+		if file, decodeErr := collection.DecodeSecretsFile(data); decodeErr == nil {
+			secrets = file.Secrets
+		}
+	} else if !errors.Is(readErr, fs.ErrNotExist) {
+		return nil, fmt.Errorf("读取环境密钥 %s: %w", name, readErr)
+	}
+	vars := make([]collection.EnvVar, 0, len(env.Vars))
+	for _, v := range env.Vars {
+		if v.Secret {
+			v.Value = secrets[v.Name]
+		}
+		vars = append(vars, v)
+	}
+	return vars, nil
+}
+
+// SaveEnvAll 保存环境变量：普通值写主文件、敏感值写 *.secrets.yml；
+// 变量顺序、uid、未知字段尽量保留，被删掉的敏感变量同时从密钥文件移除。
+func SaveEnvAll(collectionDir, name string, vars []collection.EnvVar) error {
+	if !collection.ValidEnvName(name) {
+		return fmt.Errorf("环境名 %q 不合法", name)
+	}
+	old, err := LoadEnvFile(collectionDir, name)
+	if err != nil {
+		return err
+	}
+	_, secretPath := envPaths(collectionDir, name)
+	secretsFile := &collection.SecretsFile{Secrets: map[string]string{}}
+	if data, readErr := os.ReadFile(secretPath); readErr == nil {
+		if file, decodeErr := collection.DecodeSecretsFile(data); decodeErr == nil {
+			secretsFile = file
+		}
+	}
+	uidOf := make(map[string]string, len(old.Vars))
+	wasSecret := make(map[string]bool, len(old.Vars))
+	for _, v := range old.Vars {
+		uidOf[v.Name] = v.UID
+		if v.Secret {
+			wasSecret[v.Name] = true
+		}
+	}
+	env := &collection.EnvFile{Info: old.Info, UID: old.UID, Extra: old.Extra}
+	if env.Info.Name == "" {
+		env.Info.Name = name
+	}
+	secrets := make(map[string]string, len(secretsFile.Secrets))
+	for key, value := range secretsFile.Secrets {
+		secrets[key] = value
+	}
+	for _, v := range vars {
+		fieldName := strings.TrimSpace(v.Name)
+		if fieldName == "" {
+			continue
+		}
+		if v.Secret {
+			env.Vars = append(env.Vars, collection.EnvVar{UID: uidOf[fieldName], Name: fieldName, Enabled: v.Enabled, Secret: true})
+			secrets[fieldName] = v.Value
+			continue
+		}
+		env.Vars = append(env.Vars, collection.EnvVar{UID: uidOf[fieldName], Name: fieldName, Value: v.Value, Enabled: v.Enabled})
+		delete(secrets, fieldName)
+	}
+	// 编辑器里已经没有的旧敏感变量：从密钥文件一并删掉；从未对应变量的键保留。
+	for key := range secrets {
+		if wasSecret[key] {
+			if _, kept := envVarByName(env.Vars, key); !kept {
+				delete(secrets, key)
+			}
+		}
+	}
+	data, err := env.Encode()
+	if err != nil {
+		return fmt.Errorf("编码环境 %s: %w", name, err)
+	}
+	main, _ := envPaths(collectionDir, name)
+	if err := os.MkdirAll(filepath.Dir(main), 0o755); err != nil {
+		return fmt.Errorf("创建环境目录: %w", err)
+	}
+	if err := writeAtomic(main, data); err != nil {
+		return err
+	}
+	if err := os.Chmod(main, 0o600); err != nil {
+		return err
+	}
+	if len(secrets) == 0 {
+		if _, statErr := os.Stat(secretPath); errors.Is(statErr, fs.ErrNotExist) {
+			return nil
+		}
+	}
+	secretData, err := (&collection.SecretsFile{Secrets: secrets, Extra: secretsFile.Extra}).Encode()
+	if err != nil {
+		return fmt.Errorf("编码环境密钥 %s: %w", name, err)
+	}
+	if err := writeAtomic(secretPath, secretData); err != nil {
+		return err
+	}
+	return os.Chmod(secretPath, 0o600)
+}
+
+// envVarByName 找同名变量；第二个返回值表示是否存在。
+func envVarByName(vars []collection.EnvVar, name string) (collection.EnvVar, bool) {
+	for _, v := range vars {
+		if v.Name == name {
+			return v, true
+		}
+	}
+	return collection.EnvVar{}, false
+}
+
 // CreateEnv 新建一个空环境；同名已存在时报错（不覆盖）。
 func CreateEnv(collectionDir, name string) error {
 	name = strings.TrimSpace(name)

@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
@@ -16,11 +17,11 @@ import (
 )
 
 func main() {
-	dir := flag.String("collection", "", "集合目录（必须含 opencollection.yml）")
+	dir := flag.String("collection", "", "集合目录（必须含 opencollection.yml）；多个目录用逗号分隔")
 	env := flag.String("env", "", "环境名（environments/<name>.yml，留空表示不替换变量）")
 	flag.Parse()
 
-	target, err := resolveDir(*dir)
+	target, err := resolveDir(firstDir(*dir))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,9 +41,42 @@ func main() {
 		log.Printf("跳过：%s", warning)
 	}
 	log.Printf("已载入「%s」：%d 条内容，环境 %q", col.Name, len(col.Entries), *env)
-	if err := view.New(col, *env, vars).Run(); err != nil {
+	model := view.New(col, *env, vars)
+	for _, extra := range otherDirs(*dir) {
+		other, loadErr := explorer.Load(extra)
+		if loadErr != nil {
+			log.Printf("跳过集合 %s：%v", extra, loadErr)
+			continue
+		}
+		model.AddRoot(other)
+		log.Printf("已载入「%s」：%d 条内容", other.Name, len(other.Entries))
+	}
+	if err := model.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// firstDir 取 -collection 里的第一个目录（逗号分隔，路径本身不含逗号）。
+func firstDir(value string) string {
+	if index := strings.IndexByte(value, ','); index >= 0 {
+		return value[:index]
+	}
+	return value
+}
+
+// otherDirs 取 -collection 里除第一个之外的目录。
+func otherDirs(value string) []string {
+	index := strings.IndexByte(value, ',')
+	if index < 0 {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(value[index+1:], ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // resolveDir 解析集合目录：显式 -collection > 上次打开的集合 > 相邻仓库的示例集合。

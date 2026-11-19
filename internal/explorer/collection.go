@@ -72,11 +72,20 @@ func (e *Entry) Title() string {
 // IsDoc 报告条目是不是 Markdown 文档。
 func (e *Entry) IsDoc() bool { return e.Kind == KindDoc }
 
+// Folder 是集合树里的一个分组目录（含空目录）；Dir 相对集合根，用 / 分隔。
+type Folder struct {
+	Dir  string
+	Name string
+	Seq  int
+}
+
 // Collection 一个已打开的集合根。
 type Collection struct {
 	Dir     string
 	Name    string
 	Entries []*Entry
+	// Folders 是所有分组目录（跳过 environments / assets / .trash），用于画树。
+	Folders []*Folder
 	// Warnings 是读不动的文件（坏 YAML、权限等）：跳过但不让整个集合打不开。
 	Warnings []string
 }
@@ -139,6 +148,14 @@ func (c *Collection) scan(dir, group string) error {
 		}
 	}
 	for _, folder := range c.folderEntries(dir, folders) {
+		rel, relErr := filepath.Rel(c.Dir, folder.dir)
+		if relErr == nil {
+			c.Folders = append(c.Folders, &Folder{
+				Dir:  filepath.ToSlash(rel),
+				Name: folder.name,
+				Seq:  folder.seq,
+			})
+		}
 		if err := c.scan(folder.dir, joinGroup(group, folder.name)); err != nil {
 			return err
 		}

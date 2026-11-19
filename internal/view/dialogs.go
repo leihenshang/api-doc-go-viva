@@ -83,26 +83,6 @@ func (m *Model) settingsDialog(c ui.C) {
 				ui.Switch(c, &m.ui.follow, "跟随重定向").Changed()
 			})
 			ui.Divider(c)
-			ui.Text(c, "环境").FontSize(12).Bold().Muted()
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Select(c, &m.ui.envPick, m.ui.envs, nil).Width(170)
-				if ui.Button(c, "编辑变量").Clicked() {
-					c.After(m.openEnvEditor)
-				}
-				if ui.Button(c, "新建环境").Clicked() {
-					m.ui.newEnvOpen = true
-					m.ui.newEnvErr = ""
-				}
-				if ui.Button(c, "重命名").Clicked() {
-					m.ui.envRenameOpen = true
-					m.ui.envRenameName = m.ui.envPick
-				}
-				if ui.Button(c, "删除").Icon(IconTrash).Destructive().Clicked() {
-					m.ui.envDeleteOpen = true
-				}
-			})
-			ui.Text(c, m.ui.envLine).FontSize(11).Muted()
-			ui.Divider(c)
 			ui.Text(c, "输入法").FontSize(12).Bold().Muted()
 			ui.Text(c, m.ui.imeDetail).FontSize(11).Muted()
 			ui.Text(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").FontSize(11).Muted()
@@ -122,46 +102,97 @@ func (m *Model) settingsDialog(c ui.C) {
 	if (m.ui.themePick == 1) != m.isLight() {
 		m.setTheme(m.ui.themePick == 1)
 	}
-	if m.ui.envPick != m.envName {
-		m.applyEnv(m.ui.envPick)
-	}
 	m.applySettingsEdits()
 }
 
-// envDialog 编辑环境里的普通变量；密钥变量只显示数量（值由客户端管理）。
+// envDialog 是「环境变量」：左侧环境列表，右侧变量表；敏感值单独写 *.secrets.yml。
 func (m *Model) envDialog(c ui.C) {
-	ui.Modal(c, &m.ui.envOpen, "编辑环境变量", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "环境："+m.ui.envPick).FontSize(12).Bold()
-			if m.ui.envSecretLine != "" {
-				ui.Text(c, m.ui.envSecretLine).FontSize(11).Muted()
-			}
-			for index, row := range m.ui.envRows {
-				slot := index
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-					ui.Checkbox(c, &row.enabled, "")
-					ui.TextField(c, &row.name, "名称", "host").Width(160)
-					ui.TextField(c, &row.value, "值", "http://127.0.0.1:8080").Grow(1)
-					if ui.Button(c, "删除").Icon(IconTrash).IconOnly().Clicked() {
-						m.ui.envRows = append(m.ui.envRows[:slot], m.ui.envRows[slot+1:]...)
+	theme := c.Theme()
+	ui.ModalWith(c, &m.ui.envOpen, "环境变量", ui.ModalSpec{Width: 880, Height: 520}, func() {
+		ui.Row(c).FillWidth().Height(400).Gap(16).Children(func() {
+			ui.Column(c).Width(180).Gap(6).Children(func() {
+				for _, name := range m.ui.envs {
+					current := name
+					active := current == m.ui.envSel
+					row := ui.Row(c).FillWidth().PadX(10).PadY(5).Gap(6).Items(ui.Center).
+						Radius(theme.Metrics.RadiusControl).
+						Hover(ui.Look{}.Background(theme.Hover)).
+						Hit(ui.ID(c), "环境 "+current)
+					if active {
+						row.Background(m.pal.active)
+					}
+					row.Children(func() {
+						text := ui.Text(c, current).FontSize(12)
+						if active {
+							text.Color(theme.Primary)
+						}
+						ui.Spacer(c)
+						if active {
+							if ui.Button(c, "删除 "+current).Icon(IconTrash).IconOnly().Ghost().Tooltip("删除环境").Clicked() {
+								m.ui.envPick = current
+								m.ui.envDeleteOpen = true
+							}
+						}
+					})
+					if row.Clicked() && !active {
+						c.After(func() { m.openEnvEditorFor(current) })
+					}
+				}
+				if ui.Button(c, "新建环境").Icon(IconPlus).Outline().Dashed().Clicked() {
+					m.ui.newEnvOpen = true
+					m.ui.newEnvErr = ""
+				}
+				ui.Spacer(c)
+			})
+			ui.Divider(c)
+			ui.Column(c).Grow(1).Gap(10).Children(func() {
+				ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+					ui.Text(c, "环境名").FontSize(11).Muted().Width(52)
+					ui.TextField(c, &m.ui.envNameEdit, "环境名", "dev").Width(220)
+				})
+				ui.Text(c, "敏感值的明文保存在 environments/<环境>.secrets.yml（已加入 .gitignore）").
+					FontSize(11).Muted()
+				ui.Column(c).FillWidth().Pad(8).Gap(6).Radius(theme.Metrics.RadiusControl).
+					Border(1, m.pal.border).Children(func() {
+					ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+						ui.Text(c, "启用").FontSize(11).Muted().Width(36)
+						ui.Text(c, "变量名").FontSize(11).Muted().Width(150)
+						ui.Text(c, "值").FontSize(11).Muted().Grow(1)
+						ui.Text(c, "敏感值").FontSize(11).Muted().Width(56)
+						ui.Slot(c).Width(28)
+					})
+					for index, row := range m.ui.envRows {
+						slot := index
+						ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+							ui.Checkbox(c, &row.enabled, "")
+							ui.TextField(c, &row.name, "变量名", "host").Width(150)
+							ui.TextField(c, &row.value, "值", "http://127.0.0.1:8080").Grow(1)
+							ui.Checkbox(c, &row.secret, "")
+							if ui.Button(c, "删除变量").Icon(IconX).IconOnly().Ghost().Tooltip("删除变量").Clicked() {
+								c.After(func() {
+									m.ui.envRows = append(m.ui.envRows[:slot], m.ui.envRows[slot+1:]...)
+								})
+							}
+						})
 					}
 				})
-			}
-			ui.Row(c).FillWidth().Children(func() {
-				if ui.Button(c, "添加变量").Icon(IconPlus).Clicked() {
-					m.ui.envRows = append(m.ui.envRows, &kvRow{enabled: true})
+				ui.Row(c).FillWidth().Children(func() {
+					if ui.Button(c, "添加变量").Icon(IconPlus).Ghost().Clicked() {
+						m.ui.envRows = append(m.ui.envRows, &kvRow{enabled: true})
+					}
+				})
+				if m.ui.envErr != "" {
+					ui.Text(c, m.ui.envErr).FontSize(11).Color(theme.Danger)
 				}
+				ui.Spacer(c)
 			})
-			if m.ui.envErr != "" {
-				ui.Text(c, m.ui.envErr).FontSize(11).Color(c.Theme().Danger)
-			}
 		})
 	}, func() {
 		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.envOpen = false
 			}
-			if ui.Button(c, "保存变量").Clicked() {
+			if ui.Button(c, "保存").Clicked() {
 				c.After(m.saveEnv)
 			}
 		})

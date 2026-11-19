@@ -405,6 +405,404 @@ func TestFilterNarrowsTheList(t *testing.T) {
 	}
 }
 
+// TestTabsKeepPerRequestState 打开两条请求应该得到两个标签，各自保留自己的草稿。
+func TestTabsKeepPerRequestState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	if len(model.tabs) != 1 {
+		t.Fatalf("点一条请求应开一个标签：%d", len(model.tabs))
+	}
+	model.req.url = srv.URL + "/edited"
+	model.req.dirty = true
+
+	click(t, driver, "DELETE 删除")
+	pump(t, driver)
+	if len(model.tabs) != 2 || model.curTab != 1 {
+		t.Fatalf("第二条请求应开第二个标签并切过去：tabs=%d cur=%d", len(model.tabs), model.curTab)
+	}
+	if model.req.url == srv.URL+"/edited" {
+		t.Fatal("两个标签共用了一份草稿")
+	}
+
+	// 点标签回到第一条：未保存的地址还在。
+	click(t, driver, "标签 健康检查")
+	pump(t, driver)
+	if model.req.url != srv.URL+"/edited" || !model.req.dirty {
+		t.Fatalf("切回标签后草稿 = %q dirty=%v", model.req.url, model.req.dirty)
+	}
+
+	// 关掉当前标签：回到剩下的那个。
+	click(t, driver, "关闭 健康检查")
+	pump(t, driver)
+	if len(model.tabs) != 1 || model.curTab != 0 {
+		t.Fatalf("关闭后应剩一个标签：tabs=%d cur=%d", len(model.tabs), model.curTab)
+	}
+	if !strings.HasSuffix(model.req.url, "/gone") {
+		t.Fatalf("关闭后应回到删除请求：%q", model.req.url)
+	}
+
+	// 全部关掉：详情回到空状态，列表选择被清空。
+	click(t, driver, "关闭 删除")
+	pump(t, driver)
+	if len(model.tabs) != 0 || model.curTab != -1 {
+		t.Fatalf("全关后应没有标签：tabs=%d cur=%d", len(model.tabs), model.curTab)
+	}
+	if !model.overview || !shows(driver, "存储格式") {
+		t.Fatalf("全关后应回到集合概览：%v", painted(driver))
+	}
+}
+
+// TestSendResultLandsInItsOwnTab 发送后切走，结果应该回到发起它的标签，而不是贴在当前标签上。
+func TestSendResultLandsInItsOwnTab(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			time.Sleep(80 * time.Millisecond)
+		}
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	// 不等结果就切到另一条请求。
+	click(t, driver, "DELETE 删除")
+	pump(t, driver)
+	if model.hasResp {
+		t.Fatal("新标签不该继承上一条请求的响应")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		pump(t, driver)
+		if len(model.tabs) == 2 && model.tabs[0].hasResp {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(model.tabs) != 2 || !model.tabs[0].hasResp || model.tabs[0].resp.Status != http.StatusOK {
+		t.Fatalf("结果没有回到发起标签：tabs=%d", len(model.tabs))
+	}
+	if model.hasResp {
+		t.Fatal("当前标签不该拿到别条请求的结果")
+	}
+
+	click(t, driver, "标签 健康检查")
+	pump(t, driver)
+	if !model.hasResp || model.resp.Status != http.StatusOK {
+		t.Fatalf("切回后应看到该标签的响应：hasResp=%v status=%d", model.hasResp, model.resp.Status)
+	}
+}
+
+// TestResponseHeadersTab 响应头是独立分段：点「响应头」能看到真实的响应头。
+func TestResponseHeadersTab(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Trace", "trace-1")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+
+	click(t, driver, "响应头")
+	pump(t, driver)
+	if !shows(driver, "Content-Length") {
+		t.Fatalf("响应头分段没有画响应头：%v", painted(driver))
+	}
+	// 面板高度有限，多出来的行在滚动区外；模型里必须是完整的响应头。
+	if !strings.Contains(model.tables.respHeader, "X-Trace: trace-1") ||
+		!strings.Contains(model.tables.respHeader, "Content-Type: application/json") {
+		t.Fatalf("响应头文案 = %q", model.tables.respHeader)
+	}
+}
+
+// TestMultipartFormPersists 表单行能写回文件，multipart 的类型列也保留。
+func TestMultipartFormPersists(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	model.req.bodyType = "multipart"
+	model.req.form = []*kvRow{
+		{enabled: true, name: "title", value: "报告", typ: "text"},
+		{enabled: true, name: "file", value: "note.txt", typ: "file"},
+	}
+	model.req.dirty = true
+	model.saveRequest()
+	pump(t, driver)
+
+	data, err := os.ReadFile(filepath.Join(col.Dir, "健康检查.yml"))
+	if err != nil {
+		t.Fatalf("读回请求：%v", err)
+	}
+	text := string(data)
+	for _, want := range []string{"type: multipart", "name: title", "type: file", "value: note.txt"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("保存后的文件缺少 %q：\n%s", want, text)
+		}
+	}
+	if model.req.dirty {
+		t.Fatal("保存后草稿应回到干净状态")
+	}
+}
+
+// TestTreeNestsFoldersAndFilters 确认树真的按目录分层、可折叠，搜索保留祖先、去掉无关枝干。
+func TestTreeNestsFoldersAndFilters(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 嵌套集合\n")
+	writeFile(t, filepath.Join(dir, "接口文档", "自定义规则", "列表.yml"), `info:
+  name: 列表
+  type: http
+  seq: 1
+meta:
+  uid: nested-list
+http:
+  method: GET
+  url: http://example.invalid/list
+  params: []
+  headers: []
+  body:
+    type: none
+`)
+	writeFile(t, filepath.Join(dir, "接口文档", "首页.yml"), `info:
+  name: 首页
+  type: http
+  seq: 2
+meta:
+  uid: nested-home
+http:
+  method: GET
+  url: http://example.invalid/home
+  params: []
+  headers: []
+  body:
+    type: none
+`)
+
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	pump(t, driver)
+
+	// 可见行：集合根 / 接口文档 / 自定义规则 / 列表 / 首页。
+	want := []struct {
+		name  string
+		depth int
+	}{{"嵌套集合", 0}, {"接口文档", 1}, {"自定义规则", 2}, {"列表", 3}, {"首页", 2}}
+	if len(model.rows) != len(want) {
+		t.Fatalf("树的行数 = %d：%v", len(model.rows), rowNames(model))
+	}
+	for i, expected := range want {
+		if model.rows[i].name != expected.name || model.rows[i].depth != expected.depth {
+			t.Fatalf("第 %d 行 = %q/%d，期望 %q/%d：%v", i,
+				model.rows[i].name, model.rows[i].depth, expected.name, expected.depth, rowNames(model))
+		}
+	}
+
+	// 折叠顶层分组：子目录与条目都应该消失。
+	model.toggleRow(1)
+	pump(t, driver)
+	if len(model.rows) != 2 {
+		t.Fatalf("折叠后应只剩两行：%v", rowNames(model))
+	}
+	model.toggleRow(1)
+	pump(t, driver)
+	if len(model.rows) != 5 {
+		t.Fatalf("展开后应恢复：%v", rowNames(model))
+	}
+
+	// 搜索命中的条目，保留它的目录祖先，隐藏同一层的其它条目。
+	model.filter = "列表"
+	model.shownOnce = false
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	names := rowNames(model)
+	if len(names) != 4 || names[3] != "列表" {
+		t.Fatalf("过滤后的树 = %v", names)
+	}
+}
+
+// rowNames 是树当前可见行的名字，失败时能看出结构。
+func rowNames(model *Model) []string {
+	out := make([]string, 0, len(model.rows))
+	for _, row := range model.rows {
+		out = append(out, row.name)
+	}
+	return out
+}
+
+// TestSecondRootOpensItsRequest 点另一个集合根下的条目：先切集合，再开标签。
+func TestSecondRootOpensItsRequest(t *testing.T) {
+	first, err := explorer.Load(makeCollection(t, "甲", "甲请求"))
+	if err != nil {
+		t.Fatalf("Load 甲: %v", err)
+	}
+	second, err := explorer.Load(makeCollection(t, "乙", "乙请求"))
+	if err != nil {
+		t.Fatalf("Load 乙: %v", err)
+	}
+	model := New(first, "", nil)
+	model.AddRoot(second)
+	driver := openWindow(t, model)
+	pump(t, driver)
+	if len(model.roots) != 2 {
+		t.Fatalf("应有两个集合根：%d", len(model.roots))
+	}
+	// 默认只展开当前根，先点开第二个根。
+	if hasControl(driver, "GET 乙请求") {
+		t.Fatal("未展开的根不该显示子条目")
+	}
+	click(t, driver, "集合 乙")
+	pump(t, driver)
+	click(t, driver, "GET 乙请求")
+	pump(t, driver)
+
+	if model.active != 1 || model.col.Name != "乙" {
+		t.Fatalf("应切到第二个集合：active=%d col=%q", model.active, model.col.Name)
+	}
+	if len(model.tabs) != 1 || !strings.HasSuffix(model.req.url, "/乙请求") {
+		t.Fatalf("应打开第二个集合的条目：tabs=%d url=%q", len(model.tabs), model.req.url)
+	}
+}
+
+func TestScratchRequestSendAndSaveAs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	pump(t, driver)
+	click(t, driver, "新建临时请求")
+	pump(t, driver)
+	if len(model.tabs) != 1 || !model.scratch {
+		t.Fatalf("应开一个临时标签：tabs=%d scratch=%v", len(model.tabs), model.scratch)
+	}
+	model.req.method = "GET"
+	model.req.url = srv.URL + "/healthz"
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+	if !model.hasResp {
+		t.Fatal("临时请求应能直接发送")
+	}
+	click(t, driver, "另存为")
+	pump(t, driver)
+	if !model.ui.newReqOpen || !model.ui.savingScratch {
+		t.Fatal("应打开另存为弹窗")
+	}
+	model.ui.newName = "临时保存"
+	click(t, driver, "创建")
+	waitForControl(t, driver, "GET 临时保存")
+	if model.scratch || len(model.tabs) != 1 {
+		t.Fatalf("另存后应换成文件标签：scratch=%v tabs=%d", model.scratch, len(model.tabs))
+	}
+	if !strings.HasSuffix(model.req.url, "/healthz") {
+		t.Fatalf("另存后地址丢了：%q", model.req.url)
+	}
+}
+
+// TestEnvSecretRoundTrip 敏感变量：值写进 *.secrets.yml，主文件只留标记，发送时能合并回来。
+func TestEnvSecretRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 环境\n")
+	writeFile(t, filepath.Join(dir, "environments", "dev.yml"), "info:\n  name: dev\nvars:\n  - name: host\n    value: http://127.0.0.1:8080\n    enabled: true\n    secret: false\n")
+	writeFile(t, filepath.Join(dir, "environments", "dev.secrets.yml"), "secrets:\n  token: t0k\n")
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	openWindow(t, model)
+
+	model.ui.envPick = "dev"
+	model.openEnvEditorFor("dev")
+	model.ui.envRows = append(model.ui.envRows,
+		&kvRow{enabled: true, name: "apiKey", value: "k1", secret: true},
+		&kvRow{enabled: true, name: "pageSize", value: "20"},
+	)
+	model.saveEnv()
+
+	main, err := os.ReadFile(filepath.Join(dir, "environments", "dev.yml"))
+	if err != nil {
+		t.Fatalf("读主文件: %v", err)
+	}
+	if strings.Contains(string(main), "k1") {
+		t.Fatalf("敏感值不该写进主文件：\n%s", main)
+	}
+	secrets, err := os.ReadFile(filepath.Join(dir, "environments", "dev.secrets.yml"))
+	if err != nil || !strings.Contains(string(secrets), "apiKey: k1") {
+		t.Fatalf("密钥文件 = %q, %v", secrets, err)
+	}
+	vars, err := explorer.LoadEnv(dir, "dev")
+	if err != nil || vars["apiKey"] != "k1" || vars["pageSize"] != "20" || vars["token"] != "t0k" {
+		t.Fatalf("合并后的变量 = %v, %v", vars, err)
+	}
+}
+
+// TestTabStripScrollsToActive 标签多了以后，滚动窗口必须让当前标签可见。
+func TestTabStripScrollsToActive(t *testing.T) {
+	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "sample"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	model.tabs = make([]*tabState, 10)
+	model.overview = false
+
+	model.curTab = 9
+	model.clampTabStart(3)
+	if model.tabStart != 7 {
+		t.Fatalf("最后一个标签应滚到可见：start=%d", model.tabStart)
+	}
+	model.curTab = 0
+	model.clampTabStart(3)
+	if model.tabStart != 0 {
+		t.Fatalf("回到第一个标签应滚回开头：start=%d", model.tabStart)
+	}
+}
+
 func openWindow(t *testing.T, model *Model) *app.Driver {
 	t.Helper()
 	driver, err := app.NewDriver(model.config(), nil)

@@ -5,15 +5,20 @@
 package send
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	neturl "net/url"
+	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,8 +38,16 @@ type Plan struct {
 	Vars    map[string]string
 	Timeout time.Duration
 	MaxBody int64
+	// Dir 是集合根：multipart 的 file 行按它解析相对路径。
+	Dir string
 	// FollowRedirects 是全局默认；请求文件里的 settings.followRedirects 优先。
 	FollowRedirects *bool
+}
+
+// Header 响应头的一行（按名称排序，便于稳定展示）。
+type Header struct {
+	Name  string
+	Value string
 }
 
 // Outcome 一次发送的结果；Err 非空表示根本没拿到响应。
@@ -44,6 +57,7 @@ type Outcome struct {
 	Duration time.Duration
 	Size     int
 	Body     string
+	Headers  []Header
 	Missing  []string // 未解析的 {{变量}}
 	Err      string
 }
@@ -79,6 +93,7 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		Duration: time.Since(start),
 		Size:     len(data),
 		Body:     body,
+		Headers:  headerRows(resp.Header),
 		Missing:  missing,
 	}
 }
@@ -141,7 +156,7 @@ func build(ctx context.Context, plan Plan) (*http.Request, []string, error) {
 	}
 	target.RawQuery = query.Encode()
 
-	body, contentType, err := bodyOf(block.Body, exp)
+	body, contentType, err := bodyOf(block.Body, exp, plan.Dir)
 	if err != nil {
 		return nil, exp.missing, err
 	}
@@ -157,8 +172,9 @@ func build(ctx context.Context, plan Plan) (*http.Request, []string, error) {
 	return req, exp.missing, nil
 }
 
-// bodyOf 返回请求体与默认 Content-Type；类型口径与客户端一致（”/'none' 都表示没有请求体）。
-func bodyOf(body collection.Body, exp *expander) (io.Reader, string, error) {
+// bodyOf 返回请求体与默认 Content-Type；类型口径与客户端一致（空串 / 'none' 都表示没有请求体）。
+// multipart 的 file 行按集合根解析相对路径，绝对路径原样使用。
+func bodyOf(body collection.Body, exp *expander, dir string) (io.Reader, string, error) {
 	switch body.Type {
 	case "", "none":
 		return nil, "", nil
@@ -174,8 +190,49 @@ func bodyOf(body collection.Body, exp *expander) (io.Reader, string, error) {
 			}
 		}
 		return strings.NewReader(values.Encode()), "application/x-www-form-urlencoded", nil
+	case "multipart":
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		for _, kv := range body.Form {
+			if !kv.Enabled || strings.TrimSpace(kv.Name) == "" {
+				continue
+			}
+			name := exp.text(kv.Name)
+			value := exp.text(kv.Value)
+			if kv.Type == "file" {
+				path := value
+				if !filepath.IsAbs(path) {
+					path = filepath.Join(dir, filepath.FromSlash(path))
+				}
+				file, err := os.Open(path)
+				if err != nil {
+					return nil, "", fmt.Errorf("打开表单文件 %s: %w", value, err)
+				}
+				part, err := writer.CreateFormFile(name, filepath.Base(path))
+				if err != nil {
+					_ = file.Close()
+					return nil, "", fmt.Errorf("构造表单文件项: %w", err)
+				}
+				_, copyErr := io.Copy(part, file)
+				closeErr := file.Close()
+				if copyErr != nil {
+					return nil, "", fmt.Errorf("读取表单文件 %s: %w", value, copyErr)
+				}
+				if closeErr != nil {
+					return nil, "", fmt.Errorf("关闭表单文件 %s: %w", value, closeErr)
+				}
+				continue
+			}
+			if err := writer.WriteField(name, value); err != nil {
+				return nil, "", fmt.Errorf("写表单字段: %w", err)
+			}
+		}
+		if err := writer.Close(); err != nil {
+			return nil, "", fmt.Errorf("结束表单: %w", err)
+		}
+		return &buf, writer.FormDataContentType(), nil
 	default:
-		return nil, "", fmt.Errorf("请求体类型 %q 验证版未支持（只做 json/text/form）", body.Type)
+		return nil, "", fmt.Errorf("请求体类型 %q 验证版未支持（只做 json/text/form/multipart）", body.Type)
 	}
 }
 
@@ -219,6 +276,20 @@ type expander struct {
 	vars    map[string]string
 	missing []string
 	seen    map[string]bool
+}
+
+// headerRows 把响应头摊平成排好序的键值行（同名字段用逗号连接）。
+func headerRows(header http.Header) []Header {
+	names := make([]string, 0, len(header))
+	for name := range header {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]Header, 0, len(names))
+	for _, name := range names {
+		out = append(out, Header{Name: name, Value: strings.Join(header[name], ", ")})
+	}
+	return out
 }
 
 func (e *expander) text(value string) string {

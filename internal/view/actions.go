@@ -2,7 +2,6 @@ package view
 
 import (
 	"errors"
-	"path"
 	"strconv"
 	"strings"
 
@@ -55,6 +54,9 @@ func (m *Model) applyTheme() {
 	m.theme.PrimaryForeground = accentText
 	m.theme.Ring = m.theme.Primary
 	m.pal = paletteFor(m.settings.Theme == settings.ThemeLight)
+	// 参考图的树：选中行信息蓝浅底、悬停整行浅灰（组件 Tree 用 Accent / Muted 画）。
+	m.theme.Accent = m.pal.active
+	m.theme.Muted = m.pal.hover
 	m.docs.look = components.MarkdownLookFor(m.theme)
 }
 
@@ -82,43 +84,74 @@ func (m *Model) reload(file string, tab detailTab) {
 		m.invalidator.Invalidate()
 		return
 	}
-	m.col = col
+	m.installCol(col)
 	m.filter = ""
 	m.shownOnce = false
-	m.entryFile = ""
-	m.tab = tab
 	m.createErr = ""
 	m.pendingSelect = file
+	m.refreshShown()
+	m.refreshTabs()
+	if tab >= 0 && m.curTab >= 0 {
+		m.tab = tab
+		m.tabs[m.curTab].tab = tab
+	}
 	m.invalidator.Invalidate()
 }
 
-// newRequestFolder 是新建请求要落的目录：选中条目的所在分组；没选中就是根目录。
-func (m *Model) newRequestFolder() string {
-	entry := m.current()
-	if entry == nil {
-		return ""
+// reloadCollection 只重扫磁盘、保留过滤词与标签（保存请求后调用）。
+func (m *Model) reloadCollection() bool {
+	col, err := explorer.Load(m.col.Dir)
+	if err != nil {
+		m.createErr = err.Error()
+		m.invalidator.Invalidate()
+		return false
 	}
-	if dir := path.Dir(entry.File); dir != "." && dir != "" {
-		return dir
+	m.installCol(col)
+	m.shownOnce = false
+	m.refreshShown()
+	m.refreshTabs()
+	return true
+}
+
+// installCol 换上新的集合快照，同时更新当前根：树是从 roots 里读条目的。
+func (m *Model) installCol(col *explorer.Collection) {
+	m.col = col
+	if m.active >= 0 && m.active < len(m.roots) {
+		m.roots[m.active].col = col
+	}
+}
+
+// newRequestFolder 是新建请求要落的目录：树选中条目的所在分组，其次当前标签。
+func (m *Model) newRequestFolder() string {
+	if row := m.selectedRow(); row != nil && row.kind == nodeEntry {
+		return requestDir(row.entry.File)
+	}
+	if tab := m.activeTab(); tab != nil {
+		return requestDir(tab.file)
 	}
 	return ""
 }
 
-// openNewRequest 打开新建请求弹窗（index>=0 时先把该行选中，决定落哪个分组）。
-func (m *Model) openNewRequest(index int) {
-	if index >= 0 && index < len(m.shown) {
-		m.list.Select(index)
-	}
+// openNewRequest 打开新建请求弹窗；newFolder 为空时落点是当前选中条目所在分组。
+func (m *Model) openNewRequest() { m.openNewRequestIn("") }
+
+// openNewRequestIn 在指定分组里新建请求（分组右键菜单）。
+func (m *Model) openNewRequestIn(dir string) {
 	m.ui.newReqOpen = true
 	m.ui.newErr = ""
 	m.ui.newName = ""
 	m.ui.newURL = ""
 	m.ui.newMethod = "GET"
+	m.ui.newFolder = dir
 }
 
 // createRequest 落盘一条新请求，然后重扫并选中它。
 func (m *Model) createRequest() {
-	file, err := explorer.CreateRequest(m.col.Dir, m.newRequestFolder(), m.ui.newName, m.ui.newMethod, m.ui.newURL)
+	folder := m.ui.newFolder
+	if folder == "" {
+		folder = m.newRequestFolder()
+	}
+	file, err := explorer.CreateRequest(m.col.Dir, folder, m.ui.newName, m.ui.newMethod, m.ui.newURL)
 	if err != nil {
 		m.ui.newErr = err.Error()
 		m.invalidator.Invalidate()
@@ -126,15 +159,18 @@ func (m *Model) createRequest() {
 	}
 	m.ui.newReqOpen = false
 	m.ui.newErr = ""
+	if m.ui.savingScratch {
+		m.ui.savingScratch = false
+		m.closeScratchTab()
+	}
 	m.reload(file, tabParams)
 }
 
-// openRename 打开重命名弹窗（文件名不动，只改显示名）。
-func (m *Model) openRename(index int) {
-	if index < 0 || index >= len(m.shown) {
+// openRenameEntry 打开重命名弹窗（文件名不动，只改显示名）。
+func (m *Model) openRenameEntry(entry *explorer.Entry) {
+	if entry == nil {
 		return
 	}
-	entry := m.shown[index]
 	m.ui.renameOpen = true
 	m.ui.renameErr = ""
 	m.ui.renameName = entry.Name
@@ -168,6 +204,7 @@ func (m *Model) trashEntry(file string) {
 		m.invalidator.Invalidate()
 		return
 	}
+	m.closeTabOf(file)
 	m.reload("", tabParams)
 }
 
@@ -246,6 +283,7 @@ func (m *Model) syncRoot() {
 
 // resetCollectionState 清空所有按「当前集合 / 当前条目」派生的状态。
 func (m *Model) resetCollectionState() {
+	m.closeAllTabs()
 	m.entryFile = ""
 	m.pendingSelect = ""
 	m.tab = tabParams
@@ -263,6 +301,8 @@ func (m *Model) resetCollectionState() {
 // installRoot 装上一个根：集合、过滤词、环境、选中项都来自它自己的状态。
 func (m *Model) installRoot(root *rootState) {
 	m.col = root.col
+	m.menuOpen = false
+	m.expanded["root:"+root.col.Dir] = true
 	m.filter = root.filter
 	m.envName = root.env
 	m.vars = map[string]string{}
@@ -279,6 +319,23 @@ func (m *Model) installRoot(root *rootState) {
 	m.ui.envPick = m.envName
 	m.ui.envErr = ""
 	m.refreshShown()
+	m.invalidator.Invalidate()
+}
+
+// AddRoot 追加一个已打开的集合根，不切过去：命令行一次开多个集合时用。
+func (m *Model) AddRoot(col *explorer.Collection) {
+	if col == nil {
+		return
+	}
+	for i, root := range m.roots {
+		if root.col.Dir == col.Dir {
+			m.activateRoot(i)
+			return
+		}
+	}
+	m.syncRoot()
+	m.roots = append(m.roots, &rootState{col: col, env: m.settings.Envs[col.Dir]})
+	m.treeDirty = true
 	m.invalidator.Invalidate()
 }
 
@@ -351,6 +408,7 @@ func (m *Model) deleteEnv() {
 		return
 	}
 	m.ui.envDeleteOpen = false
+	m.ui.envOpen = false
 	if m.envName == name {
 		m.applyEnv("")
 	} else {
@@ -385,6 +443,12 @@ func (m *Model) loadRequestDraft(entry *explorer.Entry) {
 	}
 	draft.params = newKVEditor(block.Params)
 	draft.headers = newKVEditor(block.Headers)
+	draft.form = newKVEditor(block.Body.Form)
+	for _, row := range draft.form {
+		if row.typ == "" {
+			row.typ = "text"
+		}
+	}
 	if auth := block.Auth; auth != nil {
 		draft.authType = auth.Type
 		draft.authUser, draft.authPass = auth.Username, auth.Password
@@ -404,7 +468,7 @@ func (m *Model) loadRequestDraft(entry *explorer.Entry) {
 func newKVEditor(items []collection.KV) []*kvRow {
 	rows := make([]*kvRow, 0, len(items))
 	for _, kv := range items {
-		rows = append(rows, &kvRow{enabled: kv.Enabled, name: kv.Name, value: kv.Value, desc: kv.Description})
+		rows = append(rows, &kvRow{enabled: kv.Enabled, name: kv.Name, value: kv.Value, desc: kv.Description, typ: kv.Type})
 	}
 	return rows
 }
@@ -414,7 +478,7 @@ func kvFromEditor(rows []*kvRow) []collection.KV {
 	out := make([]collection.KV, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, collection.KV{
-			Name: row.name, Value: row.value, Enabled: row.enabled, Description: row.desc,
+			Name: row.name, Value: row.value, Enabled: row.enabled, Description: row.desc, Type: row.typ,
 		})
 	}
 	return out
@@ -439,6 +503,10 @@ func (m *Model) authFromDraft() *collection.Auth {
 
 // saveRequest 把草稿写回请求文件：Meta/Settings/未知字段原样保留，只改用户能编辑的部分。
 func (m *Model) saveRequest() {
+	if m.scratch {
+		m.saveScratch()
+		return
+	}
 	entry := m.entryByFile(m.req.file)
 	if entry == nil || entry.Payload == nil {
 		m.req.err = "请求已不存在，请重试"
@@ -453,6 +521,7 @@ func (m *Model) saveRequest() {
 	file.HTTP.URL = strings.TrimSpace(m.req.url)
 	file.HTTP.Params = kvFromEditor(m.req.params)
 	file.HTTP.Headers = kvFromEditor(m.req.headers)
+	file.HTTP.Body.Form = kvFromEditor(m.req.form)
 	file.HTTP.Body.Type = m.req.bodyType
 	if m.req.bodyField == "data" {
 		file.HTTP.Body.Data = m.req.bodyRaw
@@ -469,7 +538,10 @@ func (m *Model) saveRequest() {
 	}
 	m.req.err = ""
 	m.req.dirty = false
-	m.reload(entry.File, tabParams)
+	if m.reloadCollection() {
+		m.reloadActive()
+	}
+	m.invalidator.Invalidate()
 }
 
 // applyEnv 切换当前环境：重新读变量、记住到偏好（按集合根记），发送立即生效。
@@ -502,53 +574,64 @@ func (m *Model) refreshEnvs() {
 	m.ui.envs = names
 }
 
-// openEnvEditor 打开「编辑环境变量」：只编辑非密钥变量，密钥由客户端管理。
-func (m *Model) openEnvEditor() {
-	name := m.ui.envPick
+// openEnvEditor 打开环境变量弹窗：默认编辑当前环境。
+func (m *Model) openEnvEditor() { m.openEnvEditorFor(m.ui.envPick) }
+
+// openEnvEditorFor 打开某个环境的变量表（含敏感值，敏感值只写 *.secrets.yml）。
+func (m *Model) openEnvEditorFor(name string) {
 	if name == "" {
 		m.ui.envErr = "先选一个环境"
 		return
 	}
-	env, err := explorer.LoadEnvFile(m.col.Dir, name)
+	vars, err := explorer.LoadEnvVars(m.col.Dir, name)
 	if err != nil {
 		m.ui.envErr = err.Error()
 		return
 	}
-	rows := make([]*kvRow, 0, len(env.Vars))
-	secrets := 0
-	for _, v := range env.Vars {
-		if v.Secret {
-			secrets++
-			continue
-		}
-		rows = append(rows, &kvRow{enabled: v.Enabled, name: v.Name, value: v.Value})
+	rows := make([]*kvRow, 0, len(vars))
+	for _, v := range vars {
+		rows = append(rows, &kvRow{enabled: v.Enabled, name: v.Name, value: v.Value, secret: v.Secret})
 	}
 	m.ui.envRows = rows
-	m.ui.envSecretCount = secrets
-	m.ui.envSecretLine = ""
-	if secrets > 0 {
-		m.ui.envSecretLine = "另有 " + strconv.Itoa(secrets) + " 个密钥变量由桌面客户端管理，这里不显示也不修改。"
-	}
+	m.ui.envSel = name
+	m.ui.envPick = name
+	m.ui.envNameEdit = name
 	m.ui.envErr = ""
 	m.ui.envOpen = true
 }
 
-// saveEnv 保存环境变量，然后按新值刷新发送用的变量表。
+// saveEnv 保存环境变量：名称改了先重命名，再按敏感标记分别写主文件与密钥文件。
 func (m *Model) saveEnv() {
+	oldName := m.ui.envPick
+	name := strings.TrimSpace(m.ui.envNameEdit)
+	if name == "" {
+		name = oldName
+	}
+	if name != oldName {
+		if err := explorer.RenameEnv(m.col.Dir, oldName, name); err != nil {
+			m.ui.envErr = err.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+	}
 	vars := make([]collection.EnvVar, 0, len(m.ui.envRows))
 	for _, row := range m.ui.envRows {
 		if strings.TrimSpace(row.name) == "" {
 			continue
 		}
-		vars = append(vars, collection.EnvVar{Name: row.name, Value: row.value, Enabled: row.enabled})
+		vars = append(vars, collection.EnvVar{
+			Name: row.name, Value: row.value, Enabled: row.enabled, Secret: row.secret,
+		})
 	}
-	if err := explorer.SaveEnvVars(m.col.Dir, m.ui.envPick, vars); err != nil {
+	if err := explorer.SaveEnvAll(m.col.Dir, name, vars); err != nil {
 		m.ui.envErr = err.Error()
 		m.invalidator.Invalidate()
 		return
 	}
 	m.ui.envOpen = false
-	m.applyEnv(m.ui.envPick)
+	m.ui.envErr = ""
+	m.refreshEnvs()
+	m.applyEnv(name)
 	m.invalidator.Invalidate()
 }
 
@@ -564,6 +647,7 @@ func (m *Model) createEnv() {
 	m.ui.newEnvErr = ""
 	m.refreshEnvs()
 	m.applyEnv(name)
+	m.openEnvEditorFor(name)
 	m.invalidator.Invalidate()
 }
 

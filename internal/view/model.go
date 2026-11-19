@@ -101,8 +101,10 @@ const (
 // newDocName 是「新建文档」的默认名，与客户端一样靠 -2 后缀去重。
 const newDocName = "新建文档"
 
-// sendResult 是后台发送交回界面线程的结果，带代号以丢弃过期响应。
+// sendResult 是后台发送交回界面线程的结果，带标签代号与请求代号：
+// 关掉的标签、换掉的请求都直接丢弃，不会把旧响应贴到别处。
 type sendResult struct {
+	tab int
 	gen int
 	out send.Outcome
 }
@@ -119,6 +121,7 @@ type requestTables struct {
 	params       ui.TableRows
 	headers      ui.TableRows
 	fields       ui.TableRows
+	respHeader   string
 }
 
 // palette 是 Wails 客户端的面板色令牌：浅色 sidebar #f5f5f5 / panel #ffffff，
@@ -128,6 +131,8 @@ type palette struct {
 	sidebar ui.Color
 	panel   ui.Color
 	border  ui.Color
+	active  ui.Color // 树选中行：参考图是信息蓝浅底
+	hover   ui.Color // 树行悬停
 }
 
 func paletteFor(light bool) palette {
@@ -137,6 +142,8 @@ func paletteFor(light bool) palette {
 			sidebar: ui.RGB(0xf5, 0xf5, 0xf5),
 			panel:   ui.RGB(0xff, 0xff, 0xff),
 			border:  ui.RGB(0xe3, 0xe3, 0xe3),
+			active:  ui.RGB(0xe8, 0xf0, 0xfe),
+			hover:   ui.RGB(0xec, 0xec, 0xec),
 		}
 	}
 	return palette{
@@ -144,6 +151,8 @@ func paletteFor(light bool) palette {
 		sidebar: ui.RGB(0x17, 0x18, 0x1a),
 		panel:   ui.RGB(0x1e, 0x1f, 0x22),
 		border:  ui.RGB(0x2b, 0x2d, 0x31),
+		active:  ui.RGB(0x16, 0x28, 0x3d),
+		hover:   ui.RGB(0x26, 0x28, 0x2c),
 	}
 }
 
@@ -162,6 +171,8 @@ type kvRow struct {
 	name    string
 	value   string
 	desc    string
+	typ     string // 仅 multipart 表单使用：text（默认）| file
+	secret  bool   // 仅环境变量：值写进 *.secrets.yml
 }
 
 // requestDraft 是一条 http 请求的编辑草稿；保存时写回集合文件。
@@ -172,6 +183,7 @@ type requestDraft struct {
 
 	params  []*kvRow
 	headers []*kvRow
+	form    []*kvRow
 
 	bodyType  string
 	bodyRaw   string
@@ -199,6 +211,9 @@ type workspaceUI struct {
 	newMethod  string
 	newURL     string
 	newErr     string
+	newFolder  string // 从某个分组右键新建时指定落点
+	// savingScratch 表示这次弹窗是「临时请求另存为」，保存成功后关掉临时标签。
+	savingScratch bool
 
 	renameOpen bool
 	renameName string
@@ -227,6 +242,8 @@ type workspaceUI struct {
 	envDeleteOpen bool
 
 	envOpen        bool
+	envNameEdit    string
+	envSel         string
 	envRows        []*kvRow
 	envSecretCount int
 	envSecretLine  string
@@ -246,12 +263,33 @@ type Model struct {
 	envName string
 	vars    map[string]string
 
+	// 多个标签：tabs 按打开顺序排，curTab 是当前展示的那个（-1 表示一个都没开）。
+	tabs      []*tabState
+	curTab    int
+	tabSeq    int
+	tabStart  int
+	tabActive int
+
 	theme  ui.Theme
 	pal    palette
 	split  ui.SplitterState
 	rsplit ui.SplitterState
-	list   ui.ListState
-	tab    detailTab
+	// tree 是集合树：行由 rebuildTree 摊平，展开状态、过滤词、集合根本身变化时重建。
+	tree      ui.TreeState
+	rows      []treeRow
+	expanded  map[string]bool
+	treeDirty bool
+	sideC     ui.C // 只在本帧声明期有效：treeContent 需要上下文
+
+	// 选中项：行的数量要等 Tree 画完才更新，新行第一帧选不上，留一次重试。
+	selectFile    string
+	selectPending bool
+	// selKey 是当前高亮的行（Tree 的选中由应用决定，组件只按 TreeNode.Selected 上色）。
+	selKey      string
+	menuRoot    int
+	envMenuOpen bool
+	menuOpen    bool
+	tab         detailTab
 
 	filter    string
 	shown     []*explorer.Entry
@@ -267,11 +305,14 @@ type Model struct {
 
 	tables      requestTables
 	tableStates [3]ui.TableState
+	respTab     int
 
 	docs     docState
 	editor   docEditor
 	drafts   map[string]string
 	req      requestDraft
+	scratch  bool // 当前标签是不是未落盘的临时请求
+	overview bool // 正在看集合概览（固定的「集合」页）
 	settings settings.Settings
 	ui       workspaceUI
 
@@ -307,6 +348,8 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.roots = []*rootState{{col: col}}
 	m.active = 0
 	m.col = col
+	m.curTab = -1
+	m.tabActive = -1
 	m.ui.newMethod = "GET"
 	m.ui.newEnvName = "dev"
 	// 没显式指定环境时沿用该集合上次的选择（偏好按集合根记）。
@@ -320,11 +363,19 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	}
 	m.applyTheme()
 	m.ui.imeDetail = ime.Detect().Detail
-	m.split.Pos = 320
-	m.rsplit.Pos = 320
-	m.list.Label = func(i int) string { return m.shown[i].Name }
-	m.list.Name = func(i int) string { return m.shown[i].Title() }
+	m.split.Pos = 260
+	m.rsplit.Pos = 260
+	m.overview = true
+	m.menuRoot = -1
+	m.expanded = map[string]bool{}
+	m.tree.Node = m.treeNode
+	m.tree.Label = m.treeLabel
+	m.tree.Key = m.treeKey
+	m.tree.RowHeight = 30
+	m.tree.Indent = 16
 	m.refreshShown()
+	m.refreshEnvs()
+	m.ui.envPick = m.envName
 	return m
 }
 
@@ -359,6 +410,7 @@ func (m *Model) refreshShown() {
 	m.shownOnce = true
 	m.countText = countLabel(len(m.shown), len(m.col.Entries), m.filter)
 	m.subtitle = m.countText + " · 环境 " + envLabel(m.envName)
+	m.treeDirty = true
 }
 
 // filterEntries 按名称 / 分组 / URL / 概述做大小写不敏感匹配。
@@ -369,53 +421,41 @@ func filterEntries(all []*explorer.Entry, filter string) []*explorer.Entry {
 	}
 	out := make([]*explorer.Entry, 0, len(all))
 	for _, entry := range all {
-		haystack := strings.ToLower(entry.Name + " " + entry.Group + " " + entry.URL + " " + entry.Summary)
-		if strings.Contains(haystack, needle) {
+		if entryMatches(entry, needle) {
 			out = append(out, entry)
 		}
 	}
 	return out
 }
 
-// current 取列表当前选中项；还没选过时落在第一行。
-func (m *Model) current() *explorer.Entry {
-	if len(m.shown) == 0 {
-		return nil
-	}
-	index := m.list.Selected()
-	if index < 0 || index >= len(m.shown) {
-		index = 0
-	}
-	return m.shown[index]
+// entryMatches 是过滤词对单个条目的判定（名称 / 分组 / 地址 / 概述，大小写不敏感）。
+func entryMatches(entry *explorer.Entry, needle string) bool {
+	haystack := strings.ToLower(entry.Name + " " + entry.Group + " " + entry.URL + " " + entry.Summary)
+	return strings.Contains(haystack, needle)
 }
 
-// indexOfFile 在可见列表里找一条路径；找不到返回 -1。
-func (m *Model) indexOfFile(file string) int {
-	for i, entry := range m.shown {
-		if entry.File == file {
-			return i
-		}
-	}
-	return -1
-}
-
-// applyPendingSelect 在重扫后把选中项落回关心的路径。
-// ListState.Select 会按上一帧的行数截断，新行要等下一帧才选得上，所以必要时再要一帧。
+// applyPendingSelect 在重扫后把树的选中项落回关心的条目。
+// Tree 的行数要等这一帧画完才更新，新行第一次选不上，所以必要时再要一帧。
 func (m *Model) applyPendingSelect() {
 	if m.pendingSelect == "" {
 		return
 	}
-	index := m.indexOfFile(m.pendingSelect)
+	m.syncTree()
+	index := m.rowOfEntry(m.pendingSelect)
 	if index < 0 {
 		m.pendingSelect = ""
 		return
 	}
-	m.list.Select(index)
-	if m.list.Selected() != index {
+	m.tree.Select(index)
+	if m.tree.Selected() != index {
 		m.invalidator.Invalidate()
 		return
 	}
+	file := m.pendingSelect
 	m.pendingSelect = ""
+	if entry := m.entryByFile(file); entry != nil {
+		m.openEntry(entry)
+	}
 }
 
 // entryByFile 在完整集合里按路径找条目（保存后同步正文用）。
@@ -513,7 +553,11 @@ func (m *Model) docDirty() bool { return m.editor.text != m.editor.saved }
 func (m *Model) createDoc() {
 	path, err := explorer.CreateDoc(m.col.Dir, newDocName)
 	if err == nil {
-		m.col, err = explorer.Load(m.col.Dir)
+		var reloaded *explorer.Collection
+		reloaded, err = explorer.Load(m.col.Dir)
+		if err == nil {
+			m.installCol(reloaded)
+		}
 	}
 	if err != nil {
 		m.createErr = err.Error()
@@ -549,22 +593,32 @@ func (m *Model) saveDoc() {
 
 // start 把发送放到后台：界面线程只做一次快照，结果经通道交回 OnWake。
 func (m *Model) start(entry *explorer.Entry) {
-	if m.sending || entry.Payload == nil {
+	payload := entry.Payload
+	if m.scratch {
+		payload = m.scratchFile()
+	}
+	if m.sending || payload == nil {
 		return
 	}
 	m.resetResponse()
 	m.sending = true
 	follow := m.settings.FollowRedirects()
 	plan := send.Plan{
-		File:            entry.Payload,
+		File:            payload,
 		Vars:            m.vars,
 		Timeout:         time.Duration(m.settings.TimeoutSec) * time.Second,
 		MaxBody:         1 << 20,
+		Dir:             m.col.Dir,
 		FollowRedirects: &follow,
 	}
-	gen := m.gen
+	tab := m.activeTab()
+	if tab == nil {
+		m.sending = false
+		return
+	}
+	tabID, gen := tab.id, m.gen
 	go func() {
-		m.results <- sendResult{gen: gen, out: send.Do(context.Background(), plan)}
+		m.results <- sendResult{tab: tabID, gen: gen, out: send.Do(context.Background(), plan)}
 		m.invalidator.Invalidate()
 	}()
 }
@@ -578,6 +632,7 @@ func (m *Model) resetResponse() {
 }
 
 // collect 是 OnWake：在重绘前把后台结果搬成界面文案（这里算一次，绘制期只读）。
+// 结果属于哪个标签就填哪个标签：用户可能在等待时切走了。
 func (m *Model) collect() {
 	var result sendResult
 	select {
@@ -585,10 +640,30 @@ func (m *Model) collect() {
 	default:
 		return
 	}
-	if result.gen != m.gen {
+	index := m.findTabID(result.tab)
+	if index < 0 {
+		return // 标签已经关掉
+	}
+	tab := m.tabs[index]
+	if tab.gen != result.gen {
 		return // 结果属于已经换掉的那条请求
 	}
-	out := result.out
+	if index == m.curTab {
+		m.fillResponse(result.out)
+		m.storeTab()
+		return
+	}
+	// 非活动标签：临时把它的状态装进来填结果，再切回当前标签。
+	saved := &tabState{}
+	m.captureInto(saved)
+	m.applyFromTab(tab)
+	m.fillResponse(result.out)
+	m.captureInto(tab)
+	m.applyFromTab(saved)
+}
+
+// fillResponse 把一次发送结果翻成状态行与正文文案。
+func (m *Model) fillResponse(out send.Outcome) {
 	m.resp = out
 	m.hasResp, m.sending = true, false
 	if out.Err != "" {
@@ -601,6 +676,7 @@ func (m *Model) collect() {
 	m.size = humanBytes(out.Size)
 	m.statusOK = out.Status < 400
 	m.bodyText = clip(out.Body, 4000)
+	m.tables.respHeader = headerLines(out.Headers)
 	if len(out.Missing) > 0 {
 		m.missing = "未解析变量：" + strings.Join(out.Missing, ", ")
 	}

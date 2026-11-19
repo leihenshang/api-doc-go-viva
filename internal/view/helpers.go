@@ -6,6 +6,7 @@ import (
 
 	"github.com/leihenshang/api-doc-go-share/collection"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
 )
@@ -64,6 +65,21 @@ func fieldRows(items []collection.BodyField) ui.TableRows {
 		rows = append(rows, []string{field.Name, field.Type, required, field.Description})
 	}
 	return rows
+}
+
+// headerLines 把响应头拼成「名称: 值」多行文本：绘制期只画不算，也不分配。
+func headerLines(items []send.Header) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, header := range items {
+		b.WriteString(header.Name)
+		b.WriteString(": ")
+		b.WriteString(header.Value)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // bodyRaw 取请求体正文：json/text 的原文在 raw，Bruno 兼容字段是 data。

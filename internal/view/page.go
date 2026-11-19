@@ -1,150 +1,263 @@
 package view
 
 import (
-	"strconv"
-
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/vivaui/viva/ui"
 )
 
 // Page 声明整窗：工具条 + （集合树 | 分隔条 | 详情）。
-// 每帧都从这里重跑：搜索框在本帧写入 m.filter，随后立刻重建列表，避免一帧延迟。
+// 搜索框在 sidebar 里先声明、当帧写入过滤词，随后重建树，避免一帧延迟。
 func (m *Model) Page(c ui.C) {
 	m.toolbar(c)
-	m.refreshShown()
-	m.applyPendingSelect()
-	current := m.current()
 	ui.Row(c).Fill().Children(func() {
 		ui.Column(c).Width(m.split.Pos).FillHeight().Background(m.pal.sidebar).Children(func() {
 			m.sidebar(c)
 		})
 		ui.Splitter(c, &m.split).Mins(240, 420)
 		ui.Column(c).Grow(1).FillHeight().Background(m.pal.panel).Children(func() {
-			m.detail(c, current)
+			m.tabBar(c)
+			if m.overview {
+				m.overviewPage(c)
+			} else {
+				m.detail(c, m.activeEntry())
+			}
 		})
 	})
 	m.dialogs(c)
 }
 
-// toolbar 是顶部一条：集合名、条数·环境、搜索框。
+// appVersion 是顶栏展示的版本号（与窗口标题一起构成产品标识）。
+const appVersion = "v0.1.0"
+
+// toolbar 是顶部一条：左列产品名 + 版本，右列从请求页左边缘开始放环境与动作。
 func (m *Model) toolbar(c ui.C) {
-	ui.Row(c).FillWidth().Pad(16).Gap(16).Items(ui.Center).Children(func() {
-		ui.Column(c).Gap(2).Children(func() {
-			ui.Text(c, m.col.Name).FontSize(16).Bold()
-			ui.Text(c, m.subtitle).FontSize(11).Muted()
+	ui.Row(c).FillWidth().Height(44).Items(ui.Center).Children(func() {
+		ui.Row(c).Width(m.split.Pos).Height(44).PadX(12).Gap(8).Items(ui.Center).Children(func() {
+			ui.Text(c, "api-doc-go").FontSize(15).Bold()
+			ui.Text(c, appVersion).FontSize(11).Muted().Mono()
 		})
-		ui.Spacer(c)
-		if ui.Button(c, "打开集合").Clicked() {
-			c.After(m.chooseCollection)
-		}
-		themeLabel, themeIcon := "日间", IconSun
-		if m.isLight() {
-			themeLabel, themeIcon = "夜间", IconMoon
-		}
-		if ui.Button(c, themeLabel).Icon(themeIcon).Clicked() {
-			m.setTheme(!m.isLight())
-		}
-		if ui.Button(c, "设置").Icon(IconSliders).Clicked() {
-			m.openSettings()
-		}
+		ui.Row(c).Grow(1).Height(44).PadLeft(24).PadRight(12).Gap(8).Items(ui.Center).Children(func() {
+			m.envPicker(c)
+			ui.Spacer(c)
+			themeLabel, themeIcon := "日间", IconSun
+			if m.isLight() {
+				themeLabel, themeIcon = "夜间", IconMoon
+			}
+			if ui.Button(c, themeLabel).Icon(themeIcon).Clicked() {
+				m.setTheme(!m.isLight())
+			}
+			if ui.Button(c, "设置").Icon(IconSliders).Clicked() {
+				m.openSettings()
+			}
+		})
 	})
 	ui.Divider(c)
 }
 
-// sidebar 是左侧：已打开的集合根、当前集合的搜索、以及条目列表。
+// envPicker 是环境下拉：只有环境列表与「环境设置…」。
+// 放在标签栏右侧，与请求页同在内容区，不再是标题栏的一部分。
+func (m *Model) envPicker(c ui.C) {
+	if len(m.ui.envs) == 0 {
+		return
+	}
+	label := "无环境"
+	if m.envName != "" {
+		label = m.envName
+	}
+	envButton := ui.Button(c, "环境 "+label).Icon(IconGlobe).Secondary().Tooltip("切换环境")
+	if envButton.Clicked() {
+		c.After(func() { m.envMenuOpen = !m.envMenuOpen })
+	}
+	if m.envMenuOpen {
+		ui.Menu(c, envButton, &m.envMenuOpen, func(menu *ui.MenuItems) {
+			for _, name := range m.ui.envs {
+				envName := name
+				item := menu.Item(envName)
+				if envName == m.envName {
+					item.Checked(true)
+				}
+				if item.Clicked() {
+					c.After(func() { m.applyEnv(envName) })
+				}
+			}
+			menu.Separator()
+			if menu.Item("环境设置…").Icon(IconSliders).Clicked() {
+				c.After(func() { m.openEnvEditorFor(m.envName) })
+			}
+		})
+	}
+}
+
+// sidebar 是左侧集合树：顶部动作 + 搜索 + 树（集合根 / 分组 / 请求 / 文档）。
 func (m *Model) sidebar(c ui.C) {
-	ui.Column(c).Fill().Pad(8).Gap(8).Children(func() {
-		ui.Text(c, "集合").FontSize(11).Bold().Muted().PadX(6)
-		m.rootsPane(c)
-		ui.TextField(c, &m.filter, "搜索条目", "搜索当前集合").FillWidth()
-		ui.Row(c).FillWidth().PadX(6).Gap(8).Items(ui.Center).Children(func() {
-			ui.Text(c, "内容").FontSize(11).Bold().Muted()
+	m.sideC = c
+	ui.Column(c).Fill().Pad(6).Gap(6).Children(func() {
+		ui.Row(c).FillWidth().Gap(4).Items(ui.Center).Children(func() {
+			if ui.Button(c, "打开集合").Icon(IconFolderOpen).IconOnly().Tooltip("打开集合").Clicked() {
+				c.After(m.chooseCollection)
+			}
 			ui.Spacer(c)
 			if ui.Button(c, "新建请求").Icon(IconPlus).IconOnly().Tooltip("新建请求").Clicked() {
-				m.openNewRequest(-1)
+				m.openNewRequest()
 			}
 			if ui.Button(c, "新建文档").Icon(IconFilePlus).IconOnly().Tooltip("新建文档").Clicked() {
 				c.After(m.createDoc)
 			}
 		})
+		if ui.TextField(c, &m.filter, "搜索请求", "搜索请求…").Icon(IconSearch).FillWidth().Changed() {
+			m.shownOnce = false
+		}
+		m.refreshShown()
+		m.syncTree()
+		m.applySelect()
+		m.applyPendingSelect()
 		if m.createErr != "" {
 			ui.Text(c, m.createErr).FontSize(11).Color(c.Theme().Danger)
 		}
-		switch {
-		case len(m.col.Entries) == 0:
-			emptyBox(c, "集合里没有条目", "点「新建请求 / 新建文档」或在桌面客户端里新建")
-		case len(m.shown) == 0:
-			emptyBox(c, "没有匹配的条目", "换个关键字，或清空搜索框")
-		default:
-			ui.List(c, &m.list, len(m.shown), m.row).Label("条目列表").Grow(1)
+		if len(m.rows) == 0 {
+			emptyBox(c, "没有匹配的请求", "换个关键字，或清空搜索框")
+			return
+		}
+		ui.Tree(c, &m.tree, len(m.rows), m.treeLabel, m.treeContent).Grow(1)
+		if index, ok := m.tree.Toggled(); ok {
+			m.toggleRow(index)
+		} else if index, ok := m.tree.Chosen(); ok {
+			m.chooseRow(index)
 		}
 	})
 }
 
-// rootsPane 列出已打开的集合根：点一行切过去，右键可以关掉（至少留一个）。
-func (m *Model) rootsPane(c ui.C) {
+// tabWidth 是标签的固定宽度：标签多了才能算出一屏放几个并滚动。
+const tabWidth float32 = 132
+
+// tabBar 是详情区顶部的标签条：固定的「集合」页 + 可横向滚动的条目标签。
+// 标签超出可用宽度时出现「‹ ›」按钮，切标签会自动把当前标签滚进可视区。
+func (m *Model) tabBar(c ui.C) {
+	ui.Column(c).FillWidth().Background(m.pal.sidebar).Children(func() {
+		ui.Row(c).FillWidth().Height(37).PadX(6).Gap(2).Items(ui.Center).Children(func() {
+			m.pinnedTab(c)
+			capacity := m.tabCapacity(c)
+			m.clampTabStart(capacity)
+			if m.tabStart > 0 {
+				if ui.Button(c, "左移标签").Icon(IconChevronLeft).IconOnly().Ghost().Tooltip("向左滚动标签").Clicked() {
+					c.After(func() { m.tabStart = max(0, m.tabStart-1) })
+				}
+			}
+			end := min(len(m.tabs), m.tabStart+capacity)
+			for index := m.tabStart; index < end; index++ {
+				m.tabItem(c, m.tabs[index], index, !m.overview && index == m.curTab)
+			}
+			if end < len(m.tabs) {
+				if ui.Button(c, "右移标签").Icon(IconChevronRight).IconOnly().Ghost().Tooltip("向右滚动标签").Clicked() {
+					c.After(func() {
+						m.tabStart = min(m.tabStart+1, max(0, len(m.tabs)-capacity))
+					})
+				}
+			}
+			ui.Spacer(c)
+			if ui.Button(c, "新建临时请求").Icon(IconPlus).IconOnly().Ghost().Tooltip("新建临时请求").Clicked() {
+				c.After(m.openScratch)
+			}
+		})
+		ui.Divider(c)
+	})
+}
+
+// tabCapacity 算一屏能放几个标签：预留固定的「集合」页、＋ 与滚动箭头。
+func (m *Model) tabCapacity(c ui.C) int {
+	strip := c.Bounds().Width - m.split.Pos - 8 - 12
+	if strip < 180 {
+		strip = 180
+	}
+	reserved := float32(64 + 40)
+	capacity := int((strip - reserved) / (tabWidth + 2))
+	if capacity < 1 {
+		capacity = 1
+	}
+	if len(m.tabs) > capacity {
+		capacity = int((strip - reserved - 68) / (tabWidth + 2))
+		if capacity < 1 {
+			capacity = 1
+		}
+	}
+	return capacity
+}
+
+// clampTabStart 把滚动起点收进合法范围，并保证当前标签可见。
+func (m *Model) clampTabStart(capacity int) {
+	if m.tabStart > len(m.tabs)-capacity {
+		m.tabStart = max(0, len(m.tabs)-capacity)
+	}
+	if m.curTab != m.tabActive {
+		m.tabActive = m.curTab
+		if m.curTab >= 0 && !m.overview {
+			if m.curTab < m.tabStart {
+				m.tabStart = m.curTab
+			}
+			if m.curTab >= m.tabStart+capacity {
+				m.tabStart = m.curTab - capacity + 1
+			}
+			if m.tabStart < 0 {
+				m.tabStart = 0
+			}
+		}
+	}
+}
+
+// pinnedTab 是固定在最左的「集合」页：点它回到概览。
+func (m *Model) pinnedTab(c ui.C) {
 	theme := c.Theme()
-	for index, root := range m.roots {
-		slot := index
-		row := ui.Row(c).FillWidth().PadX(8).PadY(5).Gap(6).Items(ui.Center).
-			Radius(theme.Metrics.RadiusControl).
+	ui.Column(c).Width(tabWidth).Gap(0).Children(func() {
+		row := ui.Row(c).Height(35).PadX(10).Gap(6).Items(ui.Center).
 			Hover(ui.Look{}.Background(theme.Hover)).
-			Hit(ui.ID(c), "集合 "+root.col.Name)
-		if index == m.active {
-			row.Background(theme.Accent)
+			Hit(ui.ID(c), "标签 集合")
+		if m.overview {
+			row.Background(theme.Card)
 		}
 		row.Children(func() {
-			ui.Text(c, root.col.Name).FontSize(12).Ellipsis()
-			ui.Spacer(c)
-			ui.Text(c, strconv.Itoa(len(root.col.Entries))).FontSize(10).Muted().Mono()
+			ui.Text(c, "集合").FontSize(12.5)
 		})
-		ui.ContextMenu(c, row, func(menu *ui.MenuItems) {
-			item := menu.Item("关闭集合")
-			if len(m.roots) <= 1 {
-				item.Disabled(true)
+		if row.Clicked() {
+			c.After(func() { m.overview = true })
+		}
+		line := ui.RGBA(0, 0, 0, 0)
+		if m.overview {
+			line = theme.Primary
+		}
+		ui.Slot(c).FillWidth().Height(2).Background(line)
+	})
+}
+
+// tabItem 是一个条目标签：方法 + 名称 + 关闭按钮，选中时白底 + 绿色下划线。
+func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
+	theme := c.Theme()
+	title := m.tabTitle(tab)
+	ui.Column(c).Gap(0).Children(func() {
+		row := ui.Row(c).Height(35).PadX(8).Gap(6).Items(ui.Center).
+			Hover(ui.Look{}.Background(theme.Hover)).
+			Hit(ui.ID(c), "标签 "+title)
+		if active {
+			row.Background(theme.Card)
+		}
+		row.Children(func() {
+			if tab.entry != nil && tab.entry.Kind == explorer.KindHTTP {
+				ui.Text(c, tab.entry.Method).FontSize(9).Mono().Muted()
+			} else if tab.scratch {
+				ui.Text(c, tab.req.method).FontSize(9).Mono().Muted()
 			}
-			if item.Clicked() {
-				c.After(func() { m.closeRoot(slot) })
+			ui.Text(c, title).FontSize(12.5).Ellipsis()
+			if ui.Button(c, "关闭 "+title).Icon(IconX).IconOnly().Ghost().Tooltip("关闭标签").Clicked() {
+				c.After(func() { m.closeTab(slot) })
 			}
 		})
 		if row.Clicked() {
-			c.After(func() { m.activateRoot(slot) })
+			c.After(func() { m.activateTab(slot) })
 		}
-	}
-}
-
-// row 是一行：类型徽标（组件目录 Badge）+ 名称 + 分组。
-func (m *Model) row(r ui.ListRow) {
-	theme := r.C.Theme()
-	entry := m.shown[r.Index]
-	r.Element.PadY(6).PadX(8).Gap(8).Items(ui.Center).
-		Radius(theme.Metrics.RadiusControl).
-		Hover(ui.Look{}.Background(theme.Hover))
-	if r.Selected() {
-		r.Element.Background(theme.Accent)
-	}
-	methodBadge(r.C, entry)
-	ui.Column(r.C).Grow(1).Gap(2).Children(func() {
-		ui.Text(r.C, entry.Name).FontSize(13).Ellipsis()
-		if entry.Group != "" {
-			ui.Text(r.C, entry.Group).FontSize(10).Muted().Ellipsis()
+		line := ui.RGBA(0, 0, 0, 0)
+		if active {
+			line = theme.Primary
 		}
-	})
-	// 右键菜单：集合树的常用操作（与客户端同语义，重命名不改文件名）。
-	ui.ContextMenu(r.C, r.Element, func(menu *ui.MenuItems) {
-		if menu.Item("新建请求").Icon(IconPlus).Clicked() {
-			m.openNewRequest(r.Index)
-		}
-		if menu.Item("新建文档").Icon(IconFilePlus).Clicked() {
-			r.C.After(m.createDoc)
-		}
-		if menu.Item("重命名").Clicked() {
-			m.openRename(r.Index)
-		}
-		if menu.Item("删除到回收站").Icon(IconTrash).Destructive().Clicked() {
-			file := m.shown[r.Index].File
-			r.C.After(func() { m.trashEntry(file) })
-		}
+		ui.Slot(c).FillWidth().Height(2).Background(line)
 	})
 }
 
