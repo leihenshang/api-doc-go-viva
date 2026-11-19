@@ -5,7 +5,6 @@ import (
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
-	"github.com/vivaui/viva/ui"
 )
 
 // tabState 是一条已打开内容（请求或文档）的全部界面状态。
@@ -20,18 +19,18 @@ type tabState struct {
 	// scratch 是「临时请求」标签：不来自磁盘，保存时走另存为。
 	scratch bool
 
-	req         requestDraft
-	tables      requestTables
-	tableStates [3]ui.TableState
-	respTab     int
-	docs        docState
-	editor      docEditor
+	req     requestDraft
+	tables  requestTables
+	respTab int
+	docs    docState
+	editor  docEditor
 
 	resp     send.Outcome
 	hasResp  bool
 	sending  bool
 	statusOK bool
 	status   string
+	copyNote string
 	reason   string
 	elapsed  string
 	size     string
@@ -150,6 +149,35 @@ func (m *Model) closeTab(i int) {
 	m.invalidator.Invalidate()
 }
 
+// closeOthers 只留下第 i 个标签。
+func (m *Model) closeOthers(i int) {
+	if i < 0 || i >= len(m.tabs) {
+		return
+	}
+	tab := m.tabs[i]
+	m.tabs = []*tabState{tab}
+	m.curTab = 0
+	m.overview = false
+	m.applyFromTab(tab)
+	m.selectInList(tab.file)
+	m.invalidator.Invalidate()
+}
+
+// closeRight 关掉第 i 个标签右侧的所有标签。
+func (m *Model) closeRight(i int) {
+	if i < 0 || i >= len(m.tabs)-1 {
+		return
+	}
+	m.tabs = m.tabs[:i+1]
+	if m.curTab > i {
+		m.curTab = i
+		m.overview = false
+		m.applyFromTab(m.tabs[i])
+		m.selectInList(m.tabs[i].file)
+	}
+	m.invalidator.Invalidate()
+}
+
 // closeTabOf 关掉某条内容的标签（删除到回收站时用）。
 func (m *Model) closeTabOf(file string) {
 	if i := m.findTab(file); i >= 0 {
@@ -184,13 +212,14 @@ func (m *Model) captureInto(t *tabState) {
 	t.scratch = m.scratch
 	t.req = m.req
 	t.tables = m.tables
-	t.tableStates = m.tableStates
+
 	t.respTab = m.respTab
 	t.docs = m.docs
 	t.editor = m.editor
 	t.resp = m.resp
 	t.hasResp, t.sending, t.statusOK = m.hasResp, m.sending, m.statusOK
 	t.status, t.reason, t.elapsed, t.size = m.status, m.reason, m.elapsed, m.size
+	t.copyNote = m.copyNote
 	t.bodyText, t.missing, t.failText = m.bodyText, m.missing, m.failText
 	t.gen = m.gen
 }
@@ -205,13 +234,14 @@ func (m *Model) applyFromTab(t *tabState) {
 	m.scratch = t.scratch
 	m.req = t.req
 	m.tables = t.tables
-	m.tableStates = t.tableStates
+
 	m.respTab = t.respTab
 	m.docs = t.docs
 	m.editor = t.editor
 	m.resp = t.resp
 	m.hasResp, m.sending, m.statusOK = t.hasResp, t.sending, t.statusOK
 	m.status, m.reason, m.elapsed, m.size = t.status, t.reason, t.elapsed, t.size
+	m.copyNote = t.copyNote
 	m.bodyText, m.missing, m.failText = t.bodyText, t.missing, t.failText
 	m.gen = t.gen
 }
@@ -223,7 +253,6 @@ func (m *Model) clearTabState() {
 	m.scratch = false
 	m.req = requestDraft{}
 	m.tables = requestTables{}
-	m.tableStates = [3]ui.TableState{}
 	m.respTab = 0
 	m.docs = docState{look: m.docs.look}
 	m.editor = docEditor{}

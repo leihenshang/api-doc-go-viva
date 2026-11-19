@@ -1,0 +1,90 @@
+info:
+    name: 登录
+    type: http
+    seq: 2
+meta:
+    uid: 98fe82e0-828f-45bc-b649-9ec549ca3b41
+    base_rev: 0
+summary: 账号密码登录，返回访问令牌
+http:
+    method: POST
+    url: '{{host}}/echo'
+    params:
+        - name: ""
+          value: ""
+          enabled: true
+    headers:
+        - name: Content-Type
+          value: application/json
+          enabled: true
+        - name: X-Client
+          value: desktop
+          enabled: true
+    body:
+        type: json
+        raw: |-
+            {
+              "username": "alice",
+              "password": "{{token}}"
+            }
+        fields:
+            - name: username
+              type: string
+              required: true
+              example: alice
+              description: 登录名
+            - name: password
+              type: string
+              required: true
+              example: s3cret
+              description: 密码
+docs: |-
+    ## 说明
+
+    - 账号密码换令牌，有效期 2 小时
+    - 失败返回 `401`，不要重试
+
+    > 密码请只放在环境变量里，不要提交到仓库。
+assert:
+    - expr: response.status === 200
+      name: 状态码 200
+    - expr: response.json.token != ""
+      name: 有令牌
+respdoc:
+    contentType: json
+    headers:
+        - enabled: true
+          name: Content-Type
+          value: application/json
+    params:
+        - description: 访问令牌
+          example: eyJhbGciOi…
+          fieldName: token
+          required: true
+          type: string
+        - description: 有效期（秒）
+          example: "7200"
+          fieldName: expiresIn
+          required: true
+          type: integer
+        - description: 用户 ID
+          example: "1001"
+          fieldName: user.id
+          required: false
+          type: integer
+        - description: 显示名
+          example: Alice
+          fieldName: user.name
+          required: false
+          type: string
+    sample: |-
+        {
+          "token": "eyJhbGciOi…",
+          "expiresIn": 7200,
+          "user": {
+            "id": 1001,
+            "name": "Alice"
+          }
+        }
+    status: 200
+    type: object

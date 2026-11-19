@@ -31,6 +31,31 @@ var IconChevronRight = gfx.Icon{
 	},
 }
 
+// icon-copy is a compiled vector icon.
+var IconCopy = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(20.0, 8.0),
+		gfx.CubicTo(21.1046, 8.0, 22.0, 8.89543, 22.0, 10.0),
+		gfx.LineTo(22.0, 20.0),
+		gfx.CubicTo(22.0, 21.1046, 21.1046, 22.0, 20.0, 22.0),
+		gfx.LineTo(10.0, 22.0),
+		gfx.CubicTo(8.89543, 22.0, 8.0, 21.1046, 8.0, 20.0),
+		gfx.LineTo(8.0, 10.0),
+		gfx.CubicTo(8.0, 8.89543, 8.89543, 8.0, 10.0, 8.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(4.0, 16.0),
+		gfx.CubicTo(2.9, 16.0, 2.0, 15.1, 2.0, 14.0),
+		gfx.LineTo(2.0, 4.0),
+		gfx.CubicTo(2.0, 2.9, 2.9, 2.0, 4.0, 2.0),
+		gfx.LineTo(14.0, 2.0),
+		gfx.CubicTo(15.1, 2.0, 16.0, 2.9, 16.0, 4.0),
+	},
+}
+
 // icon-ellipsis is a compiled vector icon.
 var IconEllipsis = gfx.Icon{
 	ViewBox: 24.0,
@@ -132,6 +157,23 @@ var IconGlobe = gfx.Icon{
 		gfx.CubicTo(17.3333, 16.4, 17.3333, 7.6, 12.0, 2.0),
 		gfx.MoveTo(2.0, 12.0),
 		gfx.LineTo(22.0, 12.0),
+	},
+}
+
+// icon-import is a compiled vector icon.
+var IconImport = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(12.0, 3.0),
+		gfx.LineTo(12.0, 15.0),
+		gfx.MoveTo(7.0, 10.0),
+		gfx.LineTo(12.0, 15.0),
+		gfx.LineTo(17.0, 10.0),
+		gfx.MoveTo(5.0, 21.0),
+		gfx.LineTo(19.0, 21.0),
 	},
 }
 

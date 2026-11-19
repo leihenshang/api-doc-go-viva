@@ -6,7 +6,6 @@ import (
 
 	"github.com/leihenshang/api-doc-go-share/collection"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
-	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
 )
@@ -54,32 +53,31 @@ func kvRows(items []collection.KV) ui.TableRows {
 	return rows
 }
 
-// fieldRows 是请求体字段表：body.fields 是唯一真源，这里只做列映射。
-func fieldRows(items []collection.BodyField) ui.TableRows {
-	rows := make(ui.TableRows, 0, len(items))
+// newFieldEditor 把落盘的字段表转成可编辑行。
+func newFieldEditor(items []collection.BodyField) []*fieldRow {
+	rows := make([]*fieldRow, 0, len(items))
 	for _, field := range items {
-		required := "可选"
-		if field.Required {
-			required = "必填"
-		}
-		rows = append(rows, []string{field.Name, field.Type, required, field.Description})
+		rows = append(rows, &fieldRow{
+			name: field.Name, typ: field.Type, required: field.Required,
+			example: field.Example, desc: field.Description,
+		})
 	}
 	return rows
 }
 
-// headerLines 把响应头拼成「名称: 值」多行文本：绘制期只画不算，也不分配。
-func headerLines(items []send.Header) string {
-	if len(items) == 0 {
-		return ""
+// fieldsFromEditor 把可编辑行写回落盘结构。
+func fieldsFromEditor(rows []*fieldRow) []collection.BodyField {
+	out := make([]collection.BodyField, 0, len(rows))
+	for _, row := range rows {
+		if strings.TrimSpace(row.name) == "" {
+			continue
+		}
+		out = append(out, collection.BodyField{
+			Name: row.name, Type: row.typ, Required: row.required,
+			Example: row.example, Description: row.desc,
+		})
 	}
-	var b strings.Builder
-	for _, header := range items {
-		b.WriteString(header.Name)
-		b.WriteString(": ")
-		b.WriteString(header.Value)
-		b.WriteByte('\n')
-	}
-	return b.String()
+	return out
 }
 
 // bodyRaw 取请求体正文：json/text 的原文在 raw，Bruno 兼容字段是 data。

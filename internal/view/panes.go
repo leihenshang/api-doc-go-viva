@@ -4,14 +4,9 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
-)
-
-// fieldHeaders / fieldColumns 是请求体字段表的列（只读展示，body.fields 是文档生成的真源）。
-var (
-	fieldHeaders = []string{"字段", "类型", "必填", "说明"}
-	fieldColumns = []components.TableColumn{{Width: 180}, {Width: 90}, {Width: 60}, {}}
 )
 
 // requestTitle 是请求标题行：方法角标、名称、概述与脏状态。
@@ -23,6 +18,12 @@ func (m *Model) requestTitle(c ui.C, entry *explorer.Entry) {
 			ui.Text(c, entry.Summary).FontSize(12).Muted().Ellipsis()
 		}
 		ui.Spacer(c)
+		if m.req.note != "" {
+			ui.Text(c, m.req.note).FontSize(11).Muted()
+		}
+		if ui.Button(c, "复制 cURL").Icon(IconCopy).Ghost().Small().Clicked() {
+			c.After(func() { m.copyCurl(entry) })
+		}
 		if m.req.dirty {
 			ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
 		}
@@ -137,11 +138,51 @@ func (m *Model) bodyTab(c ui.C) {
 			m.req.dirty = true
 		}
 	}
-	if len(m.tables.fields) == 0 {
-		return
+	m.fieldEditor(c)
+}
+
+// fieldEditor 编辑请求体字段表（body.fields）：字段名 / 类型 / 必填 / 示例 / 说明。
+func (m *Model) fieldEditor(c ui.C) {
+	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Text(c, "字段名").FontSize(11).Muted().Width(150)
+		ui.Text(c, "类型").FontSize(11).Muted().Width(100)
+		ui.Text(c, "必填").FontSize(11).Muted().Width(40)
+		ui.Text(c, "示例").FontSize(11).Muted().Width(160)
+		ui.Text(c, "说明").FontSize(11).Muted().Grow(1)
+		ui.Slot(c).Width(32)
+	})
+	for index, row := range m.req.fields {
+		slot := index
+		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			if ui.TextField(c, &row.name, "字段名", "id").Width(150).Changed() {
+				m.req.dirty = true
+			}
+			if ui.TextField(c, &row.typ, "类型", "string").Width(100).Changed() {
+				m.req.dirty = true
+			}
+			if ui.Checkbox(c, &row.required, "").Changed() {
+				m.req.dirty = true
+			}
+			if ui.TextField(c, &row.example, "示例", "abc").Width(160).Changed() {
+				m.req.dirty = true
+			}
+			if ui.TextField(c, &row.desc, "说明", "").Grow(1).Changed() {
+				m.req.dirty = true
+			}
+			if ui.Button(c, "删除字段").Icon(IconTrash).IconOnly().Clicked() {
+				c.After(func() {
+					m.req.fields = append(m.req.fields[:slot], m.req.fields[slot+1:]...)
+					m.req.dirty = true
+				})
+			}
+		})
 	}
-	ui.Text(c, "请求体字段（只读，body.fields 是文档生成的真源）").FontSize(11).Muted()
-	table(c, &m.tableStates[2], &m.tables.fields, fieldHeaders, fieldColumns)
+	ui.Row(c).FillWidth().Children(func() {
+		if ui.Button(c, "添加字段").Icon(IconPlus).Ghost().Clicked() {
+			m.req.fields = append(m.req.fields, &fieldRow{typ: "string"})
+			m.req.dirty = true
+		}
+	})
 }
 
 // formEditor 编辑 form / multipart 的逐行字段；multipart 多一列「类型」（text 或 file）。
@@ -238,22 +279,30 @@ func (m *Model) authTab(c ui.C) {
 	}
 }
 
-// docsTab 编辑概述与详细说明，下面实时预览 Markdown 排版结果。
+// docsTab 是接口文档：左边写概述与 Markdown 原文，右边实时预览（参考 10）。
 func (m *Model) docsTab(c ui.C, entry *explorer.Entry) {
-	ui.Text(c, "概述").FontSize(11).Muted()
-	if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").FillWidth().Changed() {
-		m.req.dirty = true
-	}
-	ui.Text(c, "详细说明（Markdown）").FontSize(11).Muted()
-	if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").FillWidth().Height(200).Changed() {
-		m.req.dirty = true
-	}
-	ui.Text(c, "预览").FontSize(11).Muted()
-	if strings.TrimSpace(m.req.docs) == "" {
-		ui.Text(c, "（没有详细说明）").Muted()
-		return
-	}
-	m.previewBlock(c, m.req.docs, m.tables.docsKey)
+	ui.Row(c).FillWidth().Gap(12).Children(func() {
+		ui.Column(c).Grow(1).Gap(8).Children(func() {
+			ui.Text(c, "概述").FontSize(11).Muted()
+			if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").FillWidth().Changed() {
+				m.req.dirty = true
+			}
+			ui.Text(c, "详细说明（Markdown）").FontSize(11).Muted()
+			if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").
+				FillWidth().Height(240).Changed() {
+				m.req.dirty = true
+			}
+		})
+		ui.Divider(c)
+		ui.Column(c).Grow(1).Gap(6).Children(func() {
+			ui.Text(c, "预览").FontSize(11).Muted()
+			if strings.TrimSpace(m.req.docs) == "" {
+				ui.Text(c, "（没有详细说明）").Muted()
+				return
+			}
+			m.previewBlock(c, m.req.docs, m.tables.docsKey, m.contentWidth(c)/2-20)
+		})
+	})
 }
 
 // responsePanel 是请求页下方的响应区：状态行固定，正文滚动。
@@ -279,6 +328,12 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 				ui.Text(c, m.status).FontSize(12).Bold().Color(statusTint)
 				ui.Text(c, m.reason).FontSize(11).Muted()
 				ui.Spacer(c)
+				if m.copyNote != "" {
+					ui.Text(c, m.copyNote).FontSize(11).Muted()
+				}
+				if ui.Button(c, "复制正文").Icon(IconCopy).Ghost().Tooltip("复制响应正文").Clicked() {
+					c.After(m.copyResponse)
+				}
 				ui.Text(c, m.elapsed+" · "+m.size).FontSize(11).Muted().Mono()
 			}
 		})
@@ -293,11 +348,7 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 			case m.failText != "":
 				ui.Text(c, "请求失败："+m.failText).FontSize(11).Color(theme.Danger)
 			case m.respTab == 1:
-				if m.tables.respHeader == "" {
-					ui.Text(c, "没有响应头").Muted()
-					return
-				}
-				ui.Paragraph(c, m.tables.respHeader, 0).Mono().FontSize(11)
+				m.responseHeaders(c)
 			default:
 				if m.missing != "" {
 					ui.Text(c, m.missing).FontSize(11).Color(theme.Danger)
@@ -306,10 +357,88 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					ui.Text(c, "响应体为空").Muted()
 					return
 				}
+				if len(m.tables.json) > 0 {
+					m.jsonBody(c)
+					return
+				}
 				ui.Paragraph(c, m.bodyText, 0).Mono().FontSize(11)
 			}
 		})
 	})
+}
+
+// toggleJSONFold 折叠 / 展开响应 JSON 的某一行。
+func (m *Model) toggleJSONFold(line int) {
+	if m.tables.jsonFolded == nil {
+		m.tables.jsonFolded = make(map[int]bool)
+	}
+	m.tables.jsonFolded[line] = !m.tables.jsonFolded[line]
+	m.storeTab()
+	m.invalidator.Invalidate()
+}
+
+// copyResponse 把响应正文写进系统剪贴板；失败时留一句提示。
+func (m *Model) copyResponse() {
+	if err := app.SetClipboardText(m.resp.Body); err != nil {
+		m.copyNote = "复制失败：" + err.Error()
+		return
+	}
+	m.copyNote = "已复制"
+	m.storeTab()
+	m.invalidator.Invalidate()
+}
+
+// jsonBody 画响应 JSON：可折叠行带箭头，折叠后直接跳到收尾行。
+func (m *Model) jsonBody(c ui.C) {
+	hiddenUntil := -1
+	for index, line := range m.tables.json {
+		if index < hiddenUntil {
+			continue
+		}
+		end, foldable := m.tables.jsonFolds[index]
+		folded := foldable && m.tables.jsonFolded[index]
+		lineIndex := index
+		ui.Row(c).Gap(2).Items(ui.Center).Children(func() {
+			if foldable {
+				arrow := "▾"
+				if folded {
+					arrow = "▸"
+				}
+				if ui.Button(c, arrow).Ghost().XSmall().Clicked() {
+					c.After(func() { m.toggleJSONFold(lineIndex) })
+				}
+			} else {
+				ui.Slot(c).Width(18)
+			}
+			for _, span := range line {
+				ui.Text(c, span.text).Mono().FontSize(11).Color(m.jsonTint(span.kind))
+			}
+			if folded {
+				ui.Text(c, "…").Mono().FontSize(11).Muted()
+			}
+		})
+		if folded {
+			hiddenUntil = end + 1
+		}
+	}
+}
+
+// responseHeaders 是响应头的两列表格：名称定宽、值占满剩余宽度。
+func (m *Model) responseHeaders(c ui.C) {
+	if len(m.tables.respHeaders) == 0 {
+		ui.Text(c, "没有响应头").Muted()
+		return
+	}
+	ui.Row(c).FillWidth().Gap(12).PadY(4).Children(func() {
+		ui.Text(c, "名称").FontSize(11).Muted().Width(220)
+		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
+	})
+	for _, header := range m.tables.respHeaders {
+		ui.Row(c).FillWidth().Gap(12).PadY(2).Children(func() {
+			ui.Text(c, header.Name).Mono().FontSize(11).Width(220)
+			ui.Text(c, header.Value).Mono().FontSize(11).Grow(1).Ellipsis()
+		})
+	}
 }
 
 // grpcTab 只读展示 gRPC 元数据：调用不在这次框架验证的范围。
@@ -357,24 +486,29 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 			}
 		})
 		ui.Text(c, m.editor.metaLine).FontSize(11).Muted().Mono()
-		ui.Tabs(c, &m.tab, docTabs, tabLabel).Line()
-		if m.tab == tabEdit {
-			ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").FillWidth().Grow(1)
-			return
-		}
-		if strings.TrimSpace(m.editor.text) == "" {
-			emptyBox(c, "空文档", "在「编辑」页签里写内容，这里会实时预览")
-			return
-		}
-		ui.Scroll(c).Grow(1).Children(func() {
-			m.previewBlock(c, m.editor.text, m.editor.previewKey)
+		ui.Row(c).FillWidth().Grow(1).Gap(12).Children(func() {
+			ui.Column(c).Grow(1).Gap(6).Children(func() {
+				ui.Text(c, "源码").FontSize(11).Muted()
+				ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").FillWidth().Grow(1)
+			})
+			ui.Divider(c)
+			ui.Column(c).Grow(1).Gap(6).Children(func() {
+				ui.Text(c, "预览").FontSize(11).Muted()
+				if strings.TrimSpace(m.editor.text) == "" {
+					ui.Text(c, "（空文档）").Muted()
+					return
+				}
+				ui.Scroll(c).Grow(1).Children(func() {
+					m.previewBlock(c, m.editor.text, m.editor.previewKey, m.contentWidth(c)/2-20)
+				})
+			})
 		})
 	})
 }
 
 // previewBlock 把一段 Markdown 排好版画进当前布局（不加滚动容器，由调用方决定）。
-func (m *Model) previewBlock(c ui.C, source, key string) {
-	height := m.previewHeight(c, key, source, m.contentWidth(c))
+func (m *Model) previewBlock(c ui.C, source, key string, width float32) {
+	height := m.previewHeight(c, key, source, width)
 	ui.Slot(c).FillWidth().Height(height).Draw(func(d *ui.DrawContext) {
 		m.docs.view.Paint(d.Canvas, components.MarkdownPaint{
 			Look: m.docs.look,

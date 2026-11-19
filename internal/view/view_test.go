@@ -13,6 +13,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/ui"
 )
 
 // TestClickingSendShowsTheResponse 走完整链路：读集合 → 点行 → 点发送 → 真实 HTTP → 界面出状态码。
@@ -184,8 +185,14 @@ func TestSettingsDialogShowsIMEStatus(t *testing.T) {
 
 	click(t, driver, "设置")
 	pump(t, driver)
-	if !shows(driver, "输入法") || !shows(driver, "外观") {
-		t.Fatalf("设置面板缺少分组：%v", painted(driver))
+	if !shows(driver, "外观") || !shows(driver, "关于") {
+		t.Fatalf("设置面板缺少分区导航：%v", painted(driver))
+	}
+	// 「关于」分区里才显示输入法现状。
+	click(t, driver, "设置分区 关于")
+	pump(t, driver)
+	if !shows(driver, "输入法") {
+		t.Fatalf("关于分区应显示输入法：%v", painted(driver))
 	}
 	if model.ui.imeDetail == "" {
 		t.Fatal("应探测输入法状态")
@@ -233,14 +240,10 @@ func TestCreateDocThenEditAndPreview(t *testing.T) {
 		t.Fatalf("保存内容 = %q", data)
 	}
 
-	// 预览页签：标题应当被 markdown 排版（不带 # 号）。
-	click(t, driver, "预览")
+	// 右栏是实时预览：标题按 markdown 排版，与左侧源码同屏。
 	pump(t, driver)
 	if !shows(driver, "新标题") {
 		t.Fatalf("预览没有画出标题：%v", painted(driver))
-	}
-	if shows(driver, "# 新标题") {
-		t.Fatalf("预览把 # 号也画出来了（没走排版）：%v", painted(driver))
 	}
 }
 
@@ -540,9 +543,12 @@ func TestResponseHeadersTab(t *testing.T) {
 		t.Fatalf("响应头分段没有画响应头：%v", painted(driver))
 	}
 	// 面板高度有限，多出来的行在滚动区外；模型里必须是完整的响应头。
-	if !strings.Contains(model.tables.respHeader, "X-Trace: trace-1") ||
-		!strings.Contains(model.tables.respHeader, "Content-Type: application/json") {
-		t.Fatalf("响应头文案 = %q", model.tables.respHeader)
+	found := map[string]string{}
+	for _, header := range model.tables.respHeaders {
+		found[header.Name] = header.Value
+	}
+	if found["X-Trace"] != "trace-1" || found["Content-Type"] != "application/json" {
+		t.Fatalf("响应头 = %v", found)
 	}
 }
 
@@ -803,6 +809,235 @@ func TestTabStripScrollsToActive(t *testing.T) {
 	}
 }
 
+// TestParseJSONHighlights 响应体是 JSON 时按词法切开：键、字符串、数字、字面量各有类别。
+func TestParseJSONHighlights(t *testing.T) {
+	lines, folds := parseJSON(`{"name":"neo","age":3,"ok":true}`)
+	if len(lines) == 0 {
+		t.Fatal("合法 JSON 应能排版")
+	}
+	seen := map[jsonKind]bool{}
+	for _, line := range lines {
+		for _, span := range line {
+			seen[span.kind] = true
+		}
+	}
+	for _, kind := range []jsonKind{jsonKey, jsonString, jsonNumber, jsonLiteral, jsonPunct} {
+		if !seen[kind] {
+			t.Fatalf("缺少类别 %v：%v", kind, lines)
+		}
+	}
+	if end, ok := folds[0]; !ok || end == 0 || end >= len(lines) {
+		t.Fatalf("对象应有折叠范围：%v", folds)
+	}
+	if lines, _ := parseJSON("not json"); lines != nil {
+		t.Fatal("非 JSON 应回退成纯文本")
+	}
+}
+
+// TestBodyFieldsPersist 请求体字段表可编辑并写回 body.fields。
+func TestBodyFieldsPersist(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	model.req.bodyType = "json"
+	model.req.fields = []*fieldRow{{name: "id", typ: "string", required: true, example: "1", desc: "主键"}}
+	model.req.dirty = true
+	model.saveRequest()
+	pump(t, driver)
+
+	data, err := os.ReadFile(filepath.Join(col.Dir, "健康检查.yml"))
+	if err != nil {
+		t.Fatalf("读回请求：%v", err)
+	}
+	text := string(data)
+	for _, want := range []string{"fields:", "name: id", "type: string", "required: true", "example: \"1\"", "description: 主键"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("字段表没有写回 %q：\n%s", want, text)
+		}
+	}
+	if len(model.req.fields) != 1 || model.req.fields[0].name != "id" || !model.req.fields[0].required {
+		t.Fatalf("保存后草稿 = %+v", model.req.fields)
+	}
+}
+
+// TestCommandPaletteFiltersAndRuns 命令面板：按输入过滤，点一行执行命令。
+func TestCommandPaletteFiltersAndRuns(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.openPalette()
+	pump(t, driver)
+	if !hasControl(driver, "命令 设置") {
+		var labels []string
+		for _, hit := range driver.Snapshot().Hits {
+			labels = append(labels, hit.Label)
+		}
+		t.Fatalf("命令面板应列出命令：open=%v hits=%v labels=%v", model.ui.paletteOpen, labels, painted(driver))
+	}
+
+	model.ui.paletteQuery = "临时"
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	if !hasControl(driver, "命令 新建临时请求") || hasControl(driver, "命令 设置") {
+		t.Fatalf("过滤后的命令 = %v", painted(driver))
+	}
+
+	click(t, driver, "命令 新建临时请求")
+	pump(t, driver)
+	pump(t, driver)
+	if model.ui.paletteOpen || len(model.tabs) != 1 || !model.scratch {
+		t.Fatalf("执行后应关面板并开临时标签：open=%v tabs=%d scratch=%v",
+			model.ui.paletteOpen, len(model.tabs), model.scratch)
+	}
+}
+
+// TestTrashListAndRestore 删除到回收站后能列出并恢复回集合根。
+func TestTrashListAndRestore(t *testing.T) {
+	dir := makeCollection(t, "回收站集合", "旧请求")
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := explorer.TrashEntry(dir, col.Entries[0]); err != nil {
+		t.Fatalf("TrashEntry: %v", err)
+	}
+	col, err = explorer.Load(dir)
+	if err != nil || len(col.Entries) != 0 {
+		t.Fatalf("删除后应没有条目：%v %v", col, err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.openTrash()
+	pump(t, driver)
+	if len(model.ui.trashRows) != 1 || !shows(driver, "回收站") {
+		t.Fatalf("回收站应有 1 个文件：%+v", model.ui.trashRows)
+	}
+	model.restoreTrash(model.ui.trashRows[0].File)
+	pump(t, driver)
+	if len(model.ui.trashRows) != 0 {
+		t.Fatalf("恢复后列表应清空：%+v", model.ui.trashRows)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "旧请求.yml")); err != nil {
+		t.Fatalf("文件没有恢复：%v", err)
+	}
+	if len(model.tabs) != 1 {
+		t.Fatalf("恢复后应打开该条目：tabs=%d", len(model.tabs))
+	}
+}
+
+// TestCurlImportCreatesRequest 粘贴 curl → 落盘成请求并打开。
+func TestCurlImportCreatesRequest(t *testing.T) {
+	dir := makeCollection(t, "导入集合", "占位")
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.openCurlImport()
+	pump(t, driver)
+	if !hasControl(driver, "导入") {
+		t.Fatalf("导入弹窗应有「导入」按钮：%v", painted(driver))
+	}
+	model.ui.curlText = `curl 'https://api.example.com/v1/users' -X POST -H 'Content-Type: application/json' -d '{"name":"neo"}'`
+	model.importCurl()
+	pump(t, driver)
+	pump(t, driver)
+
+	if !strings.Contains(model.req.url, "api.example.com/v1/users") || model.req.method != "POST" {
+		t.Fatalf("导入后的请求 = %s %s", model.req.method, model.req.url)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "users.yml"))
+	if err != nil {
+		t.Fatalf("请求文件没有落盘：%v", err)
+	}
+	text := string(data)
+	for _, want := range []string{"method: POST", "Content-Type", "application/json", "neo"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("文件缺少 %q：\n%s", want, text)
+		}
+	}
+	if len(model.tabs) != 1 {
+		t.Fatalf("导入后应打开新请求：tabs=%d", len(model.tabs))
+	}
+}
+
+// TestMoveEntryIntoFolder 拖到分组后文件真的换了目录，标签跟着新路径。
+func TestMoveEntryIntoFolder(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 移动集合\n")
+	writeFile(t, filepath.Join(dir, "用户", "folder.yml"), "info:\n  name: 用户\n  type: folder\n  seq: 1\n")
+	writeFile(t, filepath.Join(dir, "移动我.yml"), `info:
+  name: 移动我
+  type: http
+  seq: 1
+meta:
+  uid: move-me
+http:
+  method: GET
+  url: http://example.invalid/move
+  params: []
+  headers: []
+  body:
+    type: none
+`)
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 移动我")
+	pump(t, driver)
+
+	model.moveEntry("移动我.yml", "用户")
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(dir, "用户", "移动我.yml")); err != nil {
+		t.Fatalf("文件没有移到分组：%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "移动我.yml")); !os.IsNotExist(err) {
+		t.Fatalf("旧路径仍存在：%v", err)
+	}
+	if len(model.tabs) != 1 || model.req.url != "http://example.invalid/move" {
+		t.Fatalf("标签应跟着新路径：tabs=%d url=%q", len(model.tabs), model.req.url)
+	}
+}
+
+// TestToggleJSONFold 折叠状态按行记住，再点一次恢复。
+func TestToggleJSONFold(t *testing.T) {
+	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "sample"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	lines, folds := parseJSON(`{"a":{"b":1}}`)
+	model.tables.json, model.tables.jsonFolds = lines, folds
+	model.tables.jsonFolded = map[int]bool{}
+	if len(folds) == 0 {
+		t.Fatal("嵌套对象应有折叠范围")
+	}
+	model.toggleJSONFold(0)
+	if !model.tables.jsonFolded[0] {
+		t.Fatal("第一次应折叠")
+	}
+	model.toggleJSONFold(0)
+	if model.tables.jsonFolded[0] {
+		t.Fatal("第二次应展开")
+	}
+}
+
 func openWindow(t *testing.T, model *Model) *app.Driver {
 	t.Helper()
 	driver, err := app.NewDriver(model.config(), nil)
@@ -944,5 +1179,351 @@ func writeFile(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("写 %s: %v", path, err)
+	}
+}
+
+// TestArrangeEntriesKeepsSiblingsOrdered 同级拖放会把请求排到目标前 / 后，并按新顺序重写 seq。
+func TestArrangeEntriesKeepsSiblingsOrdered(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.syncTree()
+
+	health, gone := -1, -1
+	for i, row := range model.rows {
+		switch row.key {
+		case entryKey(col.Dir, "健康检查.yml"):
+			health = i
+		case entryKey(col.Dir, "删除.yml"):
+			gone = i
+		}
+	}
+	if health < 0 || gone < 0 {
+		t.Fatalf("树里找不到两条请求：%+v", model.rows)
+	}
+	before := ui.TreeMove{From: gone, To: health, Where: ui.TreeDropBefore}
+	if !model.canDrop(before.From, before.To, before.Where) {
+		t.Fatal("同目录条目前后落点应可放置")
+	}
+	model.dropRow(before)
+	pump(t, driver)
+
+	col, err = explorer.Load(col.Dir)
+	if err != nil {
+		t.Fatalf("重扫: %v", err)
+	}
+	if len(col.Entries) != 2 || col.Entries[0].File != "删除.yml" || col.Entries[0].Seq != 1 ||
+		col.Entries[1].File != "健康检查.yml" || col.Entries[1].Seq != 2 {
+		t.Fatalf("顺序没写回：%+v", col.Entries)
+	}
+	model.syncTree()
+	if model.rows[1].key != entryKey(col.Dir, "删除.yml") || model.rows[2].key != entryKey(col.Dir, "健康检查.yml") {
+		t.Fatalf("树没有按新 seq 排：%+v", model.rows)
+	}
+
+	if len(model.tabs) != 0 {
+		t.Fatalf("排序不该打开标签：%d", len(model.tabs))
+	}
+
+	// 再拖回末尾：应回到原顺序。
+	after := ui.TreeMove{From: 1, To: 2, Where: ui.TreeDropAfter}
+	model.dropRow(after)
+	pump(t, driver)
+	col, err = explorer.Load(col.Dir)
+	if err != nil {
+		t.Fatalf("重扫: %v", err)
+	}
+	if col.Entries[0].File != "健康检查.yml" || col.Entries[1].File != "删除.yml" {
+		t.Fatalf("拖回末尾失败：%+v", col.Entries)
+	}
+
+	// 跨目录 / 落到集合根上的前后落点都不接受。
+	model.syncTree()
+	if model.canDrop(1, 0, ui.TreeDropBefore) {
+		t.Fatal("集合根不是同级排序的目标")
+	}
+}
+
+// TestFolderDragReordersAndReparents 分组可拖到同级前后，也可拖进另一个分组；打开中的标签跟着目录改名。
+func TestFolderDragReordersAndReparents(t *testing.T) {
+	dir := writeCollection(t, "http://example.invalid")
+	writeFile(t, filepath.Join(dir, "甲", "folder.yml"), "info:\n  name: 甲\n  seq: 1\n")
+	writeFile(t, filepath.Join(dir, "甲", "甲请求.yml"), "info:\n  name: 甲请求\n  type: http\n  seq: 1\nmeta:\n  uid: a-1\nhttp:\n  method: GET\n  url: 'http://example.invalid/a'\n")
+	writeFile(t, filepath.Join(dir, "乙", "folder.yml"), "info:\n  name: 乙\n  seq: 2\n")
+	writeFile(t, filepath.Join(dir, "乙", "乙请求.yml"), "info:\n  name: 乙请求\n  type: http\n  seq: 1\nmeta:\n  uid: b-1\nhttp:\n  method: GET\n  url: 'http://example.invalid/b'\n")
+
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.syncTree()
+
+	find := func(key string) int {
+		for i, row := range model.rows {
+			if row.key == key {
+				return i
+			}
+		}
+		t.Fatalf("树里没有 %s：%+v", key, model.rows)
+		return -1
+	}
+	first, second := find(dirKey(col.Dir, "甲")), find(dirKey(col.Dir, "乙"))
+	if !model.canDrop(second, first, ui.TreeDropBefore) {
+		t.Fatal("同父分组之间应可前后排序")
+	}
+	model.dropRow(ui.TreeMove{From: second, To: first, Where: ui.TreeDropBefore})
+	pump(t, driver)
+	col, err = explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("重扫: %v", err)
+	}
+	if col.Folders[0].Dir != "乙" || col.Folders[0].Seq != 1 || col.Folders[1].Dir != "甲" || col.Folders[1].Seq != 2 {
+		t.Fatalf("分组顺序没写回：%+v", col.Folders)
+	}
+
+	// 打开 甲请求，再把整个 甲 分组拖进 乙：标签路径要跟着改。
+	click(t, driver, "GET 甲请求")
+	pump(t, driver)
+	if len(model.tabs) != 1 || model.tabs[0].file != "甲/甲请求.yml" {
+		t.Fatalf("标签没打开：%+v", model.tabs)
+	}
+	model.syncTree()
+	from, into := find(dirKey(col.Dir, "甲")), find(dirKey(col.Dir, "乙"))
+	if !model.canDrop(from, into, ui.TreeDropInside) {
+		t.Fatal("分组应可拖进另一个分组")
+	}
+	model.dropRow(ui.TreeMove{From: from, To: into, Where: ui.TreeDropInside})
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(dir, "乙", "甲", "甲请求.yml")); err != nil {
+		t.Fatalf("目录没移动: %v", err)
+	}
+	if len(model.tabs) != 1 || model.tabs[0].file != "乙/甲/甲请求.yml" || model.tabs[0].entry == nil {
+		t.Fatalf("标签没跟着目录改名：%+v", model.tabs)
+	}
+	// 草稿也跟着换路径：保存必须写进新目录，不能在旧位置又写一份。
+	model.req.url = "http://example.invalid/moved"
+	model.req.dirty = true
+	model.saveRequest()
+	pump(t, driver)
+	data, err := os.ReadFile(filepath.Join(dir, "乙", "甲", "甲请求.yml"))
+	if err != nil || !strings.Contains(string(data), "/moved") {
+		t.Fatalf("保存没落到新路径：%v\n%s", err, data)
+	}
+	// 移进自己 / 子孙不接受。
+	model.syncTree()
+	if model.canDrop(find(dirKey(col.Dir, "乙")), find(dirKey(col.Dir, "乙/甲")), ui.TreeDropInside) {
+		t.Fatal("祖先不能拖进自己的子孙")
+	}
+}
+
+// TestNewFolderRenameAndAutoExpand 分组可在树里新建 / 重命名；把条目拖进折叠的分组后目标会展开。
+func TestNewFolderRenameAndAutoExpand(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.openNewFolderIn("")
+	model.ui.folderName = "分组甲"
+	model.createFolder()
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(col.Dir, "分组甲", "folder.yml")); err != nil {
+		t.Fatalf("分组没建出来: %v", err)
+	}
+
+	model.openRenameFolder(&explorer.Folder{Dir: "分组甲", Name: "分组甲"})
+	model.ui.renameName = "分组乙"
+	model.renameEntry()
+	pump(t, driver)
+	data, _ := os.ReadFile(filepath.Join(col.Dir, "分组甲", "folder.yml"))
+	if !strings.Contains(string(data), "name: 分组乙") {
+		t.Fatalf("分组没重命名：\n%s", data)
+	}
+	if _, err := os.Stat(filepath.Join(col.Dir, "分组甲")); err != nil {
+		t.Fatalf("重命名不该动目录名: %v", err)
+	}
+
+	// 给分组放一条内容，让它成为可展开的枝干；折叠后再把根目录的请求拖进去。
+	writeFile(t, filepath.Join(col.Dir, "分组甲", "内部.yml"),
+		"info:\n  name: 内部\n  type: http\n  seq: 1\nmeta:\n  uid: inside\nhttp:\n  method: GET\n  url: ''\n")
+	if !model.reloadCollection() {
+		t.Fatal("重扫失败")
+	}
+	pump(t, driver)
+	model.expanded[dirKey(col.Dir, "分组甲")] = false
+	model.treeDirty = true
+	model.syncTree()
+	folder, entry := -1, -1
+	for i, row := range model.rows {
+		switch row.key {
+		case dirKey(col.Dir, "分组甲"):
+			folder = i
+		case entryKey(col.Dir, "健康检查.yml"):
+			entry = i
+		}
+	}
+	if folder < 0 || entry < 0 {
+		t.Fatalf("树里找不到目标行：%+v", model.rows)
+	}
+	if model.rows[folder].expanded {
+		t.Fatal("分组应该是折叠的")
+	}
+	if !model.canDrop(entry, folder, ui.TreeDropInside) {
+		t.Fatal("请求应能拖进分组")
+	}
+	// 悬停到点：分组在下一帧被展开（等价于拖拽停在它上面 600ms）。
+	model.dragHoverSince = time.Now().Add(-time.Second)
+	model.canDrop(entry, folder, ui.TreeDropInside)
+	model.flushHoverExpand()
+	if !model.expanded[dirKey(col.Dir, "分组甲")] {
+		t.Fatal("悬停后分组应自动展开")
+	}
+	model.expanded[dirKey(col.Dir, "分组甲")] = false
+	model.treeDirty = true
+	model.syncTree()
+	model.dropRow(ui.TreeMove{From: entry, To: folder, Where: ui.TreeDropInside})
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(col.Dir, "分组甲", "健康检查.yml")); err != nil {
+		t.Fatalf("请求没移动: %v", err)
+	}
+	if !model.expanded[dirKey(col.Dir, "分组甲")] {
+		t.Fatal("落进折叠分组后应自动展开")
+	}
+	if len(model.tabs) != 0 {
+		t.Fatalf("拖进分组不该顺手打开标签：%d", len(model.tabs))
+	}
+}
+
+// TestCrossCollectionDragAndFolderOps 跨集合拖放、克隆与删除分组都落到磁盘，标签跟着收敛。
+func TestCrossCollectionDragAndFolderOps(t *testing.T) {
+	srcDir := writeCollection(t, "http://example.invalid")
+	writeFile(t, filepath.Join(srcDir, "整组", "folder.yml"), "info:\n  name: 整组\n  type: folder\n  seq: 1\n")
+	writeFile(t, filepath.Join(srcDir, "整组", "组内.yml"), "info:\n  name: 组内\n  type: http\n  seq: 1\nmeta:\n  uid: inner\nhttp:\n  method: GET\n  url: 'http://example.invalid/inner'\n")
+	writeFile(t, filepath.Join(srcDir, "用户", "folder.yml"), "info:\n  name: 用户\n  type: folder\n  seq: 2\n")
+	writeFile(t, filepath.Join(srcDir, "用户", "用户请求.yml"), "info:\n  name: 用户请求\n  type: http\n  seq: 1\nmeta:\n  uid: user-req\nhttp:\n  method: GET\n  url: 'http://example.invalid/user'\n")
+	dstDir := writeCollection(t, "http://example.invalid")
+	dstCol, err := explorer.Load(dstDir)
+	if err != nil {
+		t.Fatalf("Load dst: %v", err)
+	}
+	srcCol, err := explorer.Load(srcDir)
+	if err != nil {
+		t.Fatalf("Load src: %v", err)
+	}
+	model := New(srcCol, "", nil)
+	model.AddRoot(dstCol)
+	driver := openWindow(t, model)
+	model.syncTree()
+
+	// 打开源集合里整组下的请求，跨集合移走后标签应消失。
+	click(t, driver, "GET 组内")
+	pump(t, driver)
+	if len(model.tabs) != 1 {
+		t.Fatalf("标签没打开：%+v", model.tabs)
+	}
+	from := -1
+	for i, row := range model.rows {
+		if row.folder != nil && row.folder.Dir == "整组" {
+			from = i
+		}
+	}
+	if from < 0 {
+		t.Fatalf("树里没有整组：%+v", model.rows)
+	}
+	// 目标集合根行是第二个根（active 仍是第一个）。
+	to := -1
+	for i, row := range model.rows {
+		if row.kind == nodeRoot && row.root == 1 {
+			to = i
+		}
+	}
+	if to < 0 {
+		t.Fatalf("树里没有第二个集合根：%+v", model.rows)
+	}
+	if !model.canDrop(from, to, ui.TreeDropInside) {
+		t.Fatal("分组应能拖到另一个集合根上")
+	}
+	model.dropRow(ui.TreeMove{From: from, To: to, Where: ui.TreeDropInside})
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(dstDir, "整组", "组内.yml")); err != nil {
+		t.Fatalf("分组没跨集合移动: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(srcDir, "整组")); !os.IsNotExist(err) {
+		t.Fatal("源分组还在")
+	}
+	if len(model.tabs) != 0 {
+		t.Fatalf("移走的条目标签应关闭：%+v", model.tabs)
+	}
+
+	// 克隆源集合的「用户」分组。
+	model.syncTree()
+	model.active = 0
+	var users *explorer.Folder
+	for _, folder := range model.roots[0].col.Folders {
+		if folder.Name == "用户" {
+			users = folder
+		}
+	}
+	model.cloneFolder(users)
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(srcDir, "用户 副本1", "folder.yml")); err != nil {
+		t.Fatalf("克隆分组没生成: %v", err)
+	}
+
+	// 删除克隆出来的分组：目录进回收站，标签若在其中会被关掉。
+	model.askDeleteFolder(&explorer.Folder{Dir: "用户 副本1", Name: "用户 副本1"})
+	model.deleteFolder()
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(srcDir, "用户 副本1")); !os.IsNotExist(err) {
+		t.Fatal("分组没删掉")
+	}
+	items, err := explorer.ListTrash(srcDir)
+	if err != nil || len(items) == 0 {
+		t.Fatalf("回收站里应有被删的分组：%+v %v", items, err)
+	}
+}
+
+// TestTwoRootsWithSamePathsShareNoTreeKeys 两个集合有同名条目时，树键必须按根区分；
+// 否则 Viva 会在一次绘制里报「two siblings have the key ...」并 panic。
+func TestTwoRootsWithSamePathsShareNoTreeKeys(t *testing.T) {
+	first := writeCollection(t, "http://example.invalid")
+	second := writeCollection(t, "http://example.invalid")
+	colA, err := explorer.Load(first)
+	if err != nil {
+		t.Fatalf("Load A: %v", err)
+	}
+	colB, err := explorer.Load(second)
+	if err != nil {
+		t.Fatalf("Load B: %v", err)
+	}
+	model := New(colA, "", nil)
+	model.AddRoot(colB)
+	// 两个根都展开，让同名条目同时进入可见行。
+	model.expanded["root:"+colA.Dir] = true
+	model.expanded["root:"+colB.Dir] = true
+	openWindow(t, model)
+	model.syncTree()
+
+	seen := map[string]bool{}
+	for _, row := range model.rows {
+		if seen[row.key] {
+			t.Fatalf("树键重复：%s", row.key)
+		}
+		seen[row.key] = true
+	}
+	if len(model.rows) != 6 {
+		t.Fatalf("两个根的条目应都在树里：%d 行", len(model.rows))
+	}
+	// 一个根的分组折叠状态不会串到另一个根。
+	if dirKey(colA.Dir, "") == dirKey(colB.Dir, "") {
+		t.Fatal("不同集合的同名目录键应不同")
 	}
 }

@@ -31,11 +31,21 @@ func (m *Model) overviewPage(c ui.C) {
 				m.openSettings()
 			}
 		})
+		ui.Row(c).FillWidth().Gap(8).Children(func() {
+			for _, hint := range overviewHints {
+				ui.Text(c, hint).FontSize(10).Mono().Muted().
+					PadX(8).PadY(4).Radius(theme.Metrics.RadiusControl).
+					Background(theme.Muted)
+			}
+		})
 		ui.Text(c, "提示：左侧树里点请求会在标签中打开；未保存的临时请求可用标签栏右侧「+」新建。").
 			FontSize(11).Muted().Color(theme.MutedForeground)
 		ui.Spacer(c)
 	})
 }
+
+// overviewHints 是概览页的快捷键提示（包级切片，避免每帧分配）。
+var overviewHints = []string{"Ctrl+K 命令面板", "Ctrl+S 保存", "Ctrl+Enter 发送"}
 
 // statCard 是一张数字卡：标签在上、值在下，卡片底用组件目录的 Card。
 func (m *Model) statCard(c ui.C, label, value string) {

@@ -1,0 +1,80 @@
+info:
+    name: 用户列表
+    type: http
+    seq: 2
+meta:
+    uid: 900be9c1-576c-4a08-880f-a8630f602e03
+    base_rev: 0
+summary: 分页查询用户
+http:
+    method: GET
+    url: '{{host}}/json/withArray'
+    params:
+        - name: page
+          value: "1"
+          enabled: true
+          description: 页码
+        - name: size
+          value: "20"
+          enabled: true
+          description: 每页条数
+        - name: keyword
+          value: ""
+          enabled: false
+          description: 可选：按名称模糊匹配
+    headers:
+        - name: Authorization
+          value: Bearer {{token}}
+          enabled: true
+        - name: Accept
+          value: application/json
+          enabled: true
+    body:
+        type: none
+docs: |-
+    ## 查询参数
+
+    | 参数 | 说明 |
+    | --- | --- |
+    | page | 从 1 开始 |
+    | size | 最大 100 |
+respdoc:
+    contentType: json
+    headers:
+        - enabled: true
+          name: Content-Type
+          value: application/json
+    params:
+        - description: 总条数
+          example: "128"
+          fieldName: total
+          required: true
+          type: integer
+        - description: 用户 ID
+          example: "1001"
+          fieldName: items[].id
+          required: true
+          type: integer
+        - description: 显示名
+          example: Alice
+          fieldName: items[].name
+          required: true
+          type: string
+        - description: 邮箱
+          example: alice@example.com
+          fieldName: items[].email
+          required: false
+          type: string
+    sample: |-
+        {
+          "total": 128,
+          "items": [
+            {
+              "id": 1001,
+              "name": "Alice",
+              "email": "alice@example.com"
+            }
+          ]
+        }
+    status: 200
+    type: object

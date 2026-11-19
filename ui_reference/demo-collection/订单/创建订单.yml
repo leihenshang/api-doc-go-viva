@@ -1,0 +1,47 @@
+info:
+    name: 创建订单
+    type: http
+    seq: 2
+meta:
+    uid: 65ae22eb-7a4f-4877-8124-6c1abe54fe3f
+    base_rev: 0
+summary: 创建一笔订单
+http:
+    method: POST
+    url: '{{host}}/echo'
+    params:
+        - name: ""
+          value: ""
+          enabled: true
+    headers:
+        - name: Content-Type
+          value: application/json
+          enabled: true
+        - name: Authorization
+          value: Bearer {{token}}
+          enabled: true
+    body:
+        type: json
+        raw: |-
+            {
+              "sku": "A-1001",
+              "count": 2,
+              "note": "工作日送达"
+            }
+        fields:
+            - name: sku
+              type: string
+              required: true
+              example: A-1001
+              description: 商品编码
+            - name: count
+              type: integer
+              required: true
+              example: "2"
+              description: 数量
+            - name: note
+              type: string
+              required: false
+              example: 工作日送达
+              description: 备注
+docs: ""

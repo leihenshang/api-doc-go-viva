@@ -120,8 +120,10 @@ type requestTables struct {
 	grpcMessage  string
 	params       ui.TableRows
 	headers      ui.TableRows
-	fields       ui.TableRows
-	respHeader   string
+	respHeaders  []send.Header
+	json         []jsonLine
+	jsonFolds    map[int]int
+	jsonFolded   map[int]bool
 }
 
 // palette 是 Wails 客户端的面板色令牌：浅色 sidebar #f5f5f5 / panel #ffffff，
@@ -175,6 +177,15 @@ type kvRow struct {
 	secret  bool   // 仅环境变量：值写进 *.secrets.yml
 }
 
+// fieldRow 是请求体字段表的一行（body.fields 是文档生成的真源）。
+type fieldRow struct {
+	name     string
+	typ      string
+	required bool
+	example  string
+	desc     string
+}
+
 // requestDraft 是一条 http 请求的编辑草稿；保存时写回集合文件。
 type requestDraft struct {
 	file   string
@@ -184,6 +195,7 @@ type requestDraft struct {
 	params  []*kvRow
 	headers []*kvRow
 	form    []*kvRow
+	fields  []*fieldRow
 
 	bodyType  string
 	bodyRaw   string
@@ -202,6 +214,7 @@ type requestDraft struct {
 
 	dirty bool
 	err   string
+	note  string
 }
 
 // workspaceUI 是弹窗与设置面板的输入状态（不参与集合语义，只是界面状态）。
@@ -215,21 +228,40 @@ type workspaceUI struct {
 	// savingScratch 表示这次弹窗是「临时请求另存为」，保存成功后关掉临时标签。
 	savingScratch bool
 
-	renameOpen bool
-	renameName string
-	renameFile string
-	renameErr  string
+	renameOpen   bool
+	renameName   string
+	renameFile   string
+	renameFolder string // 非空表示这次重命名的是分组目录（相对集合根）
+	renameErr    string
 
-	settingsOpen   bool
-	themePick      int
-	imeDetail      string
-	dirLine        string
-	envLine        string
-	collectionName string
-	timeoutText    string
-	follow         bool
-	envs           []string
-	envPick        string
+	folderOpen   bool
+	folderName   string
+	folderParent string // 新分组落在哪个目录下（空=集合根）
+	folderErr    string
+
+	folderDeleteOpen bool
+	folderDeleteDir  string
+	folderDeleteName string
+
+	settingsOpen    bool
+	settingsSection int
+	paletteOpen     bool
+	trashOpen       bool
+	curlOpen        bool
+	curlText        string
+	curlErr         string
+	trashRows       []explorer.TrashItem
+	trashMsg        string
+	paletteQuery    string
+	themePick       int
+	imeDetail       string
+	dirLine         string
+	envLine         string
+	collectionName  string
+	timeoutText     string
+	follow          bool
+	envs            []string
+	envPick         string
 
 	pendingDir string
 	initOpen   bool
@@ -281,12 +313,19 @@ type Model struct {
 	treeDirty bool
 	sideC     ui.C // 只在本帧声明期有效：treeContent 需要上下文
 
+	// 拖拽悬停展开：指针停在折叠分组上超过 dragExpandDelay，就把该分组展开。
+	// 记录的是树行键与起始时间，真正展开在下一帧的 flushHoverExpand 里做。
+	dragHoverKey   string
+	dragHoverSince time.Time
+	dragExpandKey  string
+
 	// 选中项：行的数量要等 Tree 画完才更新，新行第一帧选不上，留一次重试。
 	selectFile    string
 	selectPending bool
 	// selKey 是当前高亮的行（Tree 的选中由应用决定，组件只按 TreeNode.Selected 上色）。
 	selKey      string
 	menuRoot    int
+	menuEntry   string
 	envMenuOpen bool
 	menuOpen    bool
 	tab         detailTab
@@ -298,14 +337,15 @@ type Model struct {
 	countText string
 	subtitle  string
 
-	// entryFile 是当前右侧展示的条目；pendingSelect 是重扫后要选中的路径。
+	// entryFile 是当前右侧展示的条目；pendingSelect 是重扫后要选中的路径，
+	// pendingKey 是同一件事的树行键（分组排序后选回分组用）。
 	entryFile     string
 	pendingSelect string
+	pendingKey    string
 	createErr     string
 
-	tables      requestTables
-	tableStates [3]ui.TableState
-	respTab     int
+	tables  requestTables
+	respTab int
 
 	docs     docState
 	editor   docEditor
@@ -320,6 +360,7 @@ type Model struct {
 	hasResp  bool
 	sending  bool
 	status   string
+	copyNote string
 	reason   string
 	elapsed  string
 	size     string
@@ -371,6 +412,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.tree.Node = m.treeNode
 	m.tree.Label = m.treeLabel
 	m.tree.Key = m.treeKey
+	m.tree.CanDrop = m.canDrop
 	m.tree.RowHeight = 30
 	m.tree.Indent = 16
 	m.refreshShown()
@@ -398,6 +440,132 @@ func (m *Model) config() app.Config {
 func (m *Model) Run() error {
 	var canvas gfx.Canvas
 	return app.RunCanvas(m.config(), &canvas)
+}
+
+// dragExpandDelay 是拖拽时停在折叠分组上多久后自动展开。
+const dragExpandDelay = 600 * time.Millisecond
+
+// canDrop 接受：条目换上级、条目同级排序、分组换父级、分组同级排序。
+// 集合根不能拖，跨集合根的拖放也不接。
+func (m *Model) canDrop(from, to int, where ui.TreeDrop) bool {
+	ok := m.dropAllowed(from, to, where)
+	// Tree 会对同一行依次试 Inside / After / Before：只有「放进分组」这一个落点
+	// 参与悬停展开，别的落点既不算命中也不该把计时清掉。
+	if where == ui.TreeDropInside {
+		if ok {
+			m.noteDragHover(to)
+		} else {
+			m.dragHoverKey, m.dragHoverSince = "", time.Time{}
+		}
+	}
+	return ok
+}
+
+// noteDragHover 记录指针停在折叠分组上的时长；到点后交给下一帧展开。
+func (m *Model) noteDragHover(index int) {
+	row := &m.rows[index]
+	if !row.branch || row.expanded {
+		m.dragHoverKey, m.dragHoverSince = "", time.Time{}
+		return
+	}
+	now := time.Now()
+	if m.dragHoverKey != row.key {
+		m.dragHoverKey, m.dragHoverSince = row.key, now
+		// 指针停住时没有新事件，稍晚一点唤醒：给到点判定留出余量，
+		// 定时器只负责叫醒窗口，真正展开仍在界面线程做。
+		time.AfterFunc(dragExpandDelay+100*time.Millisecond, m.invalidator.Invalidate)
+		return
+	}
+	if now.Sub(m.dragHoverSince) < dragExpandDelay {
+		return
+	}
+	m.dragExpandKey = row.key
+	m.dragHoverKey, m.dragHoverSince = "", time.Time{}
+	m.invalidator.Invalidate()
+}
+
+// flushHoverExpand 在声明树之前展开到点的分组（绘制期只读，不在回调里改状态）。
+func (m *Model) flushHoverExpand() {
+	if m.dragExpandKey != "" {
+		key := m.dragExpandKey
+		m.dragExpandKey = ""
+		m.expanded[key] = true
+		m.treeDirty = true
+		m.syncTree()
+	}
+	if !m.tree.Dragging() {
+		m.dragHoverKey, m.dragHoverSince = "", time.Time{}
+	}
+}
+
+// dropAllowed 是 canDrop 的纯判定，不碰拖拽悬停状态。
+// 同一集合根里可以换上级、排序；跨集合根只接「放进分组 / 集合根」，
+// 因为另一棵树里的序号与父目录都不在当前集合里，排序没有意义。
+func (m *Model) dropAllowed(from, to int, where ui.TreeDrop) bool {
+	if from < 0 || to < 0 || from >= len(m.rows) || to >= len(m.rows) || from == to {
+		return false
+	}
+	source, target := m.rows[from], m.rows[to]
+	if source.kind == nodeRoot {
+		return false
+	}
+	if source.root < 0 || source.root >= len(m.roots) || target.root < 0 || target.root >= len(m.roots) {
+		return false
+	}
+	same := source.root == target.root
+	switch source.kind {
+	case nodeEntry:
+		switch where {
+		case ui.TreeDropInside:
+			folder, ok := m.folderTarget(to)
+			if !ok {
+				return false
+			}
+			return !same || folder != requestDir(source.entry.File)
+		case ui.TreeDropBefore, ui.TreeDropAfter:
+			return same && target.kind == nodeEntry &&
+				requestDir(target.entry.File) == requestDir(source.entry.File)
+		}
+	case nodeFolder:
+		switch where {
+		case ui.TreeDropInside:
+			var dest string
+			switch target.kind {
+			case nodeFolder:
+				dest = target.folder.Dir
+			case nodeRoot:
+				dest = ""
+			default:
+				return false
+			}
+			if !same {
+				return true
+			}
+			// 移进自己或自己的子孙会把整棵子树弄丢。
+			if dest == source.folder.Dir || strings.HasPrefix(dest, source.folder.Dir+"/") {
+				return false
+			}
+			return parentDir(source.folder.Dir) != dest
+		case ui.TreeDropBefore, ui.TreeDropAfter:
+			return same && target.kind == nodeFolder &&
+				parentDir(target.folder.Dir) == parentDir(source.folder.Dir)
+		}
+	}
+	return false
+}
+
+// folderTarget 把一行翻译成可放入的分组目录（集合根为空串）。
+func (m *Model) folderTarget(index int) (string, bool) {
+	if index < 0 || index >= len(m.rows) {
+		return "", false
+	}
+	switch m.rows[index].kind {
+	case nodeRoot:
+		return "", true
+	case nodeFolder:
+		return m.rows[index].folder.Dir, true
+	}
+	return "", false
 }
 
 // refreshShown 只在过滤词变化时重建可见列表，顺带更新计数文案。
@@ -437,6 +605,21 @@ func entryMatches(entry *explorer.Entry, needle string) bool {
 // applyPendingSelect 在重扫后把树的选中项落回关心的条目。
 // Tree 的行数要等这一帧画完才更新，新行第一次选不上，所以必要时再要一帧。
 func (m *Model) applyPendingSelect() {
+	if m.pendingKey != "" {
+		m.syncTree()
+		index := m.rowOfKey(m.pendingKey)
+		if index < 0 {
+			m.pendingKey = ""
+			return
+		}
+		m.tree.Select(index)
+		if m.tree.Selected() != index {
+			m.invalidator.Invalidate()
+			return
+		}
+		m.pendingKey = ""
+		return
+	}
 	if m.pendingSelect == "" {
 		return
 	}
@@ -499,7 +682,7 @@ func (m *Model) ensureEntry(entry *explorer.Entry) {
 	block := entry.Payload.HTTP
 	m.tables.params = kvRows(block.Params)
 	m.tables.headers = kvRows(block.Headers)
-	m.tables.fields = fieldRows(block.Body.Fields)
+
 	if auth := block.Auth; auth != nil && auth.Type != "" {
 		m.tables.authLine = "认证：" + auth.Type
 	}
@@ -629,6 +812,7 @@ func (m *Model) resetResponse() {
 	m.hasResp = false
 	m.status, m.reason, m.elapsed, m.size = "", "", "", ""
 	m.bodyText, m.missing, m.failText, m.statusOK = "", "", "", false
+	m.copyNote = ""
 }
 
 // collect 是 OnWake：在重绘前把后台结果搬成界面文案（这里算一次，绘制期只读）。
@@ -676,7 +860,9 @@ func (m *Model) fillResponse(out send.Outcome) {
 	m.size = humanBytes(out.Size)
 	m.statusOK = out.Status < 400
 	m.bodyText = clip(out.Body, 4000)
-	m.tables.respHeader = headerLines(out.Headers)
+	m.tables.respHeaders = out.Headers
+	m.tables.json, m.tables.jsonFolds = parseJSON(out.Body)
+	m.tables.jsonFolded = make(map[int]bool)
 	if len(out.Missing) > 0 {
 		m.missing = "未解析变量：" + strings.Join(out.Missing, ", ")
 	}

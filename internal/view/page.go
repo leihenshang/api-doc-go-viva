@@ -8,6 +8,15 @@ import (
 // Page 声明整窗：工具条 + （集合树 | 分隔条 | 详情）。
 // 搜索框在 sidebar 里先声明、当帧写入过滤词，随后重建树，避免一帧延迟。
 func (m *Model) Page(c ui.C) {
+	if ui.Shortcut(c, ui.Primary, "k") {
+		c.After(func() {
+			if m.ui.paletteOpen {
+				m.ui.paletteOpen = false
+				return
+			}
+			m.openPalette()
+		})
+	}
 	m.toolbar(c)
 	ui.Row(c).Fill().Children(func() {
 		ui.Column(c).Width(m.split.Pos).FillHeight().Background(m.pal.sidebar).Children(func() {
@@ -103,6 +112,9 @@ func (m *Model) sidebar(c ui.C) {
 			if ui.Button(c, "新建文档").Icon(IconFilePlus).IconOnly().Tooltip("新建文档").Clicked() {
 				c.After(m.createDoc)
 			}
+			if ui.Button(c, "导入 cURL").Icon(IconImport).IconOnly().Tooltip("导入 cURL").Clicked() {
+				m.openCurlImport()
+			}
 		})
 		if ui.TextField(c, &m.filter, "搜索请求", "搜索请求…").Icon(IconSearch).FillWidth().Changed() {
 			m.shownOnce = false
@@ -111,6 +123,7 @@ func (m *Model) sidebar(c ui.C) {
 		m.syncTree()
 		m.applySelect()
 		m.applyPendingSelect()
+		m.flushHoverExpand()
 		if m.createErr != "" {
 			ui.Text(c, m.createErr).FontSize(11).Color(c.Theme().Danger)
 		}
@@ -123,6 +136,8 @@ func (m *Model) sidebar(c ui.C) {
 			m.toggleRow(index)
 		} else if index, ok := m.tree.Chosen(); ok {
 			m.chooseRow(index)
+		} else if move, ok := m.tree.Dropped(); ok {
+			m.dropRow(move)
 		}
 	})
 }
@@ -207,7 +222,7 @@ func (m *Model) clampTabStart(capacity int) {
 // pinnedTab 是固定在最左的「集合」页：点它回到概览。
 func (m *Model) pinnedTab(c ui.C) {
 	theme := c.Theme()
-	ui.Column(c).Width(tabWidth).Gap(0).Children(func() {
+	ui.Column(c).Width(68).Gap(0).Children(func() {
 		row := ui.Row(c).Height(35).PadX(10).Gap(6).Items(ui.Center).
 			Hover(ui.Look{}.Background(theme.Hover)).
 			Hit(ui.ID(c), "标签 集合")
@@ -248,6 +263,23 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 			ui.Text(c, title).FontSize(12.5).Ellipsis()
 			if ui.Button(c, "关闭 "+title).Icon(IconX).IconOnly().Ghost().Tooltip("关闭标签").Clicked() {
 				c.After(func() { m.closeTab(slot) })
+			}
+		})
+		ui.ContextMenu(c, row, func(menu *ui.MenuItems) {
+			if menu.Item("关闭").Clicked() {
+				c.After(func() { m.closeTab(slot) })
+			}
+			if menu.Item("关闭其他").Clicked() {
+				c.After(func() { m.closeOthers(slot) })
+			}
+			if menu.Item("关闭右侧").Clicked() {
+				c.After(func() { m.closeRight(slot) })
+			}
+			if !tab.scratch && tab.file != "" {
+				if menu.Item("复制请求路径").Clicked() {
+					file := tab.file
+					c.After(func() { m.copyText(file) })
+				}
 			}
 		})
 		if row.Clicked() {

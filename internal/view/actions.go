@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-share/collection"
+	curlc "github.com/leihenshang/api-doc-go-viva/internal/curl"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
@@ -167,6 +168,39 @@ func (m *Model) createRequest() {
 }
 
 // openRenameEntry 打开重命名弹窗（文件名不动，只改显示名）。
+// openNewFolderIn 打开「新建分组」弹窗；parent 是父目录（空=集合根）。
+func (m *Model) openNewFolderIn(parent string) {
+	m.ui.folderOpen = true
+	m.ui.folderName = ""
+	m.ui.folderParent = parent
+	m.ui.folderErr = ""
+}
+
+// createFolder 落盘新分组：展开父级、选中新行。
+func (m *Model) createFolder() {
+	path, err := explorer.CreateFolder(m.col.Dir, m.ui.folderParent, m.ui.folderName)
+	if err != nil {
+		m.ui.folderErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.folderOpen = false
+	m.expandDir(m.ui.folderParent)
+	if m.reloadCollection() {
+		m.selectFolderDir(path)
+	}
+	m.invalidator.Invalidate()
+}
+
+// openRenameFolder 打开分组重命名：只改 folder.yml 的 info.name。
+func (m *Model) openRenameFolder(folder *explorer.Folder) {
+	m.ui.renameOpen = true
+	m.ui.renameFile = ""
+	m.ui.renameFolder = folder.Dir
+	m.ui.renameName = folder.Name
+	m.ui.renameErr = ""
+}
+
 func (m *Model) openRenameEntry(entry *explorer.Entry) {
 	if entry == nil {
 		return
@@ -175,10 +209,15 @@ func (m *Model) openRenameEntry(entry *explorer.Entry) {
 	m.ui.renameErr = ""
 	m.ui.renameName = entry.Name
 	m.ui.renameFile = entry.File
+	m.ui.renameFolder = ""
 }
 
-// renameEntry 把显示名写回文件（请求改 info.name，文档改 frontmatter name）。
+// renameEntry 把显示名写回文件（请求改 info.name，文档改 frontmatter name，分组改 folder.yml）。
 func (m *Model) renameEntry() {
+	if m.ui.renameFolder != "" {
+		m.renameFolder()
+		return
+	}
 	entry := m.entryByFile(m.ui.renameFile)
 	if entry == nil {
 		m.ui.renameOpen = false
@@ -191,6 +230,62 @@ func (m *Model) renameEntry() {
 	}
 	m.ui.renameOpen = false
 	m.reload(entry.File, m.tab)
+}
+
+// renameFolder 把分组显示名写回 folder.yml，目录名不动。
+func (m *Model) renameFolder() {
+	dir := m.ui.renameFolder
+	if err := explorer.RenameFolder(m.col.Dir, &explorer.Folder{Dir: dir}, m.ui.renameName); err != nil {
+		m.ui.renameErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.renameOpen = false
+	m.ui.renameFolder = ""
+	if m.reloadCollection() {
+		m.selectFolderDir(dir)
+	}
+	m.invalidator.Invalidate()
+}
+
+// cloneFolder 深拷贝分组，展开父级并选中副本。
+func (m *Model) cloneFolder(folder *explorer.Folder) {
+	path, err := explorer.CloneFolder(m.col.Dir, folder)
+	if err != nil {
+		m.createErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.expandDir(parentDir(folder.Dir))
+	if m.reloadCollection() {
+		m.selectFolderDir(path)
+	}
+	m.invalidator.Invalidate()
+}
+
+// askDeleteFolder 打开删除确认：整个分组会进回收站。
+func (m *Model) askDeleteFolder(folder *explorer.Folder) {
+	m.ui.folderDeleteOpen = true
+	m.ui.folderDeleteDir = folder.Dir
+	m.ui.folderDeleteName = folder.Name
+}
+
+// deleteFolder 把分组目录整体移进 .trash；标签随重扫自动丢弃。
+func (m *Model) deleteFolder() {
+	dir := m.ui.folderDeleteDir
+	m.ui.folderDeleteOpen = false
+	if err := explorer.TrashFolder(m.col.Dir, &explorer.Folder{Dir: dir, Name: m.ui.folderDeleteName}); err != nil {
+		m.createErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.tree.Select(-1)
+	m.selKey = ""
+	if m.reloadCollection() {
+		m.pendingSelect = ""
+		m.pendingKey = ""
+	}
+	m.invalidator.Invalidate()
 }
 
 // trashEntry 把条目移进 <集合>/.trash/（客户端同一个回收站），随后重扫。
@@ -206,6 +301,113 @@ func (m *Model) trashEntry(file string) {
 	}
 	m.closeTabOf(file)
 	m.reload("", tabParams)
+}
+
+// openCurlImport 打开「导入 cURL」弹窗。
+func (m *Model) openCurlImport() {
+	m.ui.curlOpen = true
+	m.ui.curlText = ""
+	m.ui.curlErr = ""
+	m.invalidator.Invalidate()
+}
+
+// importCurl 解析粘贴的 curl 并落盘成一条新请求，随后重扫并打开。
+func (m *Model) importCurl() {
+	file, err := curlc.Parse(m.ui.curlText)
+	if err != nil {
+		m.ui.curlErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	name := strings.TrimSpace(file.Info.Name)
+	if name == "" {
+		name = "导入的请求"
+	}
+	path, err := explorer.CreateRequest(m.col.Dir, "", name, file.HTTP.Method, file.HTTP.URL)
+	if err != nil {
+		m.ui.curlErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	col, err := explorer.Load(m.col.Dir)
+	if err != nil {
+		m.ui.curlErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	var saved *explorer.Entry
+	for _, entry := range col.Entries {
+		if entry.File == path {
+			saved = entry
+			break
+		}
+	}
+	if saved == nil || saved.Payload == nil {
+		m.ui.curlErr = "新建的请求读不回来"
+		m.invalidator.Invalidate()
+		return
+	}
+	saved.Payload.HTTP.Headers = file.HTTP.Headers
+	saved.Payload.HTTP.Body = file.HTTP.Body
+	saved.Payload.HTTP.Auth = file.HTTP.Auth
+	if err := explorer.SaveRequest(m.col.Dir, path, saved.Payload); err != nil {
+		m.ui.curlErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.curlOpen = false
+	m.ui.curlErr = ""
+	m.reload(path, tabParams)
+}
+
+// copyText 把一段文本写进剪贴板（标签菜单复制路径用）。
+func (m *Model) copyText(text string) {
+	_ = app.SetClipboardText(text)
+	m.invalidator.Invalidate()
+}
+
+// copyCurl 把当前请求导出成 cURL 写进剪贴板。
+func (m *Model) copyCurl(entry *explorer.Entry) {
+	if entry == nil || entry.Payload == nil {
+		return
+	}
+	if err := app.SetClipboardText(curlc.Generate(entry.Payload)); err != nil {
+		m.req.note = "导出失败：" + err.Error()
+	} else {
+		m.req.note = "cURL 已复制"
+	}
+	m.invalidator.Invalidate()
+}
+
+// openTrash 列出回收站文件并打开弹窗。
+func (m *Model) openTrash() {
+	items, err := explorer.ListTrash(m.col.Dir)
+	if err != nil {
+		m.createErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.trashRows = items
+	m.ui.trashMsg = ""
+	m.ui.trashOpen = true
+	m.invalidator.Invalidate()
+}
+
+// restoreTrash 把回收站文件恢复回集合根，然后重扫并刷新列表。
+func (m *Model) restoreTrash(file string) {
+	restored, err := explorer.RestoreTrash(m.col.Dir, file)
+	if err != nil {
+		m.ui.trashMsg = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.trashMsg = "已恢复：" + restored
+	m.reloadCollection()
+	if entry := m.entryByFile(restored); entry != nil {
+		m.openEntry(entry)
+	}
+	m.openTrash()
+	m.ui.trashMsg = "已恢复：" + restored
 }
 
 // chooseCollection 打开系统目录选择框；失败（没有可用的对话框后端）就退回手输路径。
@@ -444,6 +646,7 @@ func (m *Model) loadRequestDraft(entry *explorer.Entry) {
 	draft.params = newKVEditor(block.Params)
 	draft.headers = newKVEditor(block.Headers)
 	draft.form = newKVEditor(block.Body.Form)
+	draft.fields = newFieldEditor(block.Body.Fields)
 	for _, row := range draft.form {
 		if row.typ == "" {
 			row.typ = "text"
@@ -522,6 +725,7 @@ func (m *Model) saveRequest() {
 	file.HTTP.Params = kvFromEditor(m.req.params)
 	file.HTTP.Headers = kvFromEditor(m.req.headers)
 	file.HTTP.Body.Form = kvFromEditor(m.req.form)
+	file.HTTP.Body.Fields = fieldsFromEditor(m.req.fields)
 	file.HTTP.Body.Type = m.req.bodyType
 	if m.req.bodyField == "data" {
 		file.HTTP.Body.Data = m.req.bodyRaw

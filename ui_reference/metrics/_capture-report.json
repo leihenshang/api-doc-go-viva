@@ -1,0 +1,204 @@
+{
+  "base": "http://127.0.0.1:8199",
+  "shots": [
+    {
+      "name": "01-overview",
+      "theme": "light",
+      "status": "ok",
+      "note": "集合概览：目录/统计/快捷操作（真实路径只在这一页展示）"
+    },
+    {
+      "name": "02-tree-expanded",
+      "theme": "light",
+      "status": "ok",
+      "note": "集合树展开态：分组缩进、请求方法标记、文档条目"
+    },
+    {
+      "name": "03-tree-hover",
+      "theme": "light",
+      "status": "ok",
+      "note": "树行 hover：行底色、右侧操作按钮"
+    },
+    {
+      "name": "04-tree-context-menu",
+      "theme": "light",
+      "status": "ok",
+      "note": "根行右键菜单：新建/重命名/在文件管理器中打开"
+    },
+    {
+      "name": "05-request-params",
+      "theme": "light",
+      "status": "ok",
+      "note": "请求页：方法/URL 栏 + 参数表（名称/值/说明 + 启用位）"
+    },
+    {
+      "name": "06-request-body",
+      "theme": "light",
+      "status": "ok",
+      "note": "请求体：JSON 编辑器 + 字段表（5 列）"
+    },
+    {
+      "name": "07-request-headers",
+      "theme": "light",
+      "status": "ok",
+      "note": "请求头：键值行 + 启用位 + 说明列"
+    },
+    {
+      "name": "08-request-auth",
+      "theme": "light",
+      "status": "ok",
+      "note": "认证：类型下拉 + 令牌输入"
+    },
+    {
+      "name": "09-request-respdoc",
+      "theme": "light",
+      "status": "ok",
+      "note": "响应字段表：字段名/类型/必填/说明/示例"
+    },
+    {
+      "name": "10-request-docs",
+      "theme": "light",
+      "status": "ok",
+      "note": "接口级文档（Markdown 编辑器）"
+    },
+    {
+      "name": "11-response-sent",
+      "theme": "light",
+      "status": "ok",
+      "note": "响应区：状态码/耗时/大小 + 美化后的 JSON 树"
+    },
+    {
+      "name": "12-response-headers",
+      "theme": "light",
+      "status": "ok",
+      "note": "响应头表格"
+    },
+    {
+      "name": "13-tabs",
+      "theme": "light",
+      "status": "ok",
+      "note": "多页签：图标/名称/未保存圆点/关闭按钮"
+    },
+    {
+      "name": "14-command-palette",
+      "theme": "light",
+      "status": "ok",
+      "note": "命令面板：请求搜索 + 环境 + 命令"
+    },
+    {
+      "name": "15-settings-appearance",
+      "theme": "light",
+      "status": "ok",
+      "note": "设置·外观：主题/缩放/响应区位置/自动保存/关闭行为"
+    },
+    {
+      "name": "16-settings-network",
+      "theme": "light",
+      "status": "ok",
+      "note": "设置·网络与安全：代理/证书/超时/重定向"
+    },
+    {
+      "name": "17-settings-local",
+      "theme": "light",
+      "status": "ok",
+      "note": "设置·本地数据：工作目录/恢复上限/缓存"
+    },
+    {
+      "name": "18-settings-mcp",
+      "theme": "light",
+      "status": "ok",
+      "note": "设置·MCP：开关/端口/令牌/工具组/可访问工作区（只显示名称）"
+    },
+    {
+      "name": "19-dialog-import",
+      "theme": "light",
+      "status": "ok",
+      "note": "导入集合：格式选择 + 文本/文件"
+    },
+    {
+      "name": "20-dialog-export-scope",
+      "theme": "light",
+      "status": "ok",
+      "note": "导出范围：全部 / 仅所选（目录/请求/文档复选树）"
+    },
+    {
+      "name": "21-dialog-history",
+      "theme": "light",
+      "status": "ok",
+      "note": "请求历史：按时间/状态/耗时"
+    },
+    {
+      "name": "22-dialog-trash",
+      "theme": "light",
+      "status": "ok",
+      "note": "回收站：删除条目与恢复"
+    },
+    {
+      "name": "23-dialog-cookies",
+      "theme": "light",
+      "status": "ok",
+      "note": "Cookie 管理"
+    },
+    {
+      "name": "24-dialog-env",
+      "theme": "light",
+      "status": "ok",
+      "note": "环境管理：环境列表 + 变量表（敏感值打码）"
+    },
+    {
+      "name": "25-dialog-run",
+      "theme": "light",
+      "status": "ok",
+      "note": "运行集合：环境/过滤/失败即停/超时"
+    },
+    {
+      "name": "26-dialog-mock",
+      "theme": "light",
+      "status": "ok",
+      "note": "本地 Mock：端口 + 启停"
+    },
+    {
+      "name": "27-doc-preview",
+      "theme": "light",
+      "status": "ok",
+      "note": "文档页：只读预览（标题层级/表格/代码块/引用）"
+    },
+    {
+      "name": "28-doc-edit",
+      "theme": "light",
+      "status": "ok",
+      "note": "文档页：编辑态（左源码右实时预览）"
+    },
+    {
+      "name": "29-dark-overview",
+      "theme": "dark",
+      "status": "ok",
+      "note": "暗色·概览"
+    },
+    {
+      "name": "30-dark-request",
+      "theme": "dark",
+      "status": "ok",
+      "note": "暗色·请求页"
+    },
+    {
+      "name": "31-dark-response",
+      "theme": "dark",
+      "status": "ok",
+      "note": "暗色·响应区"
+    },
+    {
+      "name": "32-dark-settings-mcp",
+      "theme": "dark",
+      "status": "ok",
+      "note": "暗色·MCP 设置"
+    },
+    {
+      "name": "33-dark-tree",
+      "theme": "dark",
+      "status": "ok",
+      "note": "暗色·集合树"
+    }
+  ],
+  "failures": []
+}

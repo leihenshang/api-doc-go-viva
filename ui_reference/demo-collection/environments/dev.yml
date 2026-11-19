@@ -1,0 +1,11 @@
+info:
+    name: dev
+vars:
+    - name: host
+      value: http://127.0.0.1:8188
+      enabled: true
+      secret: false
+    - name: token
+      value: ""
+      enabled: true
+      secret: true

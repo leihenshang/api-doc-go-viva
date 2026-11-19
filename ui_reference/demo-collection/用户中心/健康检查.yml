@@ -1,0 +1,22 @@
+info:
+    name: 健康检查
+    type: http
+    seq: 3
+meta:
+    uid: b8e3d2b1-6e54-4f4d-99ac-aa9480208a70
+    base_rev: 0
+summary: 存活探针（不需要认证）
+http:
+    method: GET
+    url: '{{host}}/json/flat'
+    params:
+        - name: ""
+          value: ""
+          enabled: true
+    headers:
+        - name: Content-Type
+          value: application/json
+          enabled: true
+    body:
+        type: none
+docs: ""
