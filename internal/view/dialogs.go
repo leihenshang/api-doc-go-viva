@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
+	appmcp "github.com/leihenshang/api-doc-go-viva/internal/mcp"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
@@ -480,6 +481,18 @@ func (m *Model) mcpDialog(c ui.C) {
 			ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 				formLabel(c, "监听地址")
 				ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(200).Changed()
+			})
+			ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+				formLabel(c, "只读模式")
+				ui.Switch(c, &m.ui.mcpReadOnly, "只读：不暴露发请求与写磁盘的工具").Changed()
+				ui.Spacer(c)
+			})
+			ui.Row(c).Width(formRowWidth).Gap(10).Items(ui.Center).Children(func() {
+				formLabel(c, "工具组")
+				for index, name := range appmcp.Groups {
+					slot := index
+					ui.Checkbox(c, &m.ui.mcpGroupOn[slot], mcpGroupLabels[name]).Changed()
+				}
 			})
 			switch {
 			case m.mcp.running:

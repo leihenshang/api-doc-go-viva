@@ -33,6 +33,12 @@ type Config struct {
 	Logger       *log.Logger
 	// Service 是工具的业务实现（必填）。
 	Service *Service
+	// ReadOnly 只注册读工具（不发请求、不写磁盘）。
+	ReadOnly bool
+	// Groups 是要暴露的工具组；空 = 全部。
+	Groups []string
+	// Audit 记录每次工具调用；nil 表示不记。
+	Audit *Audit
 }
 
 // NewServer 装配 MCP 服务器并注册全部工具。
@@ -45,45 +51,114 @@ func NewServer(cfg Config) (*sdk.Server, error) {
 		Title:   "api-doc-go 接口集合（验证版）",
 		Version: ServerVersion,
 	}, nil)
-	registerTools(server, cfg.Service)
+	registerTools(server, cfg.Service, ToolOptions{ReadOnly: cfg.ReadOnly, Groups: cfg.Groups, Audit: cfg.Audit})
 	return server, nil
+}
+
+// ToolOptions 是注册工具时的开关：只读模式、勾选的分组、审计器。
+type ToolOptions struct {
+	// ReadOnly 为真时只注册读工具（不发请求、不写磁盘）。
+	ReadOnly bool
+	// Groups 是要注册的分组；空 = 全部（只读模式下再按 ReadOnly 过滤）。
+	Groups []string
+	Audit  *Audit
+}
+
+// allows 判断某个分组（含写标记）要不要注册。
+func (o ToolOptions) allows(group string, write bool) bool {
+	if write {
+		if o.ReadOnly {
+			return false
+		}
+		// 写工具同时属于「写」分组：任何一组里出现 write 都算勾上。
+		if !o.picks(GroupWrite) {
+			return false
+		}
+	}
+	return o.picks(group)
+}
+
+// picks 报告分组是否被勾选（Groups 为空视为全选）。
+func (o ToolOptions) picks(group string) bool {
+	if len(o.Groups) == 0 {
+		return true
+	}
+	for _, g := range o.Groups {
+		if g == group {
+			return true
+		}
+	}
+	return false
 }
 
 // registerTools 把 Service 的方法注册成 MCP 工具。
 // 结果一律是「人类 / AI 可读的文本」：工具链里文本比嵌套 JSON 更省 token、也更好读。
-func registerTools(server *sdk.Server, svc *Service) {
-	addTextTool(server, &sdk.Tool{
+func registerTools(server *sdk.Server, svc *Service, opts ToolOptions) {
+	// 读：集合与请求
+	register(server, opts, &sdk.Tool{
 		Name:        "list_workspaces",
 		Description: "列出当前客户端里打开的集合（别名、名称、请求/文档数量与环境）。别名用于其它工具的 workspace 参数。",
-	}, func(ctx context.Context, _ struct{}) (string, error) {
+	}, GroupCollection, false, func(ctx context.Context, _ struct{}) (string, error) {
 		return svc.ListWorkspaces(ctx)
 	})
-
-	addTextTool(server, &sdk.Tool{
+	register(server, opts, &sdk.Tool{
 		Name:        "list_requests",
 		Description: "列出集合里的请求与文档：方法、名称、分组与相对路径（path 供 get_request / get_doc / send_request 使用）。",
-	}, svc.ListRequests)
-
-	addTextTool(server, &sdk.Tool{
+	}, GroupCollection, false, svc.ListRequests)
+	register(server, opts, &sdk.Tool{
 		Name:        "get_request",
 		Description: "读取一条请求的完整定义：方法与地址、查询参数、请求头、认证、请求体、请求体字段与文档。",
-	}, svc.GetRequest)
+	}, GroupCollection, false, svc.GetRequest)
 
-	addTextTool(server, &sdk.Tool{
+	// 读：文档
+	register(server, opts, &sdk.Tool{
 		Name:        "get_doc",
 		Description: "读取集合里一篇 Markdown 文档的正文。",
-	}, svc.GetDoc)
+	}, GroupDocs, false, svc.GetDoc)
 
-	addTextTool(server, &sdk.Tool{
+	// 读：环境变量
+	register(server, opts, &sdk.Tool{
+		Name:        "list_envs",
+		Description: "列出集合的环境与变量（敏感值只显示掩码）。可用 env 参数只看某一个环境。",
+	}, GroupEnv, false, svc.ListEnvs)
+
+	// 读：响应示例
+	register(server, opts, &sdk.Tool{
+		Name:        "list_examples",
+		Description: "列出某条请求保存过的响应示例（名称、状态码、耗时、体积）。",
+	}, GroupExample, false, svc.ListExamples)
+
+	// 网络：真实发送（只读模式下不注册）
+	register(server, opts, &sdk.Tool{
 		Name:        "send_request",
 		Description: "发送一条请求（真实网络调用），返回状态码、耗时、响应头与响应正文（超长会截断）。",
-	}, svc.SendRequest)
+	}, GroupNetwork, true, svc.SendRequest)
+
+	// 写：改请求 / 新建请求 / 写环境变量
+	register(server, opts, &sdk.Tool{
+		Name:        "save_request",
+		Description: "修改一条已有请求（只改传入的字段）：名称、方法、地址、请求头。",
+	}, GroupCollection, true, svc.SaveRequest)
+	register(server, opts, &sdk.Tool{
+		Name:        "create_request",
+		Description: "新建一条请求（可指定分组与请求头），返回新请求的相对路径。",
+	}, GroupCollection, true, svc.CreateRequest)
+	register(server, opts, &sdk.Tool{
+		Name:        "set_env_var",
+		Description: "写入或删除一个环境变量（secret=true 落 *.secrets.yml，delete=true 删除）。",
+	}, GroupEnv, true, svc.SetEnvVar)
 }
 
-// addTextTool 把「入参 → 文本」的函数包成 SDK 要求的处理函数。
-func addTextTool[In any](server *sdk.Server, tool *sdk.Tool, fn func(context.Context, In) (string, error)) {
+// register 把「入参 → 文本」的函数包成 SDK 要求的处理函数，并套上分组过滤与审计。
+func register[In any](server *sdk.Server, opts ToolOptions, tool *sdk.Tool,
+	group string, write bool, fn func(context.Context, In) (string, error)) {
+	if !opts.allows(group, write) {
+		return
+	}
 	sdk.AddTool(server, tool, func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
+		started := time.Now()
 		text, err := fn(ctx, in)
+		opts.Audit.Record(tool.Name, write, in, started, err)
 		if err != nil {
 			return nil, nil, err
 		}

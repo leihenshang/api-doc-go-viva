@@ -2,10 +2,12 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -162,4 +164,94 @@ func TestNoWorkspaceIsAnAnswer(t *testing.T) {
 	if !strings.Contains(text, "没有可访问的集合") {
 		t.Fatalf("list_workspaces = %q", text)
 	}
+}
+
+// TestReadOnlyHidesWriteTools 只读模式：写工具与发送工具都不注册。
+func TestReadOnlyHidesWriteTools(t *testing.T) {
+	svc := &Service{Roots: func() []string { return nil }}
+	server, err := NewServer(Config{Service: svc, ReadOnly: true})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	names := toolNames(t, server)
+	for _, hidden := range []string{"save_request", "create_request", "set_env_var", "send_request"} {
+		if names[hidden] {
+			t.Fatalf("只读模式下不该有 %s：%v", hidden, names)
+		}
+	}
+	if !names["list_requests"] || !names["list_envs"] {
+		t.Fatalf("读工具应仍在：%v", names)
+	}
+}
+
+// TestGroupsFilterTools 只勾「环境变量」时，只剩环境相关工具。
+func TestGroupsFilterTools(t *testing.T) {
+	svc := &Service{Roots: func() []string { return nil }}
+	server, err := NewServer(Config{Service: svc, Groups: []string{GroupEnv}})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	names := toolNames(t, server)
+	if !names["list_envs"] {
+		t.Fatalf("环境组应包含 list_envs：%v", names)
+	}
+	if names["list_requests"] || names["get_doc"] {
+		t.Fatalf("别的组不该注册：%v", names)
+	}
+	// 写工具属于「写」组，没勾就不该出现。
+	if names["set_env_var"] {
+		t.Fatalf("没勾写组不该有 set_env_var：%v", names)
+	}
+}
+
+// TestAuditMasksSecrets 审计落盘时把 token / password 之类的值打码。
+func TestAuditMasksSecrets(t *testing.T) {
+	dir := t.TempDir()
+	audit := NewAudit(filepath.Join(dir, "audit.jsonl"))
+	audit.Record("set_env_var", true, SetEnvArgs{
+		Env: "dev", Name: "token", Value: "super-secret",
+	}, time.Now(), errors.New("boom"))
+
+	entries := audit.Load()
+	if len(entries) != 1 || entries[0].Tool != "set_env_var" || entries[0].OK {
+		t.Fatalf("审计记录不对：%+v", entries)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("读审计文件: %v", err)
+	}
+	if strings.Contains(string(raw), "super-secret") {
+		t.Fatalf("敏感值没打码：%s", raw)
+	}
+	if !strings.Contains(string(raw), "••••") {
+		t.Fatalf("应留下打码标记：%s", raw)
+	}
+	if err := audit.Clear(); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if len(audit.Load()) != 0 {
+		t.Fatal("清空后不该还有记录")
+	}
+}
+
+// toolNames 通过一次真实的 MCP 会话列出注册了哪些工具。
+func toolNames(t *testing.T, server *sdk.Server) map[string]bool {
+	t.Helper()
+	ctx := context.Background()
+	clientTransport, serverTransport := sdk.NewInMemoryTransports()
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "probe", Version: "0"}, nil).Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("连接: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+	list, err := session.ListTools(ctx, &sdk.ListToolsParams{})
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	out := map[string]bool{}
+	for _, tool := range list.Tools {
+		out[tool.Name] = true
+	}
+	return out
 }

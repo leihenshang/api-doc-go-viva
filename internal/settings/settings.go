@@ -54,6 +54,10 @@ type Settings struct {
 	MCPAddr string `json:"mcpAddr,omitempty"`
 	// MCPToken 是访问令牌（首次启用时生成），客户端用 `Authorization: Bearer <token>` 连接。
 	MCPToken string `json:"mcpToken,omitempty"`
+	// MCPReadOnly 只暴露读工具：不发请求、不写磁盘。
+	MCPReadOnly bool `json:"mcpReadOnly,omitempty"`
+	// MCPGroups 是要暴露的工具组（collection / docs / env / example / network / write）；空 = 全部。
+	MCPGroups []string `json:"mcpGroups,omitempty"`
 	// MCPAllow 是可访问工作区的白名单：出现在列表里 = 授权，Writable 决定写工具能否落盘。
 	MCPAllow []MCPAllowEntry `json:"mcpAllow,omitempty"`
 	// MockEnabled 打开本地桩服务（按当前集合的请求假回复）。

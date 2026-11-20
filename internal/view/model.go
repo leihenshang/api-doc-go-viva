@@ -16,6 +16,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
+	appmcp "github.com/leihenshang/api-doc-go-viva/internal/mcp"
 	appmock "github.com/leihenshang/api-doc-go-viva/internal/mock"
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
@@ -113,6 +114,8 @@ type mcpRuntime struct {
 	running bool
 	addr    string
 	err     string
+	// audit 是本次运行的调用审计（弹窗里导出 / 清空用）；未运行时为 nil。
+	audit *appmcp.Audit
 }
 
 // sendResult 是后台发送交回界面线程的结果，带标签代号与请求代号：
@@ -370,8 +373,11 @@ type workspaceUI struct {
 	envPick         string
 
 	// MCP 服务的设置（独立弹窗，与软件设置分开）：开关 / 监听地址 / 令牌 / 工作区授权。
-	mcpOpen    bool
-	mcpEnabled bool
+	mcpOpen     bool
+	mcpEnabled  bool
+	mcpReadOnly bool
+	// mcpGroupOn 按 appmcp.Groups 的顺序记「哪一组开着」。
+	mcpGroupOn []bool
 	mcpAddr    string
 	mcpToken   string
 	mcpAllow   []mcpAllowRow

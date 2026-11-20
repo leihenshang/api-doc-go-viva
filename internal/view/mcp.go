@@ -69,7 +69,18 @@ func (m *Model) startMCP() {
 		m.settings.MCPToken = newMCPToken()
 		_ = settings.Save(m.settings)
 	}
-	server, err := appmcp.NewServer(appmcp.Config{Service: &appmcp.Service{Roots: m.mcpRoots}})
+	// 审计落在偏好目录：AI 连续调用时能翻「它到底改了什么」。
+	auditPath := ""
+	if dir, err := settings.Dir(); err == nil {
+		auditPath = filepath.Join(dir, "mcp-audit.jsonl")
+	}
+	m.mcp.audit = appmcp.NewAudit(auditPath)
+	server, err := appmcp.NewServer(appmcp.Config{
+		Service:  &appmcp.Service{Roots: m.mcpRoots},
+		ReadOnly: m.settings.MCPReadOnly,
+		Groups:   m.settings.MCPGroups,
+		Audit:    m.mcp.audit,
+	})
 	if err != nil {
 		m.mcp = mcpRuntime{err: err.Error()}
 		return
@@ -187,4 +198,46 @@ func (m *Model) mcpConfigJSON() string {
     }
   }
 }`, mcpURL(m.ui.mcpAddr), m.ui.mcpToken)
+}
+
+// mcpGroupLabels 是工具组的中文名（设置面板里用）。
+var mcpGroupLabels = map[string]string{
+	appmcp.GroupCollection: "集合与请求",
+	appmcp.GroupDocs:       "文档",
+	appmcp.GroupEnv:        "环境变量",
+	appmcp.GroupExample:    "响应示例",
+	appmcp.GroupNetwork:    "发送请求",
+	appmcp.GroupWrite:      "写操作",
+}
+
+// syncMCPGroups 把落盘的组勾选装进表单（没配过 = 全选）。
+func (m *Model) syncMCPGroups() {
+	m.ui.mcpGroupOn = make([]bool, len(appmcp.Groups))
+	if len(m.settings.MCPGroups) == 0 {
+		for i := range m.ui.mcpGroupOn {
+			m.ui.mcpGroupOn[i] = true
+		}
+		return
+	}
+	for index, name := range appmcp.Groups {
+		for _, picked := range m.settings.MCPGroups {
+			if picked == name {
+				m.ui.mcpGroupOn[index] = true
+			}
+		}
+	}
+}
+
+// pickedMCPGroups 把勾选还原成分组名；全选时返回 nil（= 全部）。
+func (m *Model) pickedMCPGroups() []string {
+	out := make([]string, 0, len(appmcp.Groups))
+	for index, name := range appmcp.Groups {
+		if index < len(m.ui.mcpGroupOn) && m.ui.mcpGroupOn[index] {
+			out = append(out, name)
+		}
+	}
+	if len(out) == len(appmcp.Groups) {
+		return nil
+	}
+	return out
 }

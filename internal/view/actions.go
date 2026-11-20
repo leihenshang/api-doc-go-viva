@@ -1372,6 +1372,14 @@ func (m *Model) applyMCPEdits() {
 		m.settings.MCPEnabled = m.ui.mcpEnabled
 		changed, restart = true, true
 	}
+	if m.ui.mcpReadOnly != m.settings.MCPReadOnly {
+		m.settings.MCPReadOnly = m.ui.mcpReadOnly
+		changed, restart = true, true
+	}
+	if groups := m.pickedMCPGroups(); !sameStrings(groups, m.settings.MCPGroups) {
+		m.settings.MCPGroups = groups
+		changed, restart = true, true
+	}
 	if addr != m.settings.MCPAddr {
 		m.settings.MCPAddr = addr
 		changed, restart = true, true
@@ -1593,6 +1601,8 @@ func (m *Model) syncSettingsUI() {
 		m.ui.splitSide = 1
 	}
 	m.ui.mcpEnabled = m.settings.MCPEnabled
+	m.ui.mcpReadOnly = m.settings.MCPReadOnly
+	m.syncMCPGroups()
 	m.ui.mcpAddr = m.settings.MCPAddr
 	m.ui.mcpToken = m.settings.MCPToken
 }
@@ -1621,6 +1631,8 @@ func (m *Model) openSettings() {
 func (m *Model) openMCPSettings() {
 	// 每次打开都按落盘的偏好刷新表单，不沿用上一次没保存的编辑。
 	m.ui.mcpEnabled = m.settings.MCPEnabled
+	m.ui.mcpReadOnly = m.settings.MCPReadOnly
+	m.syncMCPGroups()
 	m.ui.mcpAddr = m.settings.MCPAddr
 	m.ui.mcpToken = m.settings.MCPToken
 	m.refreshMCPAllowRows()

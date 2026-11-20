@@ -123,3 +123,16 @@ func clip(text string, limit int) string {
 	}
 	return string(runes[:limit]) + "\n…（已截断）"
 }
+
+// sameStrings 比较两个字符串切片是否一致（顺序敏感；分组顺序固定）。
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
