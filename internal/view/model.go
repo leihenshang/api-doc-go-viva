@@ -488,10 +488,9 @@ type Model struct {
 
 	// 响应示例：当前请求存下来的快照（examples/*.yml），与最近一次真实响应分开存。
 	// exSel 为空表示正在看实时响应；看示例时 live 不被覆盖，切回来用它还原。
-	exRows     []explorer.Example
-	exSel      string
-	exMenuOpen bool
-	live       send.Outcome
+	exRows []explorer.Example
+	exSel  string
+	live   send.Outcome
 
 	// gen 是「当前选中请求」的代号：换请求后，旧请求在途的响应作废。
 	gen         int

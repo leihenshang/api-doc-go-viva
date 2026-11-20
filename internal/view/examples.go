@@ -18,7 +18,6 @@ import (
 // loadExamples 换到一条请求时读它的示例（不存在就是空），并回到实时响应。
 func (m *Model) loadExamples(entry *explorer.Entry) {
 	m.exRows, m.exSel, m.live = nil, "", send.Outcome{}
-	m.exMenuOpen = false
 	if entry == nil || entry.Kind != explorer.KindHTTP || m.col == nil {
 		return
 	}
@@ -116,31 +115,6 @@ func (m *Model) deleteExample() {
 	m.invalidator.Invalidate()
 }
 
-// exampleItems 把「响应示例」那一组挂进地址栏的「更多操作」菜单。
-//
-// 为什么不放响应工具条：那一行本来就满了（状态 / 分段 / 格式化 / 复制），
-// 再多一个按钮在窄栏下会把「原始」顶出去——T1 修的就是这个问题。
-func (m *Model) exampleItems(c ui.C, menu *ui.MenuItems) {
-	menu.Label("响应示例")
-	if menu.Item("实时响应").Checked(m.exSel == "").Clicked() {
-		c.After(m.showLive)
-	}
-	for _, item := range m.exRows {
-		row := item
-		if menu.Item(row.Name).Checked(m.exSel == row.File).Clicked() {
-			c.After(func() { m.showExample(row) })
-		}
-	}
-	menu.Separator()
-	save := menu.Item("存为示例").Disabled(!m.hasResp || m.failText != "" || m.exSel != "")
-	if save.Clicked() {
-		c.After(m.saveExample)
-	}
-	if m.exSel != "" && menu.Item("删除这份示例").Destructive().Clicked() {
-		c.After(m.deleteExample)
-	}
-}
-
 // exampleTag 是「正在看示例」的小标签，贴在状态码后面。
 //
 // 它同时是个按钮：点一下回到实时响应。理由很实际——切到示例后，
@@ -178,4 +152,65 @@ func headerValue(headers []send.Header, name string) string {
 		}
 	}
 	return ""
+}
+
+// examplePicker 是响应区右上角的「当前响应」下拉：实时响应 / 已存示例。
+//
+// 用 ui.Select 而不是自绘菜单：它的展开列表自己管开合与滚动，窗口底部放不下时
+// 会自己找位置；自绘 ui.Menu 在响应区这种靠下的锚点上，条目一多就整块画不出来。
+func (m *Model) examplePicker(c ui.C) {
+	choices := make([]string, 0, len(m.exRows)+1)
+	choices = append(choices, "")
+	for _, item := range m.exRows {
+		choices = append(choices, item.File)
+	}
+	before := m.exSel
+	ui.Select(c, &m.exSel, choices, m.exampleLabel).Shrink(0)
+	if m.exSel != before {
+		picked := m.exSel
+		c.After(func() { m.applyExamplePick(picked) })
+	}
+}
+
+// exampleLabel 是下拉里一项的显示名：空串代表实时响应，其余用示例名。
+func (m *Model) exampleLabel(file string) string {
+	if file == "" {
+		return "当前响应"
+	}
+	for _, item := range m.exRows {
+		if item.File == file {
+			return item.Name
+		}
+	}
+	return "当前响应"
+}
+
+// applyExamplePick 切换展示：选实时就把最近一次真实响应铺回来，选示例就铺那份。
+func (m *Model) applyExamplePick(file string) {
+	if file == "" {
+		m.showLive()
+		return
+	}
+	for _, item := range m.exRows {
+		if item.File == file {
+			m.showExample(item)
+			return
+		}
+	}
+	m.showLive()
+}
+
+// exampleActions 是「更多操作」里的响应示例动作：存一份、删当前这份、保存正文。
+// 切换看哪一份在响应区右上角的下拉里，这里只放动作。
+func (m *Model) exampleActions(c ui.C, menu *ui.MenuItems) {
+	save := menu.Item("存为示例").Disabled(!m.hasResp || m.failText != "" || m.exSel != "")
+	if save.Clicked() {
+		c.After(m.saveExample)
+	}
+	if m.hasResp && menu.Item("保存响应体为文件").Clicked() {
+		c.After(m.saveResponseBody)
+	}
+	if m.exSel != "" && menu.Item("删除这份示例").Destructive().Clicked() {
+		c.After(m.deleteExample)
+	}
 }

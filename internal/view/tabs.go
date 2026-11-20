@@ -251,7 +251,6 @@ func (m *Model) applyFromTab(t *tabState) {
 	m.editor = t.editor
 	m.resp = t.resp
 	m.live, m.exSel, m.exRows = t.live, t.exSel, t.exRows
-	m.exMenuOpen = false
 	m.hasResp, m.sending, m.statusOK = t.hasResp, t.sending, t.statusOK
 	m.status, m.reason, m.elapsed, m.size = t.status, t.reason, t.elapsed, t.size
 	m.copyNote = t.copyNote
@@ -272,7 +271,7 @@ func (m *Model) clearTabState() {
 	m.docs = docState{look: m.docs.look}
 	m.editor = docEditor{}
 	m.resetResponse()
-	m.exRows, m.exSel, m.exMenuOpen = nil, "", false
+	m.exRows, m.exSel = nil, ""
 	m.live = send.Outcome{}
 	m.sending = false
 	m.gen++

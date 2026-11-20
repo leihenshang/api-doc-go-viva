@@ -1543,6 +1543,23 @@ func click(t *testing.T, driver *app.Driver, label string) {
 	t.Fatalf("没有名为 %q 的可点击元素：%v", label, painted(driver))
 }
 
+// clickText 按**可见文字**点击：像 ui.Select 这种控件，触发器的无障碍名不是
+// 它显示的字，只能顺着标签的包围盒点进去。
+func clickText(t *testing.T, driver *app.Driver, text string) {
+	t.Helper()
+	for _, label := range driver.Snapshot().Labels {
+		if label.Value != text {
+			continue
+		}
+		b := label.Bounds
+		if err := driver.Click(b.X+b.Width/2, b.Y+b.Height/2); err != nil {
+			t.Fatalf("点击文字 %q: %v", text, err)
+		}
+		return
+	}
+	t.Fatalf("画面上没有 %q：%v", text, painted(driver))
+}
+
 func pump(t *testing.T, driver *app.Driver) {
 	t.Helper()
 	if err := driver.Pump(); err != nil {
@@ -3427,7 +3444,7 @@ func TestResponseTruncationNotice(t *testing.T) {
 }
 
 // TestResponseExamplesSaveSwitchDelete 响应示例：存一份当前响应 → 再发一次拿到新响应 →
-// 切回示例看到旧的那份 → 切回实时 → 删掉示例。示例落在 examples/<请求>/ 下。
+// 用响应区右上角的下拉切回示例 → 切回实时 → 删掉示例。示例落在 examples/<请求>/ 下。
 func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 	var calls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3460,7 +3477,7 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 	}
 	send(`{"n":1}`)
 
-	// 第一次保存走「更多操作」菜单。
+	// 保存动作在地址栏「更多操作」里（切换在响应区下拉里）。
 	click(t, driver, "更多操作")
 	pump(t, driver)
 	click(t, driver, "存为示例")
@@ -3475,14 +3492,14 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 
 	// 再发一次：实时响应换成 n=2，示例仍是 n=1。
 	send(`{"n":2}`)
-	if model.exSel != "" {
-		t.Fatalf("新响应应回到实时视图，实际选中 %q", model.exSel)
-	}
 
-	// 切到示例：入口在「更多操作」里（响应工具条那行已经满了）。
-	click(t, driver, "更多操作")
+	// 右上角下拉：点开选示例。
+	clickText(t, driver, "当前响应")
 	pump(t, driver)
-	click(t, driver, list[0].Name)
+	if !hasControl(driver, list[0].Name) {
+		t.Fatalf("下拉里没有示例项：%v", painted(driver))
+	}
+	clickText(t, driver, list[0].Name)
 	pump(t, driver)
 	if model.exSel != list[0].File {
 		t.Fatalf("应选中示例 %q，实际 %q", list[0].File, model.exSel)
@@ -3490,27 +3507,20 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 	if model.resp.Body != `{"n":1}` {
 		t.Fatalf("示例正文没铺上去：%q", model.resp.Body)
 	}
-	tagShown := false
-	for _, text := range painted(driver) {
-		if strings.TrimSpace(text) == "示例" {
-			tagShown = true
-		}
-	}
-	if !tagShown {
-		t.Fatalf("缺少「正在看示例」的标签：%v", painted(driver))
-	}
 
-	// 点「示例」小标签直接回实时响应（不用再翻菜单）。
-	click(t, driver, "示例")
+	// 触发器现在显示示例名；再点它选回实时。
+	clickText(t, driver, list[0].Name)
+	pump(t, driver)
+	clickText(t, driver, "当前响应")
 	pump(t, driver)
 	if model.exSel != "" || model.resp.Body != `{"n":2}` {
 		t.Fatalf("切回实时失败：sel=%q body=%q", model.exSel, model.resp.Body)
 	}
 
-	// 删掉示例：磁盘清空，仍停在实时响应。
-	click(t, driver, "更多操作")
+	// 删掉示例：先切回示例视图，再从「更多操作」删。
+	clickText(t, driver, "当前响应")
 	pump(t, driver)
-	click(t, driver, list[0].Name)
+	clickText(t, driver, list[0].Name)
 	pump(t, driver)
 	click(t, driver, "更多操作")
 	pump(t, driver)

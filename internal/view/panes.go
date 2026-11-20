@@ -67,8 +67,8 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 					c.After(m.saveRequest)
 				}
 				menu.Separator()
-				// 响应示例放在最前面：它是最长的一组，放末尾在小窗口里会被截掉。
-				m.exampleItems(c, menu)
+				// 切换「看哪一份」在响应区右上角的下拉里；这里只放示例相关的动作。
+				m.exampleActions(c, menu)
 				menu.Separator()
 				if menu.Item("导入 CURL").Icon(IconImport).Clicked() {
 					c.After(func() { m.openCurlImport(m.newRequestFolder()) })
@@ -483,21 +483,27 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 				m.exampleTag(c)
 			}
 			ui.Spacer(c)
+			// 右上角是响应下拉（实时响应 / 已存示例 / 存为示例），与 Wails 版同位置。
 			if entry.Kind == explorer.KindHTTP {
-				// Grow(0)：Tabs 默认抢满剩余宽度，会把右边的分段控件和复制按钮全挤出这一行。
+				m.examplePicker(c)
+			}
+		})
+		// 第二行：分段在左，格式化/复制在右。分开是因为挤在一行时窄栏会把状态码顶掉。
+		if entry.Kind == explorer.KindHTTP {
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 				ui.Tabs(c, &m.respTab, respTabs, respTabLabel).Line().Grow(0)
+				ui.Spacer(c)
 				if m.respTab == 0 && len(m.tables.json) > 0 {
 					m.responseViewSwitch(c)
 				}
-			}
-			if m.hasResp {
-				if ui.Button(c, "复制正文").Icon(IconCopy).Ghost().IconOnly().
-					Tooltip("复制响应正文").Clicked() {
-					c.After(m.copyResponse)
+				if m.hasResp {
+					if ui.Button(c, "复制正文").Icon(IconCopy).Ghost().IconOnly().
+						Tooltip("复制响应正文").Clicked() {
+						c.After(m.copyResponse)
+					}
 				}
-			}
-
-		})
+			})
+		}
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			switch {
 			case entry.Kind != explorer.KindHTTP:
@@ -505,10 +511,8 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 			case m.sending:
 				ui.Text(c, "请求中…").Muted()
 			case !m.hasResp:
-				// 顺手把「示例」的位置说一句：这一组在地址栏的「更多操作」里，
-				// 藏在菜单里不好找（实测有用户翻遍界面没找到）。
 				ui.Text(c, "尚未发送：点地址栏右侧「发送」运行这条请求；"+
-					"发送后可在「更多操作 → 响应示例」里存成示例，跑 Mock 与写文档都用它。").
+					"发送后可在右上角「当前响应」下拉里把它存成示例（Mock 回放与写文档都用它）。").
 					FontSize(12).Muted().MaxLines(2)
 			case m.failText != "":
 				ui.Text(c, "请求失败："+m.failText).FontSize(11).Color(theme.Danger)
