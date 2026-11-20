@@ -447,6 +447,14 @@ func (m *Model) docsPreview(c ui.C) {
 // responsePanel 是请求页下方的响应区：状态行固定，正文滚动。
 func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 	theme := c.Theme()
+	if entry.Kind == explorer.KindHTTP {
+		if ui.Shortcut(c, ui.Primary, "f") {
+			c.After(m.openFind)
+		}
+		if m.find.open && ui.Shortcut(c, 0, "escape") {
+			c.After(m.closeFind)
+		}
+	}
 	// 窄栏（左右分栏把响应拖窄、或窗口本身就窄）只留最要紧的信息：
 	// 状态码 + 下拉。reason / 耗时 / 体积 / 分段名会让这一行溢出，把下拉顶到窗外。
 	narrow := m.paneWidth(c) < 420
@@ -507,7 +515,12 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 				}
 			})
 		}
-		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+		if m.find.open && entry.Kind == explorer.KindHTTP {
+			m.findBar(c)
+		}
+		body := ui.Scroll(c).Grow(1).FillWidth()
+		m.scrollToFind(body)
+		body.Children(func() {
 			switch {
 			case entry.Kind != explorer.KindHTTP:
 				ui.Text(c, "验证版只读展示 gRPC 元数据，不发起调用。").FontSize(11).Muted()

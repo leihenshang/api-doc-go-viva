@@ -151,6 +151,8 @@ type palette struct {
 	hover      ui.Color // 树行悬停
 	accent     ui.Color // 主色：分段按钮选中项的图标
 	accentTint ui.Color // 主色浅底：分段按钮选中项的背景（--app-accent-tint）
+	findTint   ui.Color // 查找命中：非当前的命中底色
+	findActive ui.Color // 查找命中：当前这一处（琥珀底，和选区区分开）
 }
 
 func paletteFor(light bool) palette {
@@ -164,6 +166,8 @@ func paletteFor(light bool) palette {
 			hover:      ui.RGB(0xec, 0xec, 0xec),
 			accent:     ui.RGB(0x18, 0xa0, 0x58), // #18a058
 			accentTint: ui.RGB(0xe8, 0xf5, 0xee), // #e8f5ee
+			findTint:   ui.RGB(0xe8, 0xf5, 0xee),
+			findActive: ui.RGB(0xfd, 0xe0, 0x8a),
 		}
 	}
 	return palette{
@@ -494,6 +498,9 @@ type Model struct {
 	respMenuOpen bool
 	live         send.Outcome
 
+	// 响应正文的查找条状态（见 find.go）。
+	find findState
+
 	// 撤销 / 重做：整份草稿的快照栈（见 undo.go）。
 	undoStack []requestDraft
 	redoStack []requestDraft
@@ -529,6 +536,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.curTab = -1
 	m.tabActive = -1
 	m.ui.newMethod = "GET"
+	m.find.jump = -1
 	m.ui.newEnvName = "dev"
 	// 没显式指定环境时沿用该集合上次的选择（偏好按集合根记）。
 	if m.envName == "" && m.col.Dir != "" {

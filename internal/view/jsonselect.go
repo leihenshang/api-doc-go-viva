@@ -58,6 +58,7 @@ func (m *Model) jsonBody(c ui.C) {
 	}
 	id := ui.ID(c)
 	sel.buildJSON(m)
+	m.refreshFind(sel.vis, "json")
 	box := ui.Slot(c).FillWidth().Height(float32(len(sel.vis))*selLineH).
 		Hit(id, "响应正文").
 		Tooltip("拖动选中，Ctrl+C 复制")
@@ -81,6 +82,7 @@ func (m *Model) rawBody(c ui.C) {
 		text = text[:rawDisplayLimit]
 	}
 	sel.buildRaw(text)
+	m.refreshFind(sel.vis, "raw")
 	box := ui.Slot(c).FillWidth().Height(float32(len(sel.vis))*selLineH).
 		Hit(id, "响应正文").
 		Tooltip("拖动选中，Ctrl+C 复制")
@@ -177,6 +179,7 @@ func (m *Model) paintJSON(c ui.C, d *ui.DrawContext, id gfx.ID) {
 	m.handlePointer(c, d, id, true)
 	m.copyOnShortcut(c, sel)
 	m.paintSelection(d)
+	m.paintFind(d, sel)
 
 	for row, text := range sel.vis {
 		top := d.Rect.Y + float32(row)*selLineH
@@ -215,6 +218,7 @@ func (m *Model) paintRaw(c ui.C, d *ui.DrawContext, id gfx.ID) {
 	m.handlePointer(c, d, id, false)
 	m.copyOnShortcut(c, sel)
 	m.paintSelection(d)
+	m.paintFind(d, sel)
 
 	style := gfx.TextStyle{Size: selFont, Mono: true, Color: m.theme.Foreground}
 	for row, text := range sel.vis {
