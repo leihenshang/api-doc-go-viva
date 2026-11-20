@@ -83,6 +83,8 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start)}
 	}
 	sent := req.URL.String()
+	// 记下 host：Cookie Jar 只能按 URL 反查，列全部 cookie 时要用。
+	noteURL(req.URL)
 	client, err := newClient(plan)
 	if err != nil {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start), URL: sent}
@@ -92,6 +94,10 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start), URL: sent}
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// 重定向后的最终地址也要记：cookie 可能落在链尾那个域名上。
+	if resp.Request != nil {
+		noteURL(resp.Request.URL)
+	}
 
 	limit := plan.MaxBody
 	if limit <= 0 {
@@ -150,7 +156,8 @@ func newClient(plan Plan) (*http.Client, error) {
 
 // newClientWith 组装客户端：超时、重定向、TLS、代理与客户端证书。
 func newClientWith(plan Plan, timeout time.Duration, follow bool) (*http.Client, error) {
-	client := &http.Client{Timeout: timeout}
+	// 共享 Cookie Jar：同一个进程里发出去的请求共用一个会话（登录一次，后面自动带上）。
+	client := useJar(&http.Client{Timeout: timeout})
 	if !follow {
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	}

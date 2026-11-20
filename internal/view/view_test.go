@@ -16,6 +16,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
+	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -2823,6 +2824,86 @@ func TestExportDialogRejectsEmptySelection(t *testing.T) {
 	if !model.ui.exportOpen {
 		t.Fatal("拒绝导出时弹窗不该关掉")
 	}
+}
+
+// TestCookieJarPanel Cookie Jar：发过一次带 Set-Cookie 的请求后，
+// 面板能列出 cookie、后面的请求自动带上、清空后不再带。
+func TestCookieJarPanel(t *testing.T) {
+	send.ClearCookies()
+	t.Cleanup(send.ClearCookies)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login":
+			http.SetCookie(w, &http.Cookie{Name: "sid", Value: "s-9", Path: "/"})
+			_, _ = fmt.Fprint(w, `{"ok":true}`)
+		default:
+			if cookie, err := r.Cookie("sid"); err == nil {
+				_, _ = fmt.Fprintf(w, `{"sid":%q}`, cookie.Value)
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 会话集合\n")
+	for name, spec := range map[string][2]string{
+		"登录": {"POST", "/login"},
+		"我的": {"GET", "/me"},
+	} {
+		writeFile(t, filepath.Join(dir, name+".yml"), fmt.Sprintf(`info:
+  name: %s
+  type: http
+  seq: 1
+meta:
+  uid: cookie-%s
+http:
+  method: %s
+  url: %s
+  headers: []
+  body:
+    type: none
+`, name, name, spec[0], srv.URL+spec[1]))
+	}
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	// 先打登录接口，种下 cookie。
+	click(t, driver, "POST 登录")
+	pump(t, driver)
+	click(t, driver, "发送")
+	for deadline := time.Now().Add(3 * time.Second); model.sending && time.Now().Before(deadline); {
+		pump(t, driver)
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	click(t, driver, "Cookie")
+	pump(t, driver)
+	if !shows(driver, "sid") || !shows(driver, "s-9") {
+		t.Fatalf("面板没列出 cookie：%v", painted(driver))
+	}
+	if len(model.ui.cookieRows) != 1 || model.ui.cookieRows[0].Name != "sid" {
+		t.Fatalf("缓存里应有一条：%+v", model.ui.cookieRows)
+	}
+
+	// 清空后：面板空了，请求也不再带 cookie（服务端回 401）。
+	click(t, driver, "清空")
+	pump(t, driver)
+	if len(model.ui.cookieRows) != 0 || len(send.Cookies()) != 0 {
+		t.Fatalf("清空后不该还有 cookie：%+v", model.ui.cookieRows)
+	}
+	click(t, driver, "关闭")
+	pump(t, driver)
+	click(t, driver, "GET 我的")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "401")
 }
 
 // TestRunnerRulesAndVariables 规则编辑 → 落盘 → 运行：第一条提取 token，第二条带上它。

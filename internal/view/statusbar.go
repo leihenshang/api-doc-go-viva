@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 
+	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -55,6 +56,14 @@ func (m *Model) statusActions(c ui.C) {
 
 	if ui.Button(c, "历史").Icon(IconClock).Ghost().XSmall().Tooltip("查看请求历史").Clicked() {
 		m.openHistory()
+	}
+	// Cookie 只跟「发过请求」有关，不依赖集合是否打开。
+	cookieHint := "查看 Cookie Jar（发送请求时自动带上）"
+	if n := len(send.Cookies()); n > 0 {
+		cookieHint = fmt.Sprintf("Cookie Jar 里有 %d 条", n)
+	}
+	if ui.Button(c, "Cookie").Icon(IconCookie).Ghost().XSmall().Tooltip(cookieHint).Clicked() {
+		m.openCookies()
 	}
 
 	label, hint := m.mcpLabel()

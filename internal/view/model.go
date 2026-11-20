@@ -244,6 +244,11 @@ type workspaceUI struct {
 	newMethod  string
 	newURL     string
 
+	// Cookie Jar 弹窗：打开时从共享 jar 读一次快照。
+	cookieOpen bool
+	cookieRows []send.Cookie
+	cookieNote string
+
 	// 请求历史弹窗：打开时从磁盘读一次，之后只读缓存。
 	historyOpen  bool
 	historyQuery string

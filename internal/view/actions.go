@@ -18,6 +18,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/importers"
+	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
@@ -587,6 +588,27 @@ func (m *Model) runImport() {
 	}
 	m.expandDir(folder)
 	m.reload("", tabParams)
+}
+
+// openCookies 打开 Cookie Jar 面板：从共享 jar 取一次快照。
+func (m *Model) openCookies() {
+	m.ui.cookieOpen = true
+	m.ui.cookieNote = ""
+	m.reloadCookies()
+	m.invalidator.Invalidate()
+}
+
+// reloadCookies 把 jar 里的 cookie 抄进界面缓存（按域名、名称排序）。
+func (m *Model) reloadCookies() {
+	m.ui.cookieRows = send.Cookies()
+}
+
+// clearCookies 清空共享 jar：之后的请求不再自动带 cookie。
+func (m *Model) clearCookies() {
+	send.ClearCookies()
+	m.ui.cookieRows = nil
+	m.ui.cookieNote = "已清空 Cookie Jar"
+	m.invalidator.Invalidate()
 }
 
 // openHistory 打开请求历史：每次打开都从磁盘重读，发送过的请求才有记录。

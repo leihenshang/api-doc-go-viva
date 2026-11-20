@@ -86,6 +86,32 @@ var IconServer = gfx.Icon{
 	},
 }
 
+// icon-cookie is a compiled vector icon.
+var IconCookie = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(12.0, 2.5),
+		gfx.CubicTo(17.2467, 2.5, 21.5, 6.75329, 21.5, 12.0),
+		gfx.CubicTo(21.5, 17.2467, 17.2467, 21.5, 12.0, 21.5),
+		gfx.CubicTo(6.75329, 21.5, 2.5, 17.2467, 2.5, 12.0),
+		gfx.CubicTo(2.5, 6.75329, 6.75329, 2.5, 12.0, 2.5),
+		gfx.ClosePath(),
+		gfx.MoveTo(8.5, 8.5),
+		gfx.LineTo(8.5, 8.51),
+		gfx.MoveTo(15.0, 7.5),
+		gfx.LineTo(15.0, 7.51),
+		gfx.MoveTo(12.0, 13.0),
+		gfx.LineTo(12.0, 13.01),
+		gfx.MoveTo(8.0, 16.0),
+		gfx.LineTo(8.0, 16.01),
+		gfx.MoveTo(16.5, 15.0),
+		gfx.LineTo(16.5, 15.01),
+	},
+}
+
 // icon-clock is a compiled vector icon.
 var IconClock = gfx.Icon{
 	ViewBox: 24.0,

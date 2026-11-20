@@ -21,6 +21,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.codeDialog(c)
 	m.renameDialog(c)
 	m.historyDialog(c)
+	m.cookieDialog(c)
 	m.importDialog(c)
 	m.mockDialog(c)
 	m.runnerDialog(c)
@@ -291,6 +292,53 @@ func (m *Model) settingsLocal(c ui.C) {
 	if ui.Button(c, "打开回收站").Icon(IconTrash).Secondary().Clicked() {
 		c.After(m.openTrash)
 	}
+}
+
+// cookieDialog 是 Cookie Jar：发过的请求种下的 cookie 都在这儿，可查看与清空。
+// 它与「请求历史」分开：历史是发过什么，这里是这台机器现在持有什么会话。
+func (m *Model) cookieDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.cookieOpen, "Cookie Jar", ui.ModalSpec{Width: 700, Height: 460}, func() {
+		ui.Column(c).FillWidth().Height(360).Gap(6).Children(func() {
+			ui.Text(c, "发送请求时自动带上；集合运行器也用同一份 jar，所以「先登录再跑」是成立的。").
+				FontSize(11).Muted()
+			if len(m.ui.cookieRows) == 0 {
+				ui.Text(c, "还没有 cookie：发一次会种 cookie 的请求就会出现在这里。").FontSize(11).Muted()
+				return
+			}
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "域名").FontSize(11).Muted().Width(200)
+				ui.Text(c, "名称").FontSize(11).Muted().Width(140)
+				ui.Text(c, "值").FontSize(11).Muted().Grow(1)
+			})
+			for _, item := range m.ui.cookieRows {
+				row := item
+				ui.Row(c).FillWidth().Gap(8).PadY(3).Items(ui.Center).Children(func() {
+					ui.Text(c, row.Domain).FontSize(11).Mono().Width(200).Ellipsis()
+					ui.Text(c, row.Name).FontSize(11).Mono().Width(140).Ellipsis()
+					ui.Text(c, row.Value).FontSize(11).Mono().Muted().Grow(1).Ellipsis()
+				})
+			}
+			if m.ui.cookieNote != "" {
+				ui.Text(c, m.ui.cookieNote).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "刷新").Outline().Clicked() {
+				c.After(func() {
+					m.reloadCookies()
+					m.ui.cookieNote = ""
+					m.invalidator.Invalidate()
+				})
+			}
+			if ui.Button(c, "清空").Icon(IconTrash).Outline().Clicked() {
+				c.After(m.clearCookies)
+			}
+			if ui.Button(c, "关闭").Clicked() {
+				m.ui.cookieOpen = false
+			}
+		})
+	})
 }
 
 // historyDialog 是「请求历史」：每次真实发送都记一条，点一行回到那条请求。
