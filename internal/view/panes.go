@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
@@ -95,7 +96,7 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 		ui.Text(c, "名称").FontSize(11).Muted().Width(150)
 		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
 		ui.Text(c, "说明").FontSize(11).Muted().Width(160)
-		ui.Slot(c).Width(32)
+		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range *rows {
 		slot := index
@@ -112,6 +113,11 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 			if ui.TextField(c, &row.desc, "说明", "").Width(160).Changed() {
 				m.req.dirty = true
 			}
+			m.rowMover(c, index, len(*rows), func(from, to int) {
+				if moveItem(*rows, from, to) {
+					m.req.dirty = true
+				}
+			})
 			if ui.Button(c, "删除").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					*rows = append((*rows)[:slot], (*rows)[slot+1:]...)
@@ -126,6 +132,37 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 			m.req.dirty = true
 		}
 	})
+}
+
+// rowActionWidth 是表格行尾「上移 / 下移 + 删除」三颗小按钮占的宽度（表头用它留位）。
+const rowActionWidth = 92
+
+// rowMover 是表格行尾的上移 / 下移：到顶的那一行上移置灰，到底的那一行下移置灰。
+// 按下去只记一个「从哪一行挪到哪一行」，真正的交换交给 c.After，和别的按钮一致。
+func (m *Model) rowMover(c ui.C, index, total int, onMove func(from, to int)) {
+	up := ui.Button(c, "上移").Icon(IconChevronUp).Ghost().IconOnly().Tooltip("上移一行")
+	if index == 0 {
+		up.Disabled(true)
+	}
+	if up.Clicked() && index > 0 {
+		c.After(func() { onMove(index, index-1) })
+	}
+	down := ui.Button(c, "下移").Icon(IconChevronDown).Ghost().IconOnly().Tooltip("下移一行")
+	if index >= total-1 {
+		down.Disabled(true)
+	}
+	if down.Clicked() && index < total-1 {
+		c.After(func() { onMove(index, index+1) })
+	}
+}
+
+// moveItem 交换切片里相邻的两项；越界就原样不动（返回 false）。
+func moveItem[T any](list []T, from, to int) bool {
+	if from < 0 || to < 0 || from >= len(list) || to >= len(list) {
+		return false
+	}
+	list[from], list[to] = list[to], list[from]
+	return true
 }
 
 // respTabs / respTabLabel 是响应区的两个分段：正文与响应头。
@@ -173,7 +210,7 @@ func (m *Model) fieldEditor(c ui.C) {
 		ui.Text(c, "必填").FontSize(11).Muted().Width(40)
 		ui.Text(c, "示例").FontSize(11).Muted().Width(160)
 		ui.Text(c, "说明").FontSize(11).Muted().Grow(1)
-		ui.Slot(c).Width(32)
+		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range m.req.fields {
 		slot := index
@@ -193,6 +230,11 @@ func (m *Model) fieldEditor(c ui.C) {
 			if ui.TextField(c, &row.desc, "说明", "").Grow(1).Changed() {
 				m.req.dirty = true
 			}
+			m.rowMover(c, index, len(m.req.fields), func(from, to int) {
+				if moveItem(m.req.fields, from, to) {
+					m.req.dirty = true
+				}
+			})
 			if ui.Button(c, "删除字段").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					m.req.fields = append(m.req.fields[:slot], m.req.fields[slot+1:]...)
@@ -219,7 +261,7 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 			ui.Text(c, "类型").FontSize(11).Muted().Width(96)
 		}
 		ui.Text(c, "说明").FontSize(11).Muted().Width(140)
-		ui.Slot(c).Width(32)
+		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range m.req.form {
 		slot := index
@@ -245,6 +287,11 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 			if ui.TextField(c, &row.desc, "说明", "").Width(140).Changed() {
 				m.req.dirty = true
 			}
+			m.rowMover(c, index, len(m.req.form), func(from, to int) {
+				if moveItem(m.req.form, from, to) {
+					m.req.dirty = true
+				}
+			})
 			if ui.Button(c, "删除").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					m.req.form = append(m.req.form[:slot], m.req.form[slot+1:]...)
@@ -358,39 +405,46 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 	theme := c.Theme()
 	ui.Column(c).Fill().Pad(panePadding).Gap(8).Radius(theme.Metrics.RadiusSurface).
 		Background(theme.Card).Border(1, m.pal.border).Children(func() {
-		ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
-			ui.Text(c, "响应").FontSize(12).Bold()
-			if entry.Kind == explorer.KindHTTP {
-				ui.Tabs(c, &m.respTab, respTabs, respTabLabel).Line()
-				if m.respTab == 0 && len(m.tables.json) > 0 {
-					ui.Choice(c, &m.rawResp, respViewModes, func(raw bool) string {
-						if raw {
-							return respViewNames[1]
-						}
-						return respViewNames[0]
-					})
-				}
-			}
+		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			// 状态在最左、且不参与收缩：窄栏（左右分栏把响应拖窄）时宁可裁掉右边的分段控件，
+			// 也不能让 200 被压成 0 宽——那是这一栏最要紧的信息。
+			ui.Text(c, "响应").FontSize(12).Bold().Shrink(0)
 			switch {
 			case entry.Kind != explorer.KindHTTP:
-				ui.Text(c, "gRPC 只读").FontSize(11).Muted()
+				ui.Text(c, "gRPC 只读").FontSize(11).Muted().Shrink(0)
 			case m.sending:
 				ui.Spinner(c)
-			case m.hasResp && m.failText == "":
+			case m.hasResp || m.failText != "":
 				statusTint := theme.Success
-				if !m.statusOK {
+				if !m.statusOK || m.failText != "" {
 					statusTint = theme.Danger
 				}
-				ui.Text(c, m.status).FontSize(12).Bold().Color(statusTint)
-				ui.Text(c, m.reason).FontSize(11).Muted()
-				ui.Spacer(c)
-				if m.copyNote != "" {
-					ui.Text(c, m.copyNote).FontSize(11).Muted()
+				if m.status != "" {
+					ui.Text(c, m.status).FontSize(12).Bold().Color(statusTint).Shrink(0)
 				}
-				if ui.Button(c, "复制正文").Icon(IconCopy).Ghost().Tooltip("复制响应正文").Clicked() {
+				if m.reason != "" {
+					ui.Text(c, m.reason).FontSize(11).Muted().Shrink(0)
+				}
+				if m.elapsed != "" {
+					ui.Text(c, m.elapsed+" · "+m.size).FontSize(11).Muted().Mono().Shrink(0)
+				}
+				if m.copyNote != "" {
+					ui.Text(c, m.copyNote).FontSize(11).Muted().Shrink(0)
+				}
+			}
+			ui.Spacer(c)
+			if entry.Kind == explorer.KindHTTP {
+				// Grow(0)：Tabs 默认抢满剩余宽度，会把右边的分段控件和复制按钮全挤出这一行。
+				ui.Tabs(c, &m.respTab, respTabs, respTabLabel).Line().Grow(0)
+				if m.respTab == 0 && len(m.tables.json) > 0 {
+					m.responseViewSwitch(c)
+				}
+			}
+			if m.hasResp {
+				if ui.Button(c, "复制正文").Icon(IconCopy).Ghost().IconOnly().
+					Tooltip("复制响应正文").Clicked() {
 					c.After(m.copyResponse)
 				}
-				ui.Text(c, m.elapsed+" · "+m.size).FontSize(11).Muted().Mono()
 			}
 		})
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
@@ -409,6 +463,13 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 				if m.missing != "" {
 					ui.Text(c, m.missing).FontSize(11).Color(theme.Danger)
 				}
+				if m.resp.Truncated {
+					ui.Text(c, truncationNote(m.resp)).FontSize(11).Color(theme.Danger)
+				}
+				if len(m.resp.Body) > rawDisplayLimit {
+					ui.Text(c, "正文较大，这里只渲染前 "+humanBytes(rawDisplayLimit)+
+						"（「复制正文」仍是完整内容）").FontSize(11).Muted()
+				}
 				if m.bodyText == "" {
 					ui.Text(c, "响应体为空").Muted()
 					return
@@ -422,6 +483,46 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 			}
 		})
 	})
+}
+
+// truncationNote 是「响应太大，只读回了一段」的提示。
+// 有 Content-Length 就说清总共多大，没有就只说显示了多少。
+func truncationNote(out send.Outcome) string {
+	note := "响应超过上限，只显示前 " + humanBytes(out.Size)
+	if out.TotalSize > int64(out.Size) {
+		note += "（共 " + humanBytes(int(out.TotalSize)) + "）"
+	}
+	return note
+}
+
+// responseViewSwitchMin 是「格式化 / 原始」两段并排的最低栏宽；再窄就收成一个图标按钮。
+const responseViewSwitchMin = 620
+
+// responseViewSwitch 是「格式化 / 原始」的切换：栏够宽时两段并排，
+// 左右分栏把响应拖窄时收成一个图标按钮，点一下切到另一种视图 ——
+// 宁可少一个分段，也不能把状态码挤掉。按钮名仍是「原始 / 格式化」，读屏与用例照旧。
+func (m *Model) responseViewSwitch(c ui.C) {
+	if m.paneWidth(c) >= responseViewSwitchMin {
+		ui.Choice(c, &m.rawResp, respViewModes, func(raw bool) string {
+			if raw {
+				return respViewNames[1]
+			}
+			return respViewNames[0]
+		})
+		return
+	}
+	target := respViewNames[1]
+	if m.rawResp {
+		target = respViewNames[0]
+	}
+	if ui.Button(c, target).Icon(IconCode).Ghost().IconOnly().
+		Tooltip("切换到「" + target + "」视图").Clicked() {
+		c.After(func() {
+			m.rawResp = !m.rawResp
+			m.storeTab()
+			m.invalidator.Invalidate()
+		})
+	}
 }
 
 // toggleJSONFold 折叠 / 展开响应 JSON 的某一行。

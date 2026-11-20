@@ -554,14 +554,9 @@ func tone(light, dark ui.Color, isLight bool) ui.Color {
 	return dark
 }
 
-func entryTint(theme *ui.Theme, entry *explorer.Entry, light bool) ui.Color {
-	if entry.Kind == explorer.KindDoc {
-		return tone(mdLight, mdDark, light)
-	}
-	if entry.Kind == explorer.KindGRPC {
-		return tone(grpcLight, grpcDark, light)
-	}
-	switch methodText(entry) {
+// methodTint 是 HTTP 方法对应的颜色（历史列表等没有 Entry 的地方用它）。
+func methodTint(method string, light bool) ui.Color {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
 	case "GET", "HEAD", "OPTIONS":
 		return tone(getLight, getDark, light)
 	case "POST":
@@ -575,6 +570,16 @@ func entryTint(theme *ui.Theme, entry *explorer.Entry, light bool) ui.Color {
 	default:
 		return tone(otherLight, otherDark, light)
 	}
+}
+
+func entryTint(theme *ui.Theme, entry *explorer.Entry, light bool) ui.Color {
+	if entry.Kind == explorer.KindDoc {
+		return tone(mdLight, mdDark, light)
+	}
+	if entry.Kind == explorer.KindGRPC {
+		return tone(grpcLight, grpcDark, light)
+	}
+	return methodTint(methodText(entry), light)
 }
 
 // dropRow 处理拖放：落到分组里就换上级，落到条目前后就排到同级的新位置。

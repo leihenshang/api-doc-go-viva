@@ -88,6 +88,37 @@ func TestDoSendsTheCollectionRequest(t *testing.T) {
 	}
 }
 
+// TestDoTruncatesWithoutDirtyingTheBody 正文超过上限时只留前 N 字节，
+// 不在正文里拼提示（拼了 JSON 就毁了，格式化视图会整段退化成纯文本）。
+func TestDoTruncatesWithoutDirtyingTheBody(t *testing.T) {
+	payload := strings.Repeat("a", 100)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	file := &collection.RequestFile{
+		Info: collection.FileInfo{Name: "大响应", Type: "http"},
+		HTTP: collection.HTTPBlock{Method: "GET", URL: srv.URL},
+	}
+	out := Do(context.Background(), Plan{File: file, MaxBody: 32})
+	if out.Err != "" {
+		t.Fatalf("发送失败: %s", out.Err)
+	}
+	if !out.Truncated {
+		t.Fatal("应标记为截断")
+	}
+	if len(out.Body) != 32 || out.Size != 32 {
+		t.Fatalf("正文应只留前 32 字节：len=%d size=%d", len(out.Body), out.Size)
+	}
+	if strings.ContainsAny(out.Body, "…（）") {
+		t.Fatalf("正文里不应拼提示文字：%q", out.Body)
+	}
+	if out.TotalSize != int64(len(payload)) {
+		t.Fatalf("总长度应取 Content-Length：%d，期望 %d", out.TotalSize, len(payload))
+	}
+}
+
 func TestDoReportsUnresolvedVariables(t *testing.T) {
 	var got captured
 	srv := server(t, &got)

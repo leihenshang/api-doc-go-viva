@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
@@ -238,8 +239,14 @@ type workspaceUI struct {
 	newName    string
 	newMethod  string
 	newURL     string
-	newErr     string
-	newFolder  string // 从某个分组右键新建时指定落点
+
+	// 请求历史弹窗：打开时从磁盘读一次，之后只读缓存。
+	historyOpen  bool
+	historyQuery string
+	historyRows  []history.Entry
+	historyNote  string
+	newErr       string
+	newFolder    string // 从某个分组右键新建时指定落点
 	// savingScratch 表示这次弹窗是「临时请求另存为」，保存成功后关掉临时标签。
 	savingScratch bool
 
@@ -874,8 +881,23 @@ func (m *Model) start(entry *explorer.Entry) {
 		return
 	}
 	tabID, gen := tab.id, m.gen
+	// 历史记录在后台线程写好再交回结果：界面线程只管显示，不碰文件。
+	method := strings.ToUpper(strings.TrimSpace(payload.HTTP.Method))
+	if method == "" {
+		method = "GET"
+	}
+	record := history.Entry{Method: method, Dir: m.col.Dir, Env: m.envName}
+	if !m.scratch && entry != nil {
+		record.Name, record.File = entry.Name, entry.File
+	}
 	go func() {
-		m.results <- sendResult{tab: tabID, gen: gen, out: send.Do(context.Background(), plan)}
+		out := send.Do(context.Background(), plan)
+		record.URL = out.URL
+		record.Status, record.Duration, record.Size, record.Err = out.Status, out.Duration.Milliseconds(), out.Size, out.Err
+		if record.URL != "" {
+			_ = history.Append(record)
+		}
+		m.results <- sendResult{tab: tabID, gen: gen, out: out}
 		m.invalidator.Invalidate()
 	}()
 }

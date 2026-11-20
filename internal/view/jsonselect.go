@@ -64,6 +64,11 @@ func (m *Model) jsonBody(c ui.C) {
 	box.Draw(func(d *ui.DrawContext) { m.paintJSON(c, d, id) })
 }
 
+// rawDisplayLimit 是原始视图最多渲染的字节数。
+// 原始报文没有折行信息，几十万字的长行每帧都要重排一次，界面会卡住；
+// 超过的部分不渲染（「复制正文」仍然复制完整内容）。
+const rawDisplayLimit = 128 << 10
+
 // rawBody 把原始响应正文画成可选中的文本区。
 func (m *Model) rawBody(c ui.C) {
 	sel := &m.jsonSel
@@ -71,7 +76,11 @@ func (m *Model) rawBody(c ui.C) {
 		sel.reset(true)
 	}
 	id := ui.ID(c)
-	sel.buildRaw(m.resp.Body)
+	text := m.resp.Body
+	if len(text) > rawDisplayLimit {
+		text = text[:rawDisplayLimit]
+	}
+	sel.buildRaw(text)
 	box := ui.Slot(c).FillWidth().Height(float32(len(sel.vis))*selLineH).
 		Hit(id, "响应正文").
 		Tooltip("拖动选中，Ctrl+C 复制")
@@ -117,36 +126,41 @@ func (sel *selView) clamp() {
 }
 
 // wrapRaw 按可用宽度把原始报文的长行切开。续行在 cont 里标 true，复制时不插换行。
-// 切点按真实字宽二分（中文是双宽，按字数切会溢出）。
+// 切点用「估算 + 按实际宽度退让」：先按等宽算出这一屏能放几个字符，量一次，
+// 宽了就按 1/8 退几步。中文是双宽，估算偏大时退让会把它收进宽度内。
+// 不做「每个切点二分」——一百万字的长行那样每帧要量上百万次，界面直接卡死。
 func (sel *selView) wrapRaw(canvas *gfx.Canvas, width float32) {
-	if width <= 8 {
+	if width <= 8 || sel.charW <= 0 {
 		return
+	}
+	guess := int(width/sel.charW) - 1
+	if guess < 8 {
+		guess = 8
 	}
 	vis := make([]string, 0, len(sel.vis))
 	cont := make([]bool, 0, len(sel.vis))
 	for _, line := range sel.vis {
 		runes := []rune(line)
-		if len(runes) == 0 || canvas.TextWidthStyle(line, measureStyle) <= width {
+		if len(runes) <= guess {
 			vis = append(vis, line)
 			cont = append(cont, false)
 			continue
 		}
 		for start := 0; start < len(runes); {
-			lo, hi := start, len(runes)
-			for lo < hi {
-				mid := (lo + hi + 1) / 2
-				if canvas.TextWidthStyle(string(runes[start:mid]), measureStyle) <= width {
-					lo = mid
-				} else {
-					hi = mid - 1
+			end := min(start+guess, len(runes))
+			for end > start+1 && canvas.TextWidthStyle(string(runes[start:end]), measureStyle) > width {
+				step := (end - start) / 8
+				if step < 1 {
+					step = 1
 				}
+				end -= step
 			}
-			if lo <= start {
-				lo = start + 1 // 至少放一个字符，避免原地打转
+			if end <= start {
+				end = start + 1 // 至少放一个字符，避免原地打转
 			}
-			vis = append(vis, string(runes[start:lo]))
+			vis = append(vis, string(runes[start:end]))
 			cont = append(cont, start > 0)
-			start = lo
+			start = end
 		}
 	}
 	sel.vis, sel.cont = vis, cont

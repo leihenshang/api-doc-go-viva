@@ -12,6 +12,7 @@ import (
 	"github.com/leihenshang/api-doc-go-share/collection"
 	curlc "github.com/leihenshang/api-doc-go-viva/internal/curl"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
@@ -414,6 +415,43 @@ func (m *Model) copyCurl(entry *explorer.Entry) {
 		m.req.note = "cURL 已复制"
 	}
 	m.invalidator.Invalidate()
+}
+
+// openHistory 打开请求历史：每次打开都从磁盘重读，发送过的请求才有记录。
+func (m *Model) openHistory() {
+	m.ui.historyOpen = true
+	m.ui.historyQuery = ""
+	m.ui.historyNote = ""
+	m.reloadHistory()
+	m.invalidator.Invalidate()
+}
+
+// reloadHistory 把历史读进界面缓存（最新的在前）。
+func (m *Model) reloadHistory() { m.ui.historyRows = history.Load() }
+
+// clearHistory 清空历史文件与缓存。
+func (m *Model) clearHistory() {
+	if err := history.Clear(); err != nil {
+		m.ui.historyNote = "清空失败：" + err.Error()
+	} else {
+		m.ui.historyRows = nil
+		m.ui.historyNote = "已清空"
+	}
+	m.invalidator.Invalidate()
+}
+
+// reopenHistory 点一条历史：请求还在当前集合里就打开它；不在就把地址复制出去。
+func (m *Model) reopenHistory(item history.Entry) {
+	if item.File != "" && m.col != nil && item.Dir == m.col.Dir {
+		if entry := m.entryByFile(item.File); entry != nil && entry.Kind == explorer.KindHTTP {
+			m.openEntry(entry)
+			m.ui.historyOpen = false
+			m.invalidator.Invalidate()
+			return
+		}
+	}
+	m.ui.historyNote = "这条记录对应的请求不在当前集合里，地址已复制到剪贴板"
+	m.copyValue(item.URL)
 }
 
 // openTrash 列出回收站文件并打开弹窗。

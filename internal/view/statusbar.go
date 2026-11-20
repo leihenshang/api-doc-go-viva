@@ -34,6 +34,10 @@ func (m *Model) statusActions(c ui.C) {
 		m.openTrash()
 	}
 
+	if ui.Button(c, "历史").Icon(IconClock).Ghost().XSmall().Tooltip("查看请求历史").Clicked() {
+		m.openHistory()
+	}
+
 	label, hint := m.mcpLabel()
 	mcp := ui.Button(c, "MCP").Icon(IconCode).Ghost().XSmall().Tooltip(hint)
 	if !hasCollection {

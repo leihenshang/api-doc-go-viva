@@ -57,11 +57,18 @@ type Outcome struct {
 	Status   int
 	Reason   string
 	Duration time.Duration
-	Size     int
+	Size     int // 实际读回的字节数（截断时就是上限）
 	Body     string
 	Headers  []Header
 	Missing  []string // 未解析的 {{变量}}
 	Err      string
+	// URL 是真正发出去的地址（变量已替换、查询参数已拼上），历史与错误提示都用它。
+	URL string
+	// Truncated 表示正文超过 MaxBody，只读回了前 MaxBody 字节；TotalSize 是
+	// 服务端声明的总长度（没有 Content-Length 时为 0，即未知）。
+	// Body 里**不拼提示文字**：那会破坏 JSON，让格式化视图整段退化成纯文本。
+	Truncated bool
+	TotalSize int64
 }
 
 // Do 执行一条 http 请求并读回响应体（最多 Plan.MaxBody 字节）。
@@ -71,9 +78,10 @@ func Do(ctx context.Context, plan Plan) Outcome {
 	if err != nil {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start)}
 	}
+	sent := req.URL.String()
 	resp, err := newClient(plan).Do(req)
 	if err != nil {
-		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start)}
+		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start), URL: sent}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -86,17 +94,26 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		return Outcome{Err: "读取响应: " + err.Error(), Status: resp.StatusCode, Missing: missing}
 	}
 	body := string(data)
-	if int64(len(data)) > limit {
-		body = string(data[:limit]) + "\n…（响应超过上限，已截断）"
+	truncated := int64(len(data)) > limit
+	if truncated {
+		// 只留正文字节，提示由界面按 Truncated/TotalSize 自己画。
+		body = string(data[:limit])
+	}
+	total := resp.ContentLength
+	if total < 0 {
+		total = 0
 	}
 	return Outcome{
-		Status:   resp.StatusCode,
-		Reason:   http.StatusText(resp.StatusCode),
-		Duration: time.Since(start),
-		Size:     len(data),
-		Body:     body,
-		Headers:  headerRows(resp.Header),
-		Missing:  missing,
+		Status:    resp.StatusCode,
+		Reason:    http.StatusText(resp.StatusCode),
+		Duration:  time.Since(start),
+		Size:      len(body),
+		Body:      body,
+		Headers:   headerRows(resp.Header),
+		Missing:   missing,
+		URL:       sent,
+		Truncated: truncated,
+		TotalSize: total,
 	}
 }
 

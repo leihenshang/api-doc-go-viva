@@ -22,6 +22,16 @@ func (m *Model) Page(c ui.C) {
 			m.openPalette()
 		})
 	}
+	// 命令面板里写了提示的快捷键必须真的能用（paletteGroups 的 hint）。
+	if ui.Shortcut(c, ui.Primary, "n") {
+		c.After(m.openNewRequest)
+	}
+	if ui.Shortcut(c, ui.Primary, "w") {
+		c.After(func() { m.closeTab(m.curTab) })
+	}
+	if ui.Shortcut(c, ui.Primary, ",") {
+		c.After(m.openSettings)
+	}
 	m.toolbar(c)
 	if !m.hasCollection() {
 		m.welcomePage(c)

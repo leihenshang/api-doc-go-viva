@@ -31,6 +31,51 @@ var IconChevronRight = gfx.Icon{
 	},
 }
 
+// icon-chevron-up is a compiled vector icon.
+var IconChevronUp = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(18.0, 15.0),
+		gfx.LineTo(12.0, 9.0),
+		gfx.LineTo(6.0, 15.0),
+	},
+}
+
+// icon-chevron-down is a compiled vector icon.
+var IconChevronDown = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(6.0, 9.0),
+		gfx.LineTo(12.0, 15.0),
+		gfx.LineTo(18.0, 9.0),
+	},
+}
+
+// icon-clock is a compiled vector icon.
+var IconClock = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(12.0, 2.0),
+		gfx.CubicTo(17.5228, 2.0, 22.0, 6.47715, 22.0, 12.0),
+		gfx.CubicTo(22.0, 17.5228, 17.5228, 22.0, 12.0, 22.0),
+		gfx.CubicTo(6.47715, 22.0, 2.0, 17.5228, 2.0, 12.0),
+		gfx.CubicTo(2.0, 6.47715, 6.47715, 2.0, 12.0, 2.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(12.0, 6.0),
+		gfx.LineTo(12.0, 12.0),
+		gfx.LineTo(16.0, 14.0),
+	},
+}
+
 // icon-code is a compiled vector icon.
 var IconCode = gfx.Icon{
 	ViewBox: 24.0,

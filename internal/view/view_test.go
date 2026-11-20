@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -2234,6 +2236,340 @@ func TestResponseRawView(t *testing.T) {
 	}
 	if !shows(driver, `{"ok":true,"n":1}`) {
 		t.Fatalf("原始报文没显示原样正文：%v", painted(driver))
+	}
+}
+
+// TestRequestHistoryRecordsAndReopens 每发送一次记一条历史：
+// 记录落到本机、弹窗列得出来、点一行能回到那条请求、清空后为空。
+func TestRequestHistoryRecordsAndReopens(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	send := func(want int) {
+		t.Helper()
+		// 上一次还在发的时候按钮是「发送中…」，先等它回来。
+		for deadline := time.Now().Add(3 * time.Second); model.sending && time.Now().Before(deadline); {
+			pump(t, driver)
+			time.Sleep(10 * time.Millisecond)
+		}
+		click(t, driver, "发送")
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			pump(t, driver)
+			if len(history.Load()) >= want {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("等不到第 %d 条历史：%+v", want, history.Load())
+	}
+	send(1)
+	send(2)
+
+	entries := history.Load()
+	if len(entries) != 2 {
+		t.Fatalf("应记两条：%+v", entries)
+	}
+	if entries[0].Status != 200 || !strings.Contains(entries[0].URL, "/healthz") {
+		t.Fatalf("记录内容不对：%+v", entries[0])
+	}
+	if entries[0].File == "" || entries[0].Dir != col.Dir {
+		t.Fatalf("记录应带请求路径与集合根：%+v", entries[0])
+	}
+	if hits != 2 {
+		t.Fatalf("应该真发了两次，实际 %d", hits)
+	}
+
+	// 关掉标签，再从历史点回来。
+	model.closeAllTabs()
+	pump(t, driver)
+	if entry := model.activeEntry(); entry != nil && entry.File == entries[0].File {
+		t.Fatal("关掉标签后不该还停在请求上")
+	}
+	click(t, driver, "历史")
+	pump(t, driver)
+	if !shows(driver, "/healthz") {
+		t.Fatalf("历史弹窗没列出记录：%v", painted(driver))
+	}
+	click(t, driver, "历史 "+entries[0].URL)
+	pump(t, driver)
+	if model.ui.historyOpen {
+		t.Fatal("点历史应关掉弹窗")
+	}
+	if model.activeEntry() == nil || model.activeEntry().File != entries[0].File {
+		t.Fatal("点历史应打开那条请求")
+	}
+
+	// 再打开，清空。
+	click(t, driver, "历史")
+	pump(t, driver)
+	click(t, driver, "清空历史")
+	pump(t, driver)
+	if len(history.Load()) != 0 {
+		t.Fatalf("清空后还有记录：%+v", history.Load())
+	}
+}
+
+// TestParameterRowsMoveAndSave 参数表的行能上下移，保存后文件里的顺序也跟着换。
+func TestParameterRowsMoveAndSave(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 排序集合\n")
+	writeFile(t, filepath.Join(dir, "查询.yml"), `info:
+  name: 查询
+  type: http
+  seq: 1
+meta:
+  uid: viva-row-move
+http:
+  method: GET
+  url: http://127.0.0.1:1/list
+  headers: []
+  params:
+    - name: a
+      value: "1"
+      enabled: true
+    - name: b
+      value: "2"
+      enabled: true
+  body:
+    type: none
+`)
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 查询")
+	pump(t, driver)
+
+	if len(model.req.params) != 2 || model.req.params[0].name != "a" {
+		t.Fatalf("参数没读进来：%+v", model.req.params)
+	}
+	// 第一行的「下移」。
+	click(t, driver, "下移")
+	pump(t, driver)
+	if model.req.params[0].name != "b" || model.req.params[1].name != "a" {
+		t.Fatalf("下移后顺序 = %q, %q", model.req.params[0].name, model.req.params[1].name)
+	}
+	// 第一行现在是 b，上移按钮该是灰的：点它不该把顺序再弄乱。
+	model.saveRequest()
+	pump(t, driver)
+	raw, err := os.ReadFile(filepath.Join(dir, "查询.yml"))
+	if err != nil {
+		t.Fatalf("读回文件: %v", err)
+	}
+	if strings.Index(string(raw), "name: b") > strings.Index(string(raw), "name: a") {
+		t.Fatalf("保存后参数顺序没换：\n%s", raw)
+	}
+}
+
+// TestCommandPaletteGroupsAndShortcuts 命令面板按「请求 / 集合 / 环境 / 视图」分组，
+// 右侧提示只写真实存在的快捷键；那几个快捷键本身也真的能用。
+func TestCommandPaletteGroupsAndShortcuts(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	// 页面级快捷键要有焦点在页面里才生效（headless 驱动没有「窗口」，target 为空时不算）。
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	if err := driver.Chord(gfx.ModifierControl, "k"); err != nil {
+		t.Fatalf("Chord: %v", err)
+	}
+	pump(t, driver)
+	for _, want := range []string{"命令 新建请求", "命令 设置"} {
+		found := false
+		for _, hit := range driver.Snapshot().Hits {
+			if hit.Label == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("命令面板缺少「%s」：%v", want, painted(driver))
+		}
+	}
+	if !shows(driver, primaryName()+" N") || !shows(driver, primaryName()+" ,") {
+		t.Fatalf("右侧没写出快捷键：%v", painted(driver))
+	}
+	if !shows(driver, "视图") || !shows(driver, "集合") {
+		t.Fatalf("缺少分组标题：%v", painted(driver))
+	}
+
+	// 关掉面板，然后用提示里写的那几个快捷键（每次先点回树，让焦点回到页面）。
+	model.ui.paletteOpen = false
+	pump(t, driver)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	if err := driver.Chord(gfx.ModifierControl, "n"); err != nil {
+		t.Fatalf("Chord: %v", err)
+	}
+	pump(t, driver)
+	if !model.ui.newReqOpen {
+		t.Fatal("Ctrl+N 应打开新建请求")
+	}
+	model.ui.newReqOpen = false
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	if err := driver.Chord(gfx.ModifierControl, ","); err != nil {
+		t.Fatalf("Chord: %v", err)
+	}
+	pump(t, driver)
+	if !model.ui.settingsOpen {
+		t.Fatalf("Ctrl+, 应打开设置：%v", painted(driver))
+	}
+	model.ui.settingsOpen = false
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	tabs := len(model.tabs)
+	if err := driver.Chord(gfx.ModifierControl, "w"); err != nil {
+		t.Fatalf("Chord: %v", err)
+	}
+	pump(t, driver)
+	if len(model.tabs) != tabs-1 {
+		t.Fatalf("Ctrl+W 应关掉当前标签：%d → %d", tabs, len(model.tabs))
+	}
+}
+
+// TestSettingsLabelsShareOneColumn 设置表单的标签定宽右对齐：宽度一致，右缘对齐。
+func TestSettingsLabelsShareOneColumn(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "设置")
+	pump(t, driver)
+	click(t, driver, "设置分区 网络与安全")
+	pump(t, driver)
+
+	right := float32(-1)
+	for _, want := range []string{"默认超时（秒）", "跟随重定向", "忽略证书校验"} {
+		bounds := gfx.Rect{}
+		for _, label := range driver.Snapshot().Labels {
+			// 同名文本可能还有开关自带的标签：只认标签列里的那一个（在第一列）。
+			if label.Value == want && label.Bounds.X < 600 && label.Bounds.Width <= float32(formLabelWidth) {
+				bounds = label.Bounds
+				break
+			}
+		}
+		if bounds.Width == 0 {
+			t.Fatalf("找不到标签「%s」：%v", want, painted(driver))
+		}
+		if right < 0 {
+			right = bounds.X + bounds.Width
+			continue
+		}
+		if got := bounds.X + bounds.Width; got != right {
+			t.Fatalf("标签右缘没对齐：「%s」%.0f，前一行 %.0f", want, got, right)
+		}
+	}
+}
+
+// labelBounds 找一个画面文本的矩形（只按值匹配，取第一个）。
+func labelBounds(driver *app.Driver, want string) (gfx.Rect, bool) {
+	for _, label := range driver.Snapshot().Labels {
+		if label.Value == want {
+			return label.Bounds, true
+		}
+	}
+	return gfx.Rect{}, false
+}
+
+// TestResponseTruncationNotice 超过 1 MB 的响应：正文里不再拼提示（会破坏 JSON），
+// 改由状态行下方单独一行说明「只显示前多少、共多大」。
+func TestResponseTruncationNotice(t *testing.T) {
+	payload := strings.Repeat("x", 1200*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		_, _ = w.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+
+	if !model.resp.Truncated {
+		t.Fatal("超过上限应标记为截断")
+	}
+	if !shows(driver, "响应超过上限") {
+		t.Fatalf("缺少截断提示：%v", painted(driver))
+	}
+	for _, text := range painted(driver) {
+		if strings.Contains(text, "已截断") {
+			t.Fatalf("正文里不该再拼提示文字：%q", text)
+		}
+	}
+	if model.resp.TotalSize != int64(len(payload)) {
+		t.Fatalf("总长度 = %d，期望 %d", model.resp.TotalSize, len(payload))
+	}
+}
+
+// TestResponseStatusSurvivesNarrowPane 左右分栏把响应拖窄时，状态码不能被挤掉。
+// 曾经 Tabs 抢满整行，把 200 / 耗时 / 复制正文一起推出可视区；
+// 现在状态在最左且不收缩，分段控件收成一个图标按钮，点它仍能切到原始视图。
+func TestResponseStatusSurvivesNarrowPane(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"ok":true,"n":1}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+
+	model.setSplitLayout(true)
+	pump(t, driver)
+	model.hsplit.Pos = 380
+	pump(t, driver)
+
+	if !shows(driver, "200") {
+		t.Fatalf("窄栏下状态码不见了：%v", painted(driver))
+	}
+	click(t, driver, "原始")
+	pump(t, driver)
+	if !model.rawResp {
+		t.Fatal("窄栏下点「原始」应切到原始报文")
+	}
+	if !shows(driver, `{"ok":true,"n":1}`) {
+		t.Fatalf("窄栏下原始报文没显示：%v", painted(driver))
 	}
 }
 

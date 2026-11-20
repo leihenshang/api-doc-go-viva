@@ -1,6 +1,9 @@
 package view
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
@@ -16,6 +19,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.deleteFolderDialog(c)
 	m.codeDialog(c)
 	m.renameDialog(c)
+	m.historyDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
 	m.envDialog(c)
@@ -167,7 +171,7 @@ func (m *Model) settingsDialog(c ui.C) {
 				}
 			})
 			ui.Divider(c)
-			ui.Column(c).Grow(1).Gap(10).Children(func() {
+			ui.Column(c).Grow(1).FillWidth().Items(ui.Start).Gap(10).Children(func() {
 				switch m.ui.settingsSection {
 				case 1:
 					m.settingsNetwork(c)
@@ -200,15 +204,34 @@ func (m *Model) settingsDialog(c ui.C) {
 // settingsSections 是设置左侧的分区顺序（只列软件设置本身）。
 var settingsSections = []string{"外观", "网络与安全", "本地数据", "关于"}
 
+// formLabelWidth 是设置表单里标签列的宽度：各分区共用，右侧控件才对得齐。
+const formLabelWidth = 90
+
+// formRowWidth 是设置表单行的宽度：每行同宽，标签列才会在同一条竖线上。
+const formRowWidth = 360
+
+// formLabel 是设置表单左侧的标签：固定 90px 的列，文字靠右，右缘贴着控件。
+// 用一个定宽的 Row 兜住（而不是给 Text 设 Width + TextEnd：那样 TextEnd 会把
+// 文本矩形整体挪位，不同长度的标签反而对不齐）。
+func formLabel(c ui.C, text string) {
+	ui.Row(c).Width(formLabelWidth).Justify(ui.End).Children(func() {
+		ui.Text(c, text).FontSize(11).Muted()
+	})
+}
+
 // settingsAppearance 是外观分区：主题立即生效并落盘。
 func (m *Model) settingsAppearance(c ui.C) {
 	ui.Text(c, "外观").FontSize(12).Bold().Muted()
-	ui.Text(c, "主题").FontSize(11).Muted()
-	ui.Choice(c, &m.ui.themePick, themeOptions, func(i int) string { return themeNames[i] })
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "主题")
+		ui.Choice(c, &m.ui.themePick, themeOptions, func(i int) string { return themeNames[i] })
+	})
 	ui.Text(c, "切换后立即生效，并写入本地偏好；Markdown 预览的配色一起切换。").
 		FontSize(11).Muted()
-	ui.Text(c, "请求 / 响应分栏").FontSize(11).Muted()
-	ui.Choice(c, &m.ui.splitSide, splitOptions, func(i int) string { return splitNames[i] })
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "请求 / 响应分栏")
+		ui.Choice(c, &m.ui.splitSide, splitOptions, func(i int) string { return splitNames[i] })
+	})
 	ui.Text(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。").
 		FontSize(11).Muted()
 }
@@ -216,17 +239,20 @@ func (m *Model) settingsAppearance(c ui.C) {
 // settingsNetwork 是网络与安全分区：默认超时与重定向策略。
 func (m *Model) settingsNetwork(c ui.C) {
 	ui.Text(c, "网络与安全").FontSize(12).Bold().Muted()
-	ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "默认超时（秒）").FontSize(11).Muted().Width(120)
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "默认超时（秒）")
 		ui.TextField(c, &m.ui.timeoutText, "默认超时", "20").Width(90).Changed()
+		ui.Spacer(c)
 	})
-	ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "跟随重定向").FontSize(11).Muted().Width(120)
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "跟随重定向")
 		ui.Switch(c, &m.ui.follow, "跟随重定向").Changed()
+		ui.Spacer(c)
 	})
-	ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "忽略证书校验").FontSize(11).Muted().Width(120)
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "忽略证书校验")
 		ui.Switch(c, &m.ui.insecure, "忽略证书校验").Changed()
+		ui.Spacer(c)
 	})
 	ui.Text(c, "「忽略证书校验」只用于自签 / 内网证书调试；请求文件里的 "+
 		"settings.timeout / followRedirects / insecureSsl 显式设置时优先于这里。").FontSize(11).Muted()
@@ -247,6 +273,76 @@ func (m *Model) settingsLocal(c ui.C) {
 	}
 }
 
+// historyDialog 是「请求历史」：每次真实发送都记一条，点一行回到那条请求。
+// 记录只在本机（history.jsonl），不写进集合。
+func (m *Model) historyDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.historyOpen, "请求历史", ui.ModalSpec{Width: 760, Height: 500}, func() {
+		ui.Column(c).FillWidth().Height(400).Gap(6).Children(func() {
+			ui.TextField(c, &m.ui.historyQuery, "搜索历史", "按地址或请求名过滤…").FillWidth()
+			needle := strings.ToLower(strings.TrimSpace(m.ui.historyQuery))
+			shown := 0
+			for _, record := range m.ui.historyRows {
+				if needle != "" && !strings.Contains(strings.ToLower(record.URL+" "+record.Name), needle) {
+					continue
+				}
+				shown++
+				item := record
+				status := "—"
+				if item.Status > 0 {
+					status = strconv.Itoa(item.Status)
+				}
+				meta := formatDuration(item.Duration)
+				if item.Size > 0 {
+					meta += " · " + humanBytes(item.Size)
+				}
+				row := ui.Row(c).FillWidth().PadX(8).PadY(4).Gap(8).Items(ui.Center).
+					Radius(c.Theme().Metrics.RadiusControl).
+					Hover(ui.Look{}.Background(c.Theme().Hover)).
+					Hit(ui.ID(c), "历史 "+item.URL).
+					Tooltip("点这一行回到那条请求（不在当前集合时复制地址）")
+				row.Children(func() {
+					ui.Text(c, item.Time.Format("01-02 15:04")).FontSize(10).Mono().Muted().Width(76)
+					ui.Text(c, item.Method).FontSize(10).Mono().Bold().Width(48).
+						Color(methodTint(item.Method, m.isLight()))
+					tint := c.Theme().Success
+					if item.Err != "" || item.Status >= 400 {
+						tint = c.Theme().Danger
+					}
+					ui.Text(c, status).FontSize(10).Mono().Color(tint).Width(34)
+					ui.Text(c, item.URL).FontSize(11).Grow(1).Ellipsis()
+					ui.Text(c, meta).FontSize(10).Mono().Muted().Width(100)
+				})
+				if row.Clicked() {
+					c.After(func() { m.reopenHistory(item) })
+				}
+			}
+			if shown == 0 {
+				ui.Text(c, "还没有记录：发送一次请求就会记在这里。").FontSize(11).Muted()
+			}
+			if m.ui.historyNote != "" {
+				ui.Text(c, m.ui.historyNote).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "清空历史").Icon(IconTrash).Outline().Clicked() {
+				c.After(m.clearHistory)
+			}
+			if ui.Button(c, "关闭").Clicked() {
+				m.ui.historyOpen = false
+			}
+		})
+	})
+}
+
+// formatDuration 把毫秒写成「12 ms」或「1.2 s」。
+func formatDuration(ms int64) string {
+	if ms >= 1000 {
+		return strconv.FormatFloat(float64(ms)/1000, 'f', 1, 64) + " s"
+	}
+	return strconv.FormatInt(ms, 10) + " ms"
+}
+
 // mcpDialog 是内嵌 MCP 服务的**独立**设置弹窗：与软件设置分开，没有左侧分区菜单
 // （对齐 Wails 版：MCP 是状态栏入口自带的面板，不属于软件设置）。
 func (m *Model) mcpDialog(c ui.C) {
@@ -254,12 +350,12 @@ func (m *Model) mcpDialog(c ui.C) {
 		ui.Column(c).FillWidth().Gap(10).Children(func() {
 			ui.Text(c, "把当前打开的集合以工具的形式提供给 AI（Claude Desktop / Cursor 等 MCP 客户端）。").
 				FontSize(11).Muted()
-			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "启用服务").FontSize(11).Muted().Width(120)
+			ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+				formLabel(c, "启用服务")
 				ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
 			})
-			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "监听地址").FontSize(11).Muted().Width(120)
+			ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+				formLabel(c, "监听地址")
 				ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(200).Changed()
 			})
 			switch {
