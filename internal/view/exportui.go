@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/leihenshang/api-doc-go-viva/internal/bundle"
 	"github.com/leihenshang/api-doc-go-viva/internal/export"
 	"github.com/vivaui/viva/app"
 )
@@ -121,6 +122,23 @@ func (m *Model) saveExport() {
 // exportContentFor 按格式与勾选生成正文；与「选路径 + 写文件」分开，便于无头测试。
 func (m *Model) exportContentFor(format string, sel export.Selection) (string, string, app.FileFilter) {
 	docs := []export.Doc{{Name: m.col.Name, Col: m.col}}
+	// 集合包与 OpenAPI 是结构化产物，不按文档勾选。
+	if format == "bundle" {
+		data, err := bundle.Encode(m.col)
+		if err != nil {
+			m.ui.exportNote = "导出失败：" + err.Error()
+			return "", "json", app.FileFilter{}
+		}
+		return string(data), "apidocgo.json", app.FileFilter{Name: "集合包", Pattern: "*.apidocgo.json"}
+	}
+	if format == "openapi" {
+		data, err := export.OpenAPI(m.col, sel)
+		if err != nil {
+			m.ui.exportNote = "导出失败：" + err.Error()
+			return "", "json", app.FileFilter{}
+		}
+		return string(data), "openapi.json", app.FileFilter{Name: "OpenAPI 文档", Pattern: "*.json"}
+	}
 	if format == "html" {
 		return export.HTMLSelected(docs, sel), "html", app.FileFilter{Name: "HTML 文档", Pattern: "*.html"}
 	}

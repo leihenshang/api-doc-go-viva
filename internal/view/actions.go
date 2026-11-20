@@ -13,6 +13,7 @@ import (
 
 	"github.com/leihenshang/api-doc-go-share/codegen"
 	"github.com/leihenshang/api-doc-go-share/collection"
+	"github.com/leihenshang/api-doc-go-viva/internal/bundle"
 	curlc "github.com/leihenshang/api-doc-go-viva/internal/curl"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
@@ -532,7 +533,28 @@ func (m *Model) runImport() {
 		summary importers.Summary
 		err     error
 	)
-	if m.ui.importMode == 2 {
+	if m.ui.importMode == 3 {
+		text := strings.TrimSpace(m.ui.importText)
+		if text == "" {
+			m.ui.importErr = "把集合包 JSON 粘进来，或选一个文件"
+			m.invalidator.Invalidate()
+			return
+		}
+		pack, parseErr := bundle.Decode([]byte(text))
+		if parseErr != nil {
+			m.ui.importErr = parseErr.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+		written, renamed, writeErr := bundle.Write(m.col.Dir, pack)
+		if writeErr != nil {
+			m.ui.importErr = writeErr.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+		summary.Requests, summary.Docs = written, renamed
+		summary.Notes = append(summary.Notes, "集合包：写入 "+strconv.Itoa(written)+" 个文件")
+	} else if m.ui.importMode == 2 {
 		text := strings.TrimSpace(m.ui.importText)
 		if text == "" {
 			m.ui.importErr = "把 OpenAPI 的 JSON 粘进来，或选一个文件"

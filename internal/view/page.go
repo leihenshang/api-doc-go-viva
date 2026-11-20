@@ -218,6 +218,9 @@ func (m *Model) collectionPicker(c ui.C) {
 		if menu.Item("导入 OpenCollection 集合…").Icon(IconImport).Clicked() {
 			c.After(func() { m.openImport(1) })
 		}
+		if menu.Item("导入集合包…").Icon(IconImport).Clicked() {
+			c.After(func() { m.openImport(2) })
+		}
 		if menu.Item("运行集合…").Icon(IconSend).Clicked() {
 			c.After(m.openRunner)
 		}
@@ -227,6 +230,12 @@ func (m *Model) collectionPicker(c ui.C) {
 		}
 		if menu.Item("导出 HTML…").Icon(IconImport).Clicked() {
 			c.After(func() { m.openExport("html") })
+		}
+		if menu.Item("导出集合包…").Icon(IconImport).Clicked() {
+			c.After(func() { m.exportCollection("bundle") })
+		}
+		if menu.Item("导出 OpenAPI…").Icon(IconImport).Clicked() {
+			c.After(func() { m.exportCollection("openapi") })
 		}
 		closeItem := menu.Item("关闭当前集合")
 		if len(m.roots) <= 1 {

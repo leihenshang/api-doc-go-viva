@@ -862,7 +862,27 @@ func (m *Model) importDialog(c ui.C) {
 				ui.Text(c, "导入到").FontSize(11).Muted().Width(48)
 				ui.Select(c, &m.ui.importFolder, m.ui.importFolders, nil).Width(200)
 			})
-			if m.ui.importMode == 2 {
+			if m.ui.importMode == 3 {
+				ui.Text(c, "api-doc-go 集合包：把另一个集合的请求、文档与清单原样搬进来，同名文件自动加 -2。").
+					FontSize(11).Muted()
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					if ui.Button(c, "选择集合包…").Icon(IconFilePlus).Outline().Clicked() {
+						c.After(m.pickImportFile)
+					}
+					if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
+						text, err := app.ClipboardText()
+						if err != nil {
+							m.ui.importErr = err.Error()
+						} else {
+							m.ui.importText = text
+							m.ui.importErr = ""
+						}
+					}
+					ui.Spacer(c)
+				})
+				ui.TextArea(c, &m.ui.importText, "集合包 JSON", `{"format":"api-doc-go/collection","files":[...]}`).
+					FillWidth().Height(220)
+			} else if m.ui.importMode == 2 {
 				ui.Text(c, "OpenAPI 3 文档（JSON）：一个「路径 + 方法」导入成一条请求，"+
 					"查询参数与请求头进表，描述进文档；$ref 不展开。").
 					FontSize(11).Muted()
@@ -936,8 +956,8 @@ func (m *Model) importDialog(c ui.C) {
 
 // importModes / importModeNames 是导入来源的两个选项。
 var (
-	importModes     = []int{0, 1, 2}
-	importModeNames = []string{"Postman 集合", "OpenCollection 集合", "OpenAPI 3（JSON）"}
+	importModes     = []int{0, 1, 2, 3}
+	importModeNames = []string{"Postman 集合", "OpenCollection 集合", "OpenAPI 3（JSON）", "集合包（.apidocgo.json）"}
 )
 
 // curlImportDialog 是「导入 cURL」：粘贴命令，解析成一条新请求（参考 19）。

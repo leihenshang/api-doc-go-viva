@@ -16,6 +16,7 @@ import (
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
+	"github.com/leihenshang/api-doc-go-viva/internal/importers"
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
@@ -3713,5 +3714,58 @@ func TestCollectionDefaultsDialog(t *testing.T) {
 	waitFor(t, driver, "200")
 	if gotHeader != "core" {
 		t.Fatalf("默认头没带上，服务端收到 %q", gotHeader)
+	}
+}
+
+// TestBundleExportImportRoundTrip 集合包：导出当前集合，再导入到另一个空集合，
+// 条目与名称都对得上（走的是菜单背后的同一套 action）。
+func TestBundleExportImportRoundTrip(t *testing.T) {
+	src, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load src: %v", err)
+	}
+	model := New(src, "", nil)
+	content, ext, _ := model.exportContentFor("bundle", nil)
+	if ext != "apidocgo.json" || !strings.Contains(content, `"format": "api-doc-go/collection"`) {
+		t.Fatalf("导出内容不对：ext=%q\n%s", ext, content[:min(len(content), 200)])
+	}
+
+	dstDir := t.TempDir()
+	writeFile(t, filepath.Join(dstDir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 目标集合\n")
+	dst, err := explorer.Load(dstDir)
+	if err != nil {
+		t.Fatalf("Load dst: %v", err)
+	}
+	target := New(dst, "", nil)
+	before := len(target.col.Entries)
+
+	target.openImport(3)
+	target.ui.importText = content
+	target.runImport()
+	// 导入后重扫：按磁盘重新读一遍集合。
+	if reloaded, err := explorer.Load(dstDir); err == nil {
+		target.col = reloaded
+	}
+	if len(target.col.Entries) <= before {
+		t.Fatalf("导入后条目没增加：%d → %d（note=%q）", before, len(target.col.Entries), target.ui.importNote)
+	}
+	if target.ui.importNote == "" {
+		t.Fatalf("应给出导入结果提示")
+	}
+}
+
+// TestExportOpenAPIThroughModel 菜单背后的 OpenAPI 导出能产出可解析文档。
+func TestExportOpenAPIThroughModel(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	content, ext, _ := model.exportContentFor("openapi", nil)
+	if ext != "openapi.json" || !strings.Contains(content, `"openapi": "3.0.0"`) {
+		t.Fatalf("OpenAPI 导出不对：ext=%q\n%s", ext, content)
+	}
+	if _, _, err := importers.OpenAPI([]byte(content), "{{host}}"); err != nil {
+		t.Fatalf("导出的文档解析失败：%v", err)
 	}
 }
