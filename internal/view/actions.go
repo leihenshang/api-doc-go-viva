@@ -102,6 +102,7 @@ func (m *Model) reload(file string, tab detailTab) {
 	m.pendingSelect = file
 	m.refreshShown()
 	m.refreshTabs()
+	m.refreshMock() // 集合变了，桩路由跟着重建
 	if tab >= 0 && m.curTab >= 0 {
 		m.tab = tab
 		m.tabs[m.curTab].tab = tab

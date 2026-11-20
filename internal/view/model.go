@@ -15,6 +15,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
+	appmock "github.com/leihenshang/api-doc-go-viva/internal/mock"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
@@ -104,7 +105,8 @@ const (
 // newDocName 是「新建文档」的默认名，与客户端一样靠 -2 后缀去重。
 const newDocName = "新建文档"
 
-// mcpRuntime 是内嵌 MCP 服务的运行状态（底栏状态点与设置面板共用）。
+// mockRuntime 与 mockServer 是本地桩服务的状态与句柄（见 view/mock.go）。
+
 type mcpRuntime struct {
 	running bool
 	addr    string
@@ -245,6 +247,11 @@ type workspaceUI struct {
 	historyQuery string
 	historyRows  []history.Entry
 	historyNote  string
+
+	// Mock 弹窗：开关与监听地址。
+	mockOpen     bool
+	mockOn       bool
+	mockAddrText string
 
 	// 导入弹窗：0 = Postman 集合 JSON，1 = 另一个 OpenCollection 集合目录。
 	importOpen    bool
@@ -416,8 +423,10 @@ type Model struct {
 	settings settings.Settings
 	ui       workspaceUI
 	// mcp 是内嵌 MCP 服务的运行状态（底栏状态点 / 设置面板）；服务器本体在 mcp.go。
-	mcp     mcpRuntime
-	mcpHost mcpHost
+	mcp        mcpRuntime
+	mcpHost    mcpHost
+	mock       mockRuntime
+	mockServer *appmock.Server
 
 	resp     send.Outcome
 	hasResp  bool
@@ -490,6 +499,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.syncSettingsUI()
 	// 上次启用过就随窗口一起起来（未启用时是空操作）。
 	m.startMCP()
+	m.startMock()
 	return m
 }
 

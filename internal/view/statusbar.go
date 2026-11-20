@@ -34,6 +34,22 @@ func (m *Model) statusActions(c ui.C) {
 		m.openTrash()
 	}
 
+	mockLabel, mockHint := m.mockLabel()
+	mockButton := ui.Button(c, "Mock").Icon(IconServer).Ghost().XSmall().Tooltip(mockHint)
+	if !hasCollection {
+		mockButton.Disabled(true)
+	}
+	if mockButton.Clicked() {
+		m.openMock()
+	}
+	mockDot := m.pal.border
+	if m.mock.running {
+		mockDot = c.Theme().Success
+	} else if m.mock.err != "" {
+		mockDot = c.Theme().Danger
+	}
+	ui.Slot(c).Width(6).Height(6).Radius(3).Background(mockDot).Hit(ui.ID(c), mockLabel)
+
 	if ui.Button(c, "历史").Icon(IconClock).Ghost().XSmall().Tooltip("查看请求历史").Clicked() {
 		m.openHistory()
 	}

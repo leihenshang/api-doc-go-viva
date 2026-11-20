@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/mcp"
+	"github.com/leihenshang/api-doc-go-viva/internal/mock"
 )
 
 // 主题取值。
@@ -52,6 +53,10 @@ type Settings struct {
 	MCPToken string `json:"mcpToken,omitempty"`
 	// MCPAllow 是可访问工作区的白名单：出现在列表里 = 授权，Writable 决定写工具能否落盘。
 	MCPAllow []MCPAllowEntry `json:"mcpAllow,omitempty"`
+	// MockEnabled 打开本地桩服务（按当前集合的请求假回复）。
+	MockEnabled bool `json:"mockEnabled,omitempty"`
+	// MockAddr 是桩服务的监听地址，默认只绑回环。
+	MockAddr string `json:"mockAddr,omitempty"`
 }
 
 // MCPAllowEntry 是一个被授权给 AI 的集合根（绝对路径 + 是否允许写）。
@@ -64,6 +69,8 @@ type MCPAllowEntry struct {
 const (
 	DefaultTimeoutSec = 20
 	MaxTimeoutSec     = 600
+	// DefaultMockAddr 是本地桩服务的默认监听地址（只本机可连）。
+	DefaultMockAddr = mock.DefaultAddr
 	// DefaultMCPAddr 是内嵌 MCP 服务的默认监听地址（只本机可连）。
 	// 与 mcp.DefaultAddr 同源，避免两处各写一份端口。
 	DefaultMCPAddr = mcp.DefaultAddr
@@ -71,7 +78,10 @@ const (
 
 // Default 返回默认偏好：日间模式、20 秒超时、跟随重定向。
 func Default() Settings {
-	return Settings{Theme: ThemeLight, TimeoutSec: DefaultTimeoutSec, MCPAddr: DefaultMCPAddr, Envs: map[string]string{}}
+	return Settings{
+		Theme: ThemeLight, TimeoutSec: DefaultTimeoutSec,
+		MCPAddr: DefaultMCPAddr, MockAddr: DefaultMockAddr, Envs: map[string]string{},
+	}
 }
 
 // FollowRedirects 报告是否跟随重定向（默认跟随）。
@@ -118,6 +128,9 @@ func Load() Settings {
 	}
 	if strings.TrimSpace(out.MCPAddr) == "" {
 		out.MCPAddr = DefaultMCPAddr
+	}
+	if strings.TrimSpace(out.MockAddr) == "" {
+		out.MockAddr = DefaultMockAddr
 	}
 	return out
 }

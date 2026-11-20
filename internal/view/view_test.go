@@ -2324,6 +2324,58 @@ func TestRequestHistoryRecordsAndReopens(t *testing.T) {
 	}
 }
 
+// TestMockServerFollowsSettings 开了桩服务就按集合里的请求应答，关了就停。
+func TestMockServerFollowsSettings(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	model.settings.MockEnabled = true
+	model.settings.MockAddr = "127.0.0.1:0" // 让系统分配端口，避免和本机别的服务撞
+	model.restartMock()
+	defer model.stopMock()
+	if !model.mock.running || model.mock.addr == "" {
+		t.Fatalf("桩服务没起来：%+v", model.mock)
+	}
+	if len(model.mock.routes) == 0 {
+		t.Fatal("应把集合里的请求注册成路由")
+	}
+
+	resp, err := http.Get("http://" + model.mock.addr + "/__mock/routes")
+	if err != nil {
+		t.Fatalf("GET 路由表: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("路由表状态码 = %d", resp.StatusCode)
+	}
+	// 集合里的请求路径是 /healthz，桩应当认得。
+	var routed bool
+	for _, route := range model.mock.routes {
+		if route.Path == "/healthz" {
+			routed = true
+		}
+	}
+	if !routed {
+		t.Fatalf("没注册 /healthz：%+v", model.mock.routes)
+	}
+	answer, err := http.Get("http://" + model.mock.addr + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	defer func() { _ = answer.Body.Close() }()
+	if answer.StatusCode != 200 || answer.Header.Get("X-Mock") != "api-doc-go" {
+		t.Fatalf("桩没应答：%d %v", answer.StatusCode, answer.Header)
+	}
+
+	model.settings.MockEnabled = false
+	model.restartMock()
+	if model.mock.running {
+		t.Fatal("关掉后桩服务应停止")
+	}
+}
+
 // TestImportPostmanDialog 导入弹窗走完整条路：贴 JSON → 点导入 → 树里多出分组与请求。
 func TestImportPostmanDialog(t *testing.T) {
 	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))

@@ -21,6 +21,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.renameDialog(c)
 	m.historyDialog(c)
 	m.importDialog(c)
+	m.mockDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
 	m.envDialog(c)
@@ -452,6 +453,56 @@ func (m *Model) settingsAbout(c ui.C) {
 	ui.Text(c, m.ui.imeDetail).FontSize(11).Muted()
 	ui.Text(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").
 		FontSize(11).Muted()
+}
+
+// mockDialog 是本地 Mock 服务：开关、监听地址与当前注册的路由表。
+// 桩只回示例数据，不转发、不执行脚本，用于前端联调。
+func (m *Model) mockDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.mockOpen, "本地 Mock 服务", ui.ModalSpec{Width: 760, Height: 560}, func() {
+		ui.Column(c).FillWidth().Height(460).Gap(8).Children(func() {
+			ui.Text(c, "按当前打开集合里的请求假回复：方法与路径取自请求文件，"+
+				"响应体按请求体字段表生成示例值（没字段表就回 {\"mock\":true}）。").FontSize(11).Muted()
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				formLabel(c, "监听地址")
+				ui.TextField(c, &m.ui.mockAddrText, "监听地址", settings.DefaultMockAddr).Width(220)
+				ui.Spacer(c)
+			})
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				formLabel(c, "启用服务")
+				ui.Switch(c, &m.ui.mockOn, "启用本地桩服务")
+				ui.Spacer(c)
+			})
+			if m.mock.err != "" {
+				ui.Text(c, "启动失败："+m.mock.err).FontSize(11).Color(c.Theme().Danger)
+			} else if m.mock.running {
+				ui.Text(c, "正在监听 http://"+m.mock.addr+"　路由 "+strconv.Itoa(len(m.mock.routes))+" 条").
+					FontSize(11).Muted().Mono()
+			}
+			ui.Divider(c)
+			ui.Text(c, "路由").FontSize(11).Muted()
+			if len(m.mock.routes) == 0 {
+				ui.Text(c, "没有路由：先打开集合（或在上面启用服务）。").FontSize(11).Muted()
+			}
+			for _, route := range m.mock.routes {
+				item := route
+				ui.Row(c).FillWidth().Gap(10).PadY(3).Items(ui.Center).Children(func() {
+					ui.Text(c, item.Method).FontSize(10).Mono().Bold().Width(52).
+						Color(methodTint(item.Method, m.isLight()))
+					ui.Text(c, item.Path).FontSize(11).Mono().Grow(1).Ellipsis()
+					ui.Text(c, item.Name).FontSize(10).Muted().Width(160).Ellipsis()
+				})
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "关闭").Clicked() {
+				m.ui.mockOpen = false
+			}
+			if ui.Button(c, "应用").Clicked() {
+				c.After(m.applyMockEdits)
+			}
+		})
+	})
 }
 
 // importDialog 是「导入集合」：Postman 导出的 JSON，或另一个 OpenCollection 集合目录。

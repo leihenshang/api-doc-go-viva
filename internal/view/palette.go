@@ -49,6 +49,7 @@ var paletteGroups = []paletteGroup{
 		{name: "切换主题", run: func(m *Model) { m.setTheme(!m.isLight()) }},
 		{name: "设置", hint: primaryName() + " ,", run: func(m *Model) { m.openSettings() }},
 		{name: "请求历史", run: func(m *Model) { m.openHistory() }},
+		{name: "本地 Mock 服务", run: func(m *Model) { m.openMock() }},
 	}},
 }
 
