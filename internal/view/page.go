@@ -205,6 +205,12 @@ func (m *Model) collectionPicker(c ui.C) {
 		if menu.Item("打开集合…").Icon(IconFolderOpen).Clicked() {
 			c.After(m.chooseCollection)
 		}
+		if menu.Item("导入 Postman 集合…").Icon(IconImport).Clicked() {
+			c.After(func() { m.openImport(0) })
+		}
+		if menu.Item("导入 OpenCollection 集合…").Icon(IconImport).Clicked() {
+			c.After(func() { m.openImport(1) })
+		}
 		closeItem := menu.Item("关闭当前集合")
 		if len(m.roots) <= 1 {
 			closeItem.Disabled(true)

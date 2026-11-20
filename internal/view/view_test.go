@@ -2324,6 +2324,52 @@ func TestRequestHistoryRecordsAndReopens(t *testing.T) {
 	}
 }
 
+// TestImportPostmanDialog 导入弹窗走完整条路：贴 JSON → 点导入 → 树里多出分组与请求。
+func TestImportPostmanDialog(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.openImport(0)
+	pump(t, driver)
+
+	model.ui.importText = `{"info":{"name":"外部"},"item":[
+	  {"name":"用户","item":[{"name":"外部登录","request":{"method":"POST","url":"https://a/login","header":[]}}]}
+	]}`
+	click(t, driver, "导入")
+	pump(t, driver)
+	pump(t, driver)
+
+	if model.ui.importErr != "" {
+		t.Fatalf("导入失败：%s", model.ui.importErr)
+	}
+	if !strings.Contains(model.ui.importNote, "1 条请求") {
+		t.Fatalf("结果提示不对：%q", model.ui.importNote)
+	}
+	// 重扫之后新条目应当出现在集合里，并且能按名字找到。
+	var imported *explorer.Entry
+	for _, entry := range model.col.Entries {
+		if entry.Name == "外部登录" {
+			imported = entry
+		}
+	}
+	if imported == nil {
+		var names []string
+		for _, entry := range model.col.Entries {
+			names = append(names, entry.Name)
+		}
+		t.Fatalf("导入的请求没进集合：%v", names)
+	}
+	if imported.Payload == nil || imported.Payload.HTTP.Method != "POST" {
+		t.Fatalf("导入内容不对：%+v", imported.Payload)
+	}
+	if !strings.Contains(imported.File, "用户/") {
+		t.Fatalf("应落在同名分组里：%s", imported.File)
+	}
+}
+
 // TestParameterRowsMoveAndSave 参数表的行能上下移，保存后文件里的顺序也跟着换。
 func TestParameterRowsMoveAndSave(t *testing.T) {
 	dir := t.TempDir()

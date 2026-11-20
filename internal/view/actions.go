@@ -3,7 +3,9 @@ package view
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
+	"github.com/leihenshang/api-doc-go-viva/internal/importers"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
@@ -415,6 +418,116 @@ func (m *Model) copyCurl(entry *explorer.Entry) {
 		m.req.note = "cURL 已复制"
 	}
 	m.invalidator.Invalidate()
+}
+
+// openImport 打开「导入」弹窗：0 = Postman 集合 JSON，1 = 另一个 OpenCollection 集合。
+func (m *Model) openImport(mode int) {
+	m.ui.importOpen = true
+	m.ui.importMode = mode
+	m.ui.importText = ""
+	m.ui.importDir = ""
+	m.ui.importNote = ""
+	m.ui.importErr = ""
+	m.ui.importFolder = curlRootOption
+	m.ui.importFolders = m.curlFolderOptions()
+	m.invalidator.Invalidate()
+}
+
+// pickImportFile 选一个 Postman 导出的集合 JSON 读进文本框。
+func (m *Model) pickImportFile() {
+	files, err := app.OpenFiles(app.OpenFileOptions{
+		Title:   "选择 Postman 集合 JSON",
+		Filters: []app.FileFilter{{Name: "集合 JSON", Pattern: "*.json"}},
+	})
+	if err != nil {
+		if !errors.Is(err, app.ErrCanceled) {
+			m.ui.importErr = err.Error()
+		}
+		return
+	}
+	if len(files) == 0 {
+		return
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		m.ui.importErr = "读文件: " + err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.importText = string(data)
+	m.ui.importErr = ""
+	m.invalidator.Invalidate()
+}
+
+// pickImportDir 选一个要被导入的 OpenCollection 集合目录。
+func (m *Model) pickImportDir() {
+	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "选择要导入的集合目录"})
+	if err != nil {
+		if !errors.Is(err, app.ErrCanceled) {
+			m.ui.importErr = err.Error()
+			m.invalidator.Invalidate()
+		}
+		return
+	}
+	if path == "" {
+		return
+	}
+	m.ui.importDir = path
+	m.ui.importErr = ""
+	m.invalidator.Invalidate()
+}
+
+// runImport 按当前模式导入；成功就重扫并把结果留在弹窗里，失败只改提示。
+func (m *Model) runImport() {
+	folder := m.ui.importFolder
+	if folder == curlRootOption {
+		folder = ""
+	}
+	var (
+		summary importers.Summary
+		err     error
+	)
+	if m.ui.importMode == 1 {
+		dir := strings.TrimSpace(m.ui.importDir)
+		if dir == "" {
+			m.ui.importErr = "先选一个要导入的集合目录"
+			m.invalidator.Invalidate()
+			return
+		}
+		summary, err = importers.OpenCollection(m.col.Dir, folder, dir)
+	} else {
+		text := strings.TrimSpace(m.ui.importText)
+		if text == "" {
+			m.ui.importErr = "把 Postman 导出的集合 JSON 粘进来，或选一个文件"
+			m.invalidator.Invalidate()
+			return
+		}
+		items, parsed, parseErr := importers.Postman([]byte(text))
+		if parseErr != nil {
+			m.ui.importErr = parseErr.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+		summary, err = importers.Write(m.col.Dir, folder, items)
+		summary.Notes = append(parsed.Notes, summary.Notes...)
+		summary.Vars = parsed.Vars
+	}
+	if err != nil {
+		m.ui.importErr = err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.importErr = ""
+	m.ui.importNote = fmt.Sprintf("已导入 %d 个分组、%d 条请求、%d 篇文档（同名自动加 -2）",
+		summary.Folders, summary.Requests, summary.Docs)
+	if len(summary.Vars) > 0 {
+		m.ui.importNote += fmt.Sprintf("；集合变量 %d 个没有自动建环境，可在「环境设置」里补", len(summary.Vars))
+	}
+	if len(summary.Notes) > 0 {
+		m.ui.importNote += "。" + strings.Join(summary.Notes, "；")
+	}
+	m.expandDir(folder)
+	m.reload("", tabParams)
 }
 
 // openHistory 打开请求历史：每次打开都从磁盘重读，发送过的请求才有记录。

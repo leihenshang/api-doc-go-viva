@@ -245,8 +245,18 @@ type workspaceUI struct {
 	historyQuery string
 	historyRows  []history.Entry
 	historyNote  string
-	newErr       string
-	newFolder    string // 从某个分组右键新建时指定落点
+
+	// 导入弹窗：0 = Postman 集合 JSON，1 = 另一个 OpenCollection 集合目录。
+	importOpen    bool
+	importMode    int
+	importText    string
+	importDir     string
+	importFolder  string
+	importFolders []string
+	importNote    string
+	importErr     string
+	newErr        string
+	newFolder     string // 从某个分组右键新建时指定落点
 	// savingScratch 表示这次弹窗是「临时请求另存为」，保存成功后关掉临时标签。
 	savingScratch bool
 

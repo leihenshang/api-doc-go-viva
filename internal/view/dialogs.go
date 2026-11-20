@@ -20,6 +20,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.codeDialog(c)
 	m.renameDialog(c)
 	m.historyDialog(c)
+	m.importDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
 	m.envDialog(c)
@@ -452,6 +453,74 @@ func (m *Model) settingsAbout(c ui.C) {
 	ui.Text(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").
 		FontSize(11).Muted()
 }
+
+// importDialog 是「导入集合」：Postman 导出的 JSON，或另一个 OpenCollection 集合目录。
+// 两种来源落到同一个落点分组，导完就重扫，同名一律加 -2。
+func (m *Model) importDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.importOpen, "导入集合", ui.ModalSpec{Width: 720, Height: 520}, func() {
+		ui.Column(c).FillWidth().Gap(8).Children(func() {
+			ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+				ui.Text(c, "来源").FontSize(11).Muted().Width(48)
+				ui.Choice(c, &m.ui.importMode, importModes, func(mode int) string {
+					return importModeNames[mode]
+				})
+				ui.Spacer(c)
+				ui.Text(c, "导入到").FontSize(11).Muted().Width(48)
+				ui.Select(c, &m.ui.importFolder, m.ui.importFolders, nil).Width(200)
+			})
+			if m.ui.importMode == 1 {
+				ui.Text(c, "另一个 OpenCollection 集合：分组照层级复制，请求换成新 uid，文档进 docs/。").FontSize(11).Muted()
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					ui.TextField(c, &m.ui.importDir, "集合目录", "/path/to/collection").Grow(1)
+					if ui.Button(c, "选择目录…").Icon(IconFolderOpen).Outline().Clicked() {
+						c.After(m.pickImportDir)
+					}
+				})
+			} else {
+				ui.Text(c, "Postman v2 集合：方法 / 地址 / 查询参数 / 请求头 / raw·urlencoded·formdata body / "+
+					"bearer·basic·apikey 认证会转过来；脚本与断言忽略。").FontSize(11).Muted()
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					if ui.Button(c, "选择 JSON 文件…").Icon(IconFilePlus).Outline().Clicked() {
+						c.After(m.pickImportFile)
+					}
+					if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
+						text, err := app.ClipboardText()
+						if err != nil {
+							m.ui.importErr = err.Error()
+						} else {
+							m.ui.importText = text
+							m.ui.importErr = ""
+						}
+					}
+					ui.Spacer(c)
+				})
+				ui.TextArea(c, &m.ui.importText, "Postman 集合 JSON", `{"info": {...}, "item": [...]}`).
+					FillWidth().Height(220)
+			}
+			if m.ui.importErr != "" {
+				ui.Text(c, m.ui.importErr).FontSize(11).Color(c.Theme().Danger)
+			}
+			if m.ui.importNote != "" {
+				ui.Text(c, m.ui.importNote).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "关闭").Clicked() {
+				m.ui.importOpen = false
+			}
+			if ui.Button(c, "导入").Clicked() {
+				c.After(m.runImport)
+			}
+		})
+	})
+}
+
+// importModes / importModeNames 是导入来源的两个选项。
+var (
+	importModes     = []int{0, 1}
+	importModeNames = []string{"Postman 集合", "OpenCollection 集合"}
+)
 
 // curlImportDialog 是「导入 cURL」：粘贴命令，解析成一条新请求（参考 19）。
 func (m *Model) curlImportDialog(c ui.C) {

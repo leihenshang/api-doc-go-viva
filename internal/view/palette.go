@@ -39,6 +39,8 @@ var paletteGroups = []paletteGroup{
 	}},
 	{"集合", []paletteCommand{
 		{name: "打开集合", run: func(m *Model) { m.chooseCollection() }},
+		{name: "导入 Postman 集合", run: func(m *Model) { m.openImport(0) }},
+		{name: "导入 OpenCollection 集合", run: func(m *Model) { m.openImport(1) }},
 	}},
 	{"环境", []paletteCommand{
 		{name: "环境设置", run: func(m *Model) { m.openEnvEditorFor(m.envName) }},
