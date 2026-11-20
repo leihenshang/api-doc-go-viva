@@ -316,6 +316,80 @@ func TestResponseCopyByClick(t *testing.T) {
 	}
 }
 
+// TestTitlebarIsMergedIntoTheToolbar 顶栏融合：不再有系统标题栏，工具条自己就是标题栏。
+//   - 窗口是自定义标题栏模式，条高与 Wails 版的 --app-titlebar-h 一致；
+//   - 整条工具条是拖动区，否则无边框窗口拖不动；
+//   - 右端 3×46 是 viva 自绘的最小化/最大化/关闭，我们自己的控件不能摆进去。
+func TestTitlebarIsMergedIntoTheToolbar(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	config := model.config()
+	if config.WindowMode != app.WindowCustomTitlebar {
+		t.Fatalf("窗口应是自定义标题栏模式，实际 %v", config.WindowMode)
+	}
+	if config.TitlebarHeight != titlebarHeight {
+		t.Fatalf("标题栏高度应是 %.0f，实际 %.0f", float32(titlebarHeight), config.TitlebarHeight)
+	}
+	if config.WindowControls == nil {
+		t.Fatal("应给出窗口按钮配色，否则按钮不吃主题")
+	}
+
+	driver := openWindow(t, model)
+	// 窗口按钮自己也在快照里（viva 为它们声明了无障碍节点），它们当然在留白区里。
+	style := model.windowControls()
+	windowButtons := map[string]bool{
+		style.Minimize: true, style.Maximize: true, style.Restore: true, style.CloseName: true,
+	}
+	check := func() {
+		t.Helper()
+		snap := driver.Snapshot()
+		width := float32(snap.Width)
+		dragging := false
+		for _, hit := range snap.Hits {
+			if hit.MovesWindow && hit.Bounds.Y == 0 && hit.Bounds.Width == width {
+				if hit.Bounds.Height != titlebarHeight {
+					t.Fatalf("拖动区应正好是标题栏高 %.0f，实际 %.0f", float32(titlebarHeight), hit.Bounds.Height)
+				}
+				dragging = true
+			}
+		}
+		if !dragging {
+			t.Fatalf("标题栏整行应是拖动区（宽 %.0f）：%v", width, painted(driver))
+		}
+
+		_, trailing := app.TitlebarInsets()
+		if trailing <= 0 {
+			return // 这个平台由系统画按钮，没有需要让开的宽度
+		}
+		for _, hit := range snap.Hits {
+			if hit.MovesWindow || hit.IsLabel || hit.Label == "" || windowButtons[hit.Label] {
+				continue
+			}
+			if hit.Bounds.Y+hit.Bounds.Height > titlebarHeight {
+				continue // 只看标题栏这一行里的控件
+			}
+			if hit.Bounds.X+hit.Bounds.Width > width-trailing {
+				t.Fatalf("宽 %.0f 时控件「%s」压到窗口按钮上：右边界 %.0f，应止于 %.0f",
+					width, hit.Label, hit.Bounds.X+hit.Bounds.Width, width-trailing)
+			}
+			// 挤成 0 宽就等于消失：标题栏在最小宽度下也不该压没自己的控件。
+			if hit.Bounds.Width < 24 {
+				t.Fatalf("宽 %.0f 时控件「%s」被压成 %.0f 像素", width, hit.Label, hit.Bounds.Width)
+			}
+		}
+	}
+	check()
+
+	// 最小宽度是顶栏最容易拥挤的尺寸：集合/环境/分栏/主题 + 右侧 3×46 的窗口按钮。
+	if err := driver.Resize(config.MinWidth, config.MinHeight); err != nil {
+		t.Fatalf("Resize: %v", err)
+	}
+	check()
+}
+
 // TestSelectionTracksPointer 选区跟着指针走：拖动越远选得越多，且拿到的是该行的前缀。
 // 中文是双宽字符，坐标换算若按「等宽 × 字数」估算就会越拖越偏。
 func TestSelectionTracksPointer(t *testing.T) {
@@ -553,18 +627,18 @@ func TestThemeTogglePersists(t *testing.T) {
 	if !model.isLight() {
 		t.Fatal("默认应是日间模式")
 	}
-	click(t, driver, "夜间")
+	click(t, driver, "切换到夜间")
 	pump(t, driver)
 	if model.isLight() {
-		t.Fatal("点「夜间」后应切到深色")
+		t.Fatal("点「切换到夜间」后应切到深色")
 	}
 	if settings.Load().Theme != settings.ThemeDark {
 		t.Fatalf("主题没有落盘：%+v", settings.Load())
 	}
-	click(t, driver, "日间")
+	click(t, driver, "切换到日间")
 	pump(t, driver)
 	if !model.isLight() {
-		t.Fatal("点「日间」后应切回浅色")
+		t.Fatal("点「切换到日间」后应切回浅色")
 	}
 }
 
@@ -2021,10 +2095,21 @@ func TestRequestResponseSplitLayout(t *testing.T) {
 		t.Fatalf("默认应为上下分栏：参数 y=%.1f 响应 y=%.1f", reqY, respY)
 	}
 
-	click(t, driver, "上下")
+	// 分段按钮：点「左右分栏」那一段才换方向；点当前已选中的「上下分栏」不算切换。
+	click(t, driver, "左右分栏")
 	pump(t, driver)
 	if !model.settings.SplitSideBySide {
-		t.Fatal("工具条分栏按钮应切到左右分栏")
+		t.Fatal("点「左右分栏」应切到左右分栏")
+	}
+	click(t, driver, "上下分栏")
+	pump(t, driver)
+	if model.settings.SplitSideBySide {
+		t.Fatal("点「上下分栏」应切回上下分栏")
+	}
+	click(t, driver, "左右分栏")
+	pump(t, driver)
+	if !model.settings.SplitSideBySide {
+		t.Fatal("再点「左右分栏」应切回左右分栏")
 	}
 	reqX, reqY, _ = find("参数")
 	respX, respY, _ = find("响应")

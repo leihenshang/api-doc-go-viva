@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -71,35 +73,94 @@ func (m *Model) welcomePage(c ui.C) {
 // appVersion 是顶栏展示的版本号（与窗口标题一起构成产品标识）。
 const appVersion = "v0.1.0"
 
+// titlebarHeight 是标题栏高度，与 Wails 版的 --app-titlebar-h 一致。
+const titlebarHeight = 44
+
+// 标题栏图标按钮的无障碍名称：按钮上不再写字，读屏软件靠这个说清点下去会怎样。
+const (
+	splitSideLabel  = "左右分栏"
+	splitStackLabel = "上下分栏"
+	themeDarkLabel  = "切换到夜间"
+	themeLightLabel = "切换到日间"
+)
+
 // toolbar 是顶部一条：左列产品名 + 版本，右列从请求页左边缘开始放环境与动作。
+// 窗口是无边框的（见 config 的 WindowCustomTitlebar），这一条**就是标题栏**：
+// 整行是拖动区（MovesWindow），空白处按下拖走窗口，控件自己吃点击。
+// 右端 3×46 留给 viva 自绘的最小化 / 最大化 / 关闭，所以右侧要多留 TitlebarInsets 的尾宽。
 func (m *Model) toolbar(c ui.C) {
-	ui.Row(c).FillWidth().Height(44).Items(ui.Center).Children(func() {
-		ui.Row(c).Width(m.split.Pos).Height(44).PadX(12).Gap(8).Items(ui.Center).Children(func() {
+	_, trailing := app.TitlebarInsets()
+	ui.Row(c).FillWidth().Height(titlebarHeight).Items(ui.Center).MovesWindow().Children(func() {
+		ui.Row(c).Width(m.split.Pos).Height(titlebarHeight).PadX(12).Gap(8).Items(ui.Center).Children(func() {
 			ui.Text(c, "api-doc-go").FontSize(15).Bold()
 			ui.Text(c, appVersion).FontSize(11).Muted().Mono()
 		})
 		// PadLeft(6)：集合 / 环境下拉的左缘与下方标签条、内容区左侧对齐（侧栏右框的 x）。
-		ui.Row(c).Grow(1).Height(44).PadLeft(6).PadRight(12).Gap(8).Items(ui.Center).Children(func() {
+		ui.Row(c).Grow(1).Height(titlebarHeight).PadLeft(6).PadRight(trailing + 12).Gap(8).Items(ui.Center).Children(func() {
 			m.collectionPicker(c)
 			m.envPicker(c)
 			ui.Spacer(c)
-			splitLabel, splitIcon := "上下", IconRows
-			if m.settings.SplitSideBySide {
-				splitLabel, splitIcon = "左右", IconColumns
-			}
-			if ui.Button(c, splitLabel).Icon(splitIcon).Tooltip("切换请求 / 响应分栏方向").Clicked() {
-				m.setSplitLayout(!m.settings.SplitSideBySide)
-			}
-			themeLabel, themeIcon := "日间", IconSun
-			if m.isLight() {
-				themeLabel, themeIcon = "夜间", IconMoon
-			}
-			if ui.Button(c, themeLabel).Icon(themeIcon).Clicked() {
-				m.setTheme(!m.isLight())
-			}
+			m.splitToggle(c)
+			m.themeToggle(c)
 		})
 	})
 	ui.Divider(c)
+}
+
+// splitToggle 是分栏方向的分段按钮：只有图标，外面一圈细描边，选中项浅绿底 + 主色图标。
+// 两个方向同时摊开，比一个循环切换的按钮更直白——一眼看得出当前是左右还是上下。
+func (m *Model) splitToggle(c ui.C) {
+	side := m.settings.SplitSideBySide
+	ui.Row(c).Border(1, m.pal.border).Radius(8).Pad(2).Gap(2).Items(ui.Center).Children(func() {
+		// 点当前已选中的那一段不算切换：setSplitLayout 会把分隔条位置重置，
+		// 也会多写一次偏好。只有真的换方向才动。
+		m.iconToggle(c, IconColumns, splitSideLabel, side, func() {
+			if !m.settings.SplitSideBySide {
+				m.setSplitLayout(true)
+			}
+		})
+		m.iconToggle(c, IconRows, splitStackLabel, !side, func() {
+			if m.settings.SplitSideBySide {
+				m.setSplitLayout(false)
+			}
+		})
+	})
+}
+
+// themeToggle 是主题切换：同样只有一个图标（与参考图的月亮一致），点一下换主题。
+func (m *Model) themeToggle(c ui.C) {
+	icon, label := IconSun, themeLightLabel
+	if m.isLight() {
+		icon, label = IconMoon, themeDarkLabel
+	}
+	m.iconToggle(c, icon, label, false, func() { m.setTheme(!m.isLight()) })
+}
+
+// iconToggle 是一个只有图标的小方块：选中时铺主色浅底、图标用主色；悬停给一层灰底。
+// 按下后交给 c.After，和别的按钮一样不在一帧里改状态。
+func (m *Model) iconToggle(c ui.C, icon gfx.Icon, label string, active bool, onClick func()) {
+	box := ui.Row(c).Size(28, 24).Shrink(0).Center().Radius(6)
+	if active {
+		box = box.Background(m.pal.accentTint)
+	}
+	box = box.Transition().
+		Hover(ui.Look{}.Background(m.pal.hover)).
+		Focus(ui.Look{}.Ring(2, m.theme.Ring)).
+		Hit(ui.ID(c), label)
+	if box.Clicked() {
+		c.After(onClick)
+	}
+	ink := m.theme.MutedForeground
+	if active {
+		ink = m.pal.accent
+	}
+	box.Children(func() {
+		glyph := ui.Icon(c, icon).Size(15, 15).Color(ink)
+		if !active {
+			// 未选中：图标平时是次要色，指针移上来才提到正文色。
+			glyph.StateFrom(box).Hover(ui.Look{}.Color(m.theme.Foreground))
+		}
+	})
 }
 
 // collectionPicker 是集合切换下拉：已打开的集合根、打开另一个集合、关闭当前集合。

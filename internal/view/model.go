@@ -138,32 +138,38 @@ type requestTables struct {
 // palette 是 Wails 客户端的面板色令牌：浅色 sidebar #f5f5f5 / panel #ffffff，
 // 暗色 #17181a / #1e1f22，让集合树与请求页有明确的层次，而不是同一块白底。
 type palette struct {
-	bg      ui.Color
-	sidebar ui.Color
-	panel   ui.Color
-	border  ui.Color
-	active  ui.Color // 树选中行：参考图是信息蓝浅底
-	hover   ui.Color // 树行悬停
+	bg         ui.Color
+	sidebar    ui.Color
+	panel      ui.Color
+	border     ui.Color
+	active     ui.Color // 树选中行：参考图是信息蓝浅底
+	hover      ui.Color // 树行悬停
+	accent     ui.Color // 主色：分段按钮选中项的图标
+	accentTint ui.Color // 主色浅底：分段按钮选中项的背景（--app-accent-tint）
 }
 
 func paletteFor(light bool) palette {
 	if light {
 		return palette{
-			bg:      ui.RGB(0xf5, 0xf5, 0xf5),
-			sidebar: ui.RGB(0xf5, 0xf5, 0xf5),
-			panel:   ui.RGB(0xff, 0xff, 0xff),
-			border:  ui.RGB(0xe3, 0xe3, 0xe3),
-			active:  ui.RGB(0xe8, 0xf0, 0xfe),
-			hover:   ui.RGB(0xec, 0xec, 0xec),
+			bg:         ui.RGB(0xf5, 0xf5, 0xf5),
+			sidebar:    ui.RGB(0xf5, 0xf5, 0xf5),
+			panel:      ui.RGB(0xff, 0xff, 0xff),
+			border:     ui.RGB(0xe3, 0xe3, 0xe3),
+			active:     ui.RGB(0xe8, 0xf0, 0xfe),
+			hover:      ui.RGB(0xec, 0xec, 0xec),
+			accent:     ui.RGB(0x18, 0xa0, 0x58), // #18a058
+			accentTint: ui.RGB(0xe8, 0xf5, 0xee), // #e8f5ee
 		}
 	}
 	return palette{
-		bg:      ui.RGB(0x17, 0x18, 0x1a),
-		sidebar: ui.RGB(0x17, 0x18, 0x1a),
-		panel:   ui.RGB(0x1e, 0x1f, 0x22),
-		border:  ui.RGB(0x2b, 0x2d, 0x31),
-		active:  ui.RGB(0x16, 0x28, 0x3d),
-		hover:   ui.RGB(0x26, 0x28, 0x2c),
+		bg:         ui.RGB(0x17, 0x18, 0x1a),
+		sidebar:    ui.RGB(0x17, 0x18, 0x1a),
+		panel:      ui.RGB(0x1e, 0x1f, 0x22),
+		border:     ui.RGB(0x2b, 0x2d, 0x31),
+		active:     ui.RGB(0x16, 0x28, 0x3d),
+		hover:      ui.RGB(0x26, 0x28, 0x2c),
+		accent:     ui.RGB(0x36, 0xad, 0x6a), // #36ad6a
+		accentTint: ui.RGB(0x1b, 0x2b, 0x22), // #1b2b22
 	}
 }
 
@@ -471,15 +477,36 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 func (m *Model) config() app.Config {
 	page := ui.NewPage(ui.PageConfig{View: m.Page, Theme: &m.theme, Background: &m.pal.bg})
 	return page.Config(app.Config{
-		Title:       "API-DOC-GO",
-		Class:       "api-doc-viva",
-		Width:       1180,
-		Height:      760,
-		MinWidth:    900,
-		MinHeight:   560,
-		Invalidator: &m.invalidator,
-		OnWake:      m.collect,
+		Title:     "API-DOC-GO",
+		Class:     "api-doc-viva",
+		Width:     1180,
+		Height:    760,
+		MinWidth:  900,
+		MinHeight: 560,
+		// 顶栏融合：不要系统标题栏，工具条自己就是标题栏（拖动区在 toolbar 里声明）。
+		// viva 在 Windows / Linux 上自绘最小化 / 最大化 / 关闭，并给无边框窗口补阴影、
+		// 圆角与边缘拖拽缩放，所以不需要我们自己画这些。
+		WindowMode:     app.WindowCustomTitlebar,
+		TitlebarHeight: titlebarHeight,
+		WindowControls: m.windowControls,
+		Invalidator:    &m.invalidator,
+		OnWake:         m.collect,
 	})
+}
+
+// windowControls 是标题栏右端那组窗口按钮的配色：每帧调用，跟着主题走。
+func (m *Model) windowControls() app.WindowControlsStyle {
+	return app.WindowControlsStyle{
+		Foreground:      m.theme.MutedForeground,
+		Hover:           m.theme.Hover,
+		Pressed:         m.theme.Border,
+		Close:           m.theme.Danger,
+		CloseForeground: m.theme.DangerForeground,
+		Minimize:        "最小化",
+		Maximize:        "最大化",
+		Restore:         "还原",
+		CloseName:       "关闭",
+	}
 }
 
 // Run 打开窗口并阻塞到关闭；后台发送完成后由 Invalidator 唤醒重绘。
