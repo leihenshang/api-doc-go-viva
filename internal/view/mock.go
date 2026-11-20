@@ -1,8 +1,10 @@
 package view
 
 import (
+	"strconv"
 	"strings"
 
+	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	appmock "github.com/leihenshang/api-doc-go-viva/internal/mock"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 )
@@ -97,6 +99,60 @@ func (m *Model) mockLabel() (label, hint string) {
 	default:
 		return "Mock 未启用", "本地桩服务未启用（在 Mock 弹窗里打开）"
 	}
+}
+
+// openMockRule 打开某条请求的桩规则弹窗：状态码 / 延迟 / 覆盖响应体。
+func (m *Model) openMockRule(file string) {
+	entry := m.entryByFile(file)
+	if entry == nil || entry.Payload == nil {
+		return
+	}
+	rule := appmock.RuleOf(entry.Payload)
+	m.ui.mockRuleOpen = true
+	m.ui.mockRuleFile = file
+	m.ui.mockRuleName = entry.Name
+	m.ui.mockRuleNote = ""
+	m.ui.mockRuleStatus = ""
+	if rule.Status > 0 {
+		m.ui.mockRuleStatus = strconv.Itoa(rule.Status)
+	}
+	m.ui.mockRuleDelay = ""
+	if rule.DelayMS > 0 {
+		m.ui.mockRuleDelay = strconv.Itoa(rule.DelayMS)
+	}
+	m.ui.mockRuleBody = rule.Body
+	m.invalidator.Invalidate()
+}
+
+// saveMockRule 把规则写回请求文件的 mock: 键，并让正在跑的桩服务重建路由。
+func (m *Model) saveMockRule() {
+	entry := m.entryByFile(m.ui.mockRuleFile)
+	if entry == nil || entry.Payload == nil {
+		m.ui.mockRuleNote = "这条请求已经不在集合里了"
+		m.invalidator.Invalidate()
+		return
+	}
+	status, _ := strconv.Atoi(strings.TrimSpace(m.ui.mockRuleStatus))
+	delay, _ := strconv.Atoi(strings.TrimSpace(m.ui.mockRuleDelay))
+	if status != 0 && (status < 100 || status > 599) {
+		m.ui.mockRuleNote = "状态码要在 100–599 之间"
+		m.invalidator.Invalidate()
+		return
+	}
+	if delay < 0 {
+		delay = 0
+	}
+	rule := appmock.Rule{Status: status, DelayMS: delay, Body: m.ui.mockRuleBody}
+	appmock.ApplyRule(entry.Payload, rule)
+	if err := explorer.SaveRequest(m.col.Dir, entry.File, entry.Payload); err != nil {
+		m.ui.mockRuleNote = "保存失败：" + err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.reloadCollection()
+	m.refreshMock()
+	m.ui.mockRuleNote = "已保存到 " + entry.File
+	m.invalidator.Invalidate()
 }
 
 // openMock 打开 Mock 弹窗：每次打开都把当前偏好抄进表单。

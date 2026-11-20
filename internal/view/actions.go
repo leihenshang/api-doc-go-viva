@@ -473,6 +473,7 @@ func (m *Model) openImport(mode int) {
 	m.ui.importErr = ""
 	m.ui.importFolder = curlRootOption
 	m.ui.importFolders = m.curlFolderOptions()
+	m.ui.importBase = "{{host}}"
 	m.invalidator.Invalidate()
 }
 
@@ -530,7 +531,22 @@ func (m *Model) runImport() {
 		summary importers.Summary
 		err     error
 	)
-	if m.ui.importMode == 1 {
+	if m.ui.importMode == 2 {
+		text := strings.TrimSpace(m.ui.importText)
+		if text == "" {
+			m.ui.importErr = "把 OpenAPI 的 JSON 粘进来，或选一个文件"
+			m.invalidator.Invalidate()
+			return
+		}
+		items, parsed, parseErr := importers.OpenAPI([]byte(text), m.ui.importBase)
+		if parseErr != nil {
+			m.ui.importErr = parseErr.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+		summary, err = importers.Write(m.col.Dir, folder, items)
+		summary.Notes = append(parsed.Notes, summary.Notes...)
+	} else if m.ui.importMode == 1 {
 		dir := strings.TrimSpace(m.ui.importDir)
 		if dir == "" {
 			m.ui.importErr = "先选一个要导入的集合目录"
@@ -619,6 +635,15 @@ func (m *Model) openTrash() {
 		return
 	}
 	m.ui.trashRows = items
+	// 勾选按文件重建：文件已经不在了就不再算勾着。
+	sel := make(map[string]bool, len(items))
+	for _, item := range items {
+		if m.ui.trashSel[item.File] {
+			sel[item.File] = true
+		}
+	}
+	m.ui.trashSel = sel
+	m.ui.trashArmed = false
 	m.ui.trashMsg = ""
 	m.ui.trashOpen = true
 	m.invalidator.Invalidate()
@@ -639,6 +664,83 @@ func (m *Model) restoreTrash(file string) {
 	}
 	m.openTrash()
 	m.ui.trashMsg = "已恢复：" + restored
+}
+
+// selectedTrash 是回收站里勾中的文件（没有勾选返回空）。
+func (m *Model) selectedTrash() []string {
+	files := make([]string, 0, len(m.ui.trashSel))
+	for _, item := range m.ui.trashRows {
+		if m.ui.trashSel[item.File] {
+			files = append(files, item.File)
+		}
+	}
+	return files
+}
+
+// restoreSelectedTrash 批量恢复：逐个回集合根，最后统一重扫并刷新弹窗。
+func (m *Model) restoreSelectedTrash() {
+	files := m.selectedTrash()
+	if len(files) == 0 {
+		m.ui.trashMsg = "先在左边勾选文件"
+		m.invalidator.Invalidate()
+		return
+	}
+	restored := 0
+	var firstErr string
+	for _, file := range files {
+		if _, err := explorer.RestoreTrash(m.col.Dir, file); err != nil {
+			if firstErr == "" {
+				firstErr = err.Error()
+			}
+			continue
+		}
+		restored++
+	}
+	m.reloadCollection()
+	m.openTrash()
+	switch {
+	case firstErr != "" && restored == 0:
+		m.ui.trashMsg = firstErr
+	case firstErr != "":
+		m.ui.trashMsg = "恢复了 " + strconv.Itoa(restored) + " 个，另有失败：" + firstErr
+	default:
+		m.ui.trashMsg = "恢复了 " + strconv.Itoa(restored) + " 个"
+	}
+	m.invalidator.Invalidate()
+}
+
+// purgeSelectedTrash 彻底删除勾选的文件：第一次点击只是「上膛」，第二次才真删。
+func (m *Model) purgeSelectedTrash() {
+	files := m.selectedTrash()
+	if len(files) == 0 {
+		m.ui.trashMsg = "先在左边勾选文件"
+		m.invalidator.Invalidate()
+		return
+	}
+	if !m.ui.trashArmed {
+		m.ui.trashArmed = true
+		m.ui.trashMsg = "再点一次「确认彻底删除」：这 " + strconv.Itoa(len(files)) + " 个文件将无法恢复"
+		m.invalidator.Invalidate()
+		return
+	}
+	removed, err := explorer.PurgeTrash(m.col.Dir, files)
+	m.ui.trashArmed = false
+	m.openTrash()
+	if err != nil {
+		m.ui.trashMsg = "已删除 " + strconv.Itoa(removed) + " 个，但有失败：" + err.Error()
+	} else {
+		m.ui.trashMsg = "已彻底删除 " + strconv.Itoa(removed) + " 个文件"
+	}
+	m.invalidator.Invalidate()
+}
+
+// toggleAllTrash 全选 / 全不选回收站里的文件。
+func (m *Model) toggleAllTrash(on bool) {
+	for _, item := range m.ui.trashRows {
+		m.ui.trashSel[item.File] = on
+	}
+	m.ui.trashArmed = false
+	m.invalidator.Invalidate()
 }
 
 // chooseCollection 打开系统目录选择框；失败（没有可用的对话框后端）就退回手输路径。
@@ -1073,6 +1175,18 @@ func (m *Model) openEnvEditorFor(name string) {
 		rows = append(rows, &kvRow{enabled: v.Enabled, name: v.Name, value: v.Value, secret: v.Secret})
 	}
 	m.ui.envRows = rows
+	// 变量表可以拖拽重排：List 的 Reorder 在拖动结束时回调，交换后重绘。
+	m.ui.envList.Label = func(index int) string {
+		if index < 0 || index >= len(m.ui.envRows) {
+			return ""
+		}
+		return m.ui.envRows[index].name
+	}
+	m.ui.envList.Reorder = func(rows []int, to int) {
+		if reorderItems(m.ui.envRows, rows, to) {
+			m.invalidator.Invalidate()
+		}
+	}
 	m.ui.envSel = name
 	m.ui.envPick = name
 	m.ui.envNameEdit = name

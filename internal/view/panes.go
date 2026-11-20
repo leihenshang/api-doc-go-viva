@@ -156,6 +156,50 @@ func (m *Model) rowMover(c ui.C, index, total int, onMove func(from, to int)) {
 	}
 }
 
+// reorderItems 把 rows 这些行整体挪到 to 之前（List 的 Reorder 语义：
+// rows 是拖动前的下标升序，to 也是拖动前的落点）。
+func reorderItems[T any](list []T, rows []int, to int) bool {
+	if len(list) == 0 || len(rows) == 0 || to < 0 || to > len(list) {
+		return false
+	}
+	moved := make([]T, 0, len(rows))
+	rest := make([]T, 0, len(list))
+	picked := make(map[int]bool, len(rows))
+	for _, index := range rows {
+		if index >= 0 && index < len(list) {
+			picked[index] = true
+		}
+	}
+	for index, item := range list {
+		if picked[index] {
+			moved = append(moved, item)
+			continue
+		}
+		rest = append(rest, item)
+	}
+	if len(moved) == 0 {
+		return false
+	}
+	insert := to
+	for _, index := range rows {
+		if index < to {
+			insert--
+		}
+	}
+	if insert < 0 {
+		insert = 0
+	}
+	if insert > len(rest) {
+		insert = len(rest)
+	}
+	out := make([]T, 0, len(list))
+	out = append(out, rest[:insert]...)
+	out = append(out, moved...)
+	out = append(out, rest[insert:]...)
+	copy(list, out)
+	return true
+}
+
 // moveItem 交换切片里相邻的两项；越界就原样不动（返回 false）。
 func moveItem[T any](list []T, from, to int) bool {
 	if from < 0 || to < 0 || from >= len(list) || to >= len(list) {

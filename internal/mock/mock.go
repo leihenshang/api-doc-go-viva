@@ -19,17 +19,78 @@ import (
 
 	"github.com/leihenshang/api-doc-go-share/collection"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"gopkg.in/yaml.v3"
 )
 
 // DefaultAddr 是默认监听地址：只绑回环，避免把桩服务暴露到局域网。
 const DefaultAddr = "127.0.0.1:2027"
 
+// Rule 是单条请求的桩规则：状态码、延迟与整段响应体覆盖（可只写一部分）。
+// 存在请求文件的顶层 mock: 键里（走 RequestFile.Extra 原样保留）。
+type Rule struct {
+	Status  int    `yaml:"status,omitempty" json:"status,omitempty"`
+	DelayMS int    `yaml:"delayMs,omitempty" json:"delayMs,omitempty"`
+	Body    string `yaml:"body,omitempty" json:"body,omitempty"`
+}
+
+// RuleKey 是规则在请求文件里的顶层键。
+const RuleKey = "mock"
+
+// RuleOf 读出某条请求的桩规则；没有就是零值。
+func RuleOf(file *collection.RequestFile) Rule {
+	if file == nil || file.Extra == nil {
+		return Rule{}
+	}
+	raw, ok := file.Extra[RuleKey]
+	if !ok || raw == nil {
+		return Rule{}
+	}
+	data, err := yaml.Marshal(raw)
+	if err != nil {
+		return Rule{}
+	}
+	var rule Rule
+	if err := yaml.Unmarshal(data, &rule); err != nil {
+		return Rule{}
+	}
+	return rule
+}
+
+// ApplyRule 把规则写回请求文件；全零就删掉这个键。
+func ApplyRule(file *collection.RequestFile, rule Rule) {
+	if file == nil {
+		return
+	}
+	if rule.Status == 0 && rule.DelayMS <= 0 && strings.TrimSpace(rule.Body) == "" {
+		if file.Extra != nil {
+			delete(file.Extra, RuleKey)
+		}
+		return
+	}
+	if file.Extra == nil {
+		file.Extra = map[string]any{}
+	}
+	item := map[string]any{}
+	if rule.Status > 0 {
+		item["status"] = rule.Status
+	}
+	if rule.DelayMS > 0 {
+		item["delayMs"] = rule.DelayMS
+	}
+	if strings.TrimSpace(rule.Body) != "" {
+		item["body"] = rule.Body
+	}
+	file.Extra[RuleKey] = item
+}
+
 // Route 是一条桩路由，界面用它列出「现在能打到哪些地址」。
 type Route struct {
-	Method string `json:"method"`
-	Path   string `json:"path"`
-	Name   string `json:"name"`
-	File   string `json:"file"`
+	Method  string `json:"method"`
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	File    string `json:"file"`
+	Status  int    `json:"status,omitempty"`
+	DelayMS int    `json:"delayMs,omitempty"`
 }
 
 // Server 是一个已启动的桩服务。
@@ -39,6 +100,7 @@ type Server struct {
 	mu     sync.RWMutex
 	routes []Route
 	bodies map[string]string // "METHOD /path" → 示例响应体
+	rules  map[string]Rule   // "METHOD /path" → 状态码 / 延迟 / 覆盖体
 	logger *log.Logger
 }
 
@@ -51,8 +113,8 @@ func Start(addr string, dirs []string, logger *log.Logger) (*Server, error) {
 	if strings.HasPrefix(addr, ":") {
 		addr = "127.0.0.1" + addr
 	}
-	routes, bodies := Build(dirs)
-	server := &Server{routes: routes, bodies: bodies, logger: logger}
+	routes, bodies, rules := Build(dirs)
+	server := &Server{routes: routes, bodies: bodies, rules: rules, logger: logger}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", server.serve)
 	listener, err := net.Listen("tcp", addr)
@@ -83,9 +145,9 @@ func (s *Server) Routes() []Route {
 
 // Reload 重新从集合目录读一遍路由（集合改了以后调用）。
 func (s *Server) Reload(dirs []string) {
-	routes, bodies := Build(dirs)
+	routes, bodies, rules := Build(dirs)
 	s.mu.Lock()
-	s.routes, s.bodies = routes, bodies
+	s.routes, s.bodies, s.rules = routes, bodies, rules
 	s.mu.Unlock()
 }
 
@@ -117,11 +179,26 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	key := method + " " + path
 	s.mu.RLock()
 	body, ok := s.bodies[key]
+	rule := s.rules[key]
 	s.mu.RUnlock()
 	if ok {
+		if rule.DelayMS > 0 {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(time.Duration(rule.DelayMS) * time.Millisecond):
+			}
+		}
+		status := http.StatusOK
+		if rule.Status > 0 {
+			status = rule.Status
+		}
+		if text := strings.TrimSpace(rule.Body); text != "" {
+			body = rule.Body
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Mock", "api-doc-go")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
 		return
 	}
@@ -140,9 +217,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 // Build 从集合目录收集桩路由与示例响应体。
-func Build(dirs []string) ([]Route, map[string]string) {
+func Build(dirs []string) ([]Route, map[string]string, map[string]Rule) {
 	routes := make([]Route, 0, 16)
 	bodies := make(map[string]string, 16)
+	rules := make(map[string]Rule, 16)
 	for _, dir := range dirs {
 		if strings.TrimSpace(dir) == "" {
 			continue
@@ -167,11 +245,22 @@ func Build(dirs []string) ([]Route, map[string]string) {
 			if _, exists := bodies[key]; exists {
 				continue // 先出现的赢，避免同一路径两条请求互相盖
 			}
-			bodies[key] = sampleBody(entry.Payload)
-			routes = append(routes, Route{Method: method, Path: path, Name: entry.Name, File: entry.File})
+			rule := RuleOf(entry.Payload)
+			body := sampleBody(entry.Payload)
+			if strings.TrimSpace(rule.Body) != "" {
+				body = rule.Body
+			}
+			bodies[key] = body
+			if rule.Status != 0 || rule.DelayMS != 0 || rule.Body != "" {
+				rules[key] = rule
+			}
+			routes = append(routes, Route{
+				Method: method, Path: path, Name: entry.Name, File: entry.File,
+				Status: rule.Status, DelayMS: rule.DelayMS,
+			})
 		}
 	}
-	return routes, bodies
+	return routes, bodies, rules
 }
 
 // PathOf 从请求地址里取路径：去掉协议 / 主机 / 查询串，空路径当 "/"。

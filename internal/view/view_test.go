@@ -3,6 +3,7 @@ package view
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -2524,6 +2525,199 @@ func TestRunStopsOnFirstFailure(t *testing.T) {
 	}
 	if len(model.run.Results) != 1 {
 		t.Fatalf("应当第一条就停：%+v", model.run.Results)
+	}
+}
+
+// TestReorderItems 列表拖拽的搬运语义：把若干行整体挪到 to 之前（to 按拖动前的下标算）。
+func TestReorderItems(t *testing.T) {
+	cases := []struct {
+		name string
+		list []string
+		rows []int
+		to   int
+		want []string
+	}{
+		{"往后挪一行", []string{"a", "b", "c"}, []int{0}, 2, []string{"b", "a", "c"}},
+		{"挪到末尾", []string{"a", "b", "c"}, []int{0}, 3, []string{"b", "c", "a"}},
+		{"往前挪一行", []string{"a", "b", "c"}, []int{2}, 0, []string{"c", "a", "b"}},
+		{"多行一起挪", []string{"a", "b", "c", "d"}, []int{0, 1}, 4, []string{"c", "d", "a", "b"}},
+		{"挪到原位不动", []string{"a", "b", "c"}, []int{1}, 1, []string{"a", "b", "c"}},
+	}
+	for _, item := range cases {
+		list := append([]string(nil), item.list...)
+		reorderItems(list, item.rows, item.to)
+		if strings.Join(list, ",") != strings.Join(item.want, ",") {
+			t.Fatalf("%s：得到 %v，应为 %v", item.name, list, item.want)
+		}
+	}
+	if reorderItems([]string{}, []int{0}, 0) {
+		t.Fatal("空列表不该报告改动")
+	}
+	if reorderItems([]string{"a"}, []int{9}, 0) {
+		t.Fatal("越界下标不该报告改动")
+	}
+}
+
+// TestEnvRowsCanBeReordered 环境变量表接上了 List 的重排回调：交换后保存，文件里的顺序跟着换。
+func TestEnvRowsCanBeReordered(t *testing.T) {
+	dir := writeCollection(t, "http://127.0.0.1:1")
+	writeFile(t, filepath.Join(dir, "environments", "dev.yml"), `info:
+  name: dev
+vars:
+  - name: host
+    value: http://127.0.0.1:8080
+  - name: token
+    value: abc
+`)
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "dev", nil)
+	driver := openWindow(t, model)
+	model.openEnvEditorFor("dev")
+	pump(t, driver)
+	pump(t, driver) // 弹窗在下一帧才换成环境表（模态切换有一帧过渡）
+	if len(model.ui.envRows) != 2 || model.ui.envRows[0].name != "host" {
+		t.Fatalf("变量表没读出来：%+v", model.ui.envRows)
+	}
+	if model.ui.envList.Reorder == nil {
+		t.Fatal("变量表应挂上拖拽重排回调")
+	}
+	// 注意：环境弹窗在无头驱动里不进快照（含 ui.List 的模态不发 hit），
+	// 所以这里只测模型侧——重排回调与落盘顺序；行尾 ↑↓ 与拖拽走同一份数据。
+
+	// 模拟拖拽结束时的回调（手势本身是 viva 的 List 实现的）。
+	model.ui.envList.Reorder([]int{0}, 2)
+	pump(t, driver)
+	if model.ui.envRows[0].name != "token" {
+		t.Fatalf("重排后顺序不对：%+v", model.ui.envRows)
+	}
+
+	model.saveEnv()
+	pump(t, driver)
+	raw, err := os.ReadFile(filepath.Join(dir, "environments", "dev.yml"))
+	if err != nil {
+		t.Fatalf("读回环境文件: %v", err)
+	}
+	if strings.Index(string(raw), "token") > strings.Index(string(raw), "host") {
+		t.Fatalf("保存后顺序没跟着换：\n%s", raw)
+	}
+}
+
+// TestMockRuleEditsAndServes 桩规则：在弹窗里改状态码与响应体，保存到请求文件的 mock: 键，
+// 桩服务按新规则应答。
+func TestMockRuleEditsAndServes(t *testing.T) {
+	dir := writeCollection(t, "http://127.0.0.1:1")
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.openMockRule("健康检查.yml")
+	pump(t, driver)
+	model.ui.mockRuleStatus = "418"
+	model.ui.mockRuleDelay = "1"
+	model.ui.mockRuleBody = `{"tea":true}`
+	pump(t, driver)
+	click(t, driver, "保存")
+	pump(t, driver)
+
+	raw, err := os.ReadFile(filepath.Join(dir, "健康检查.yml"))
+	if err != nil {
+		t.Fatalf("读回文件: %v", err)
+	}
+	if !strings.Contains(string(raw), "mock:") || !strings.Contains(string(raw), "418") {
+		t.Fatalf("规则没落盘：\n%s", raw)
+	}
+
+	model.settings.MockEnabled = true
+	model.settings.MockAddr = "127.0.0.1:0"
+	model.restartMock()
+	defer model.stopMock()
+	if !model.mock.running {
+		t.Fatalf("桩没起来：%+v", model.mock)
+	}
+	resp, err := http.Get("http://" + model.mock.addr + "/healthz")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 418 {
+		t.Fatalf("状态码没按规则返回：%d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("读响应: %v", err)
+	}
+	if !strings.Contains(string(body), "tea") {
+		t.Fatalf("响应体没按规则覆盖：%s", body)
+	}
+}
+
+// TestTrashBatchRestoreAndPurge 回收站批量操作：勾选后恢复会回集合根，
+// 彻底删除要二次确认，删掉的文件真的从磁盘上没了。
+func TestTrashBatchRestoreAndPurge(t *testing.T) {
+	dir := writeCollection(t, "http://127.0.0.1:1")
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	// 把两条请求都丢进回收站。
+	model.trashEntry("健康检查.yml")
+	pump(t, driver)
+	model.trashEntry("删除.yml")
+	pump(t, driver)
+	model.openTrash()
+	pump(t, driver)
+	if len(model.ui.trashRows) != 2 {
+		t.Fatalf("回收站应有两条：%+v", model.ui.trashRows)
+	}
+	if !shows(driver, "回收站") {
+		t.Fatalf("弹窗没打开：%v", painted(driver))
+	}
+
+	// 批量恢复：两条都回来。
+	click(t, driver, "全选")
+	pump(t, driver)
+	click(t, driver, "恢复选中")
+	pump(t, driver)
+	if len(model.ui.trashRows) != 0 {
+		t.Fatalf("恢复后回收站应为空：%+v", model.ui.trashRows)
+	}
+	for _, name := range []string{"健康检查.yml", "删除.yml"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("恢复后的 %s 不在：%v", name, err)
+		}
+	}
+
+	// 再丢一次，这次彻底删除。
+	model.trashEntry("健康检查.yml")
+	pump(t, driver)
+	model.openTrash()
+	pump(t, driver)
+	click(t, driver, "全选")
+	pump(t, driver)
+	click(t, driver, "彻底删除")
+	pump(t, driver)
+	if !strings.Contains(model.ui.trashMsg, "无法恢复") {
+		t.Fatalf("第一次点应只是上膛：%q", model.ui.trashMsg)
+	}
+	click(t, driver, "确认彻底删除")
+	pump(t, driver)
+	if len(model.ui.trashRows) != 0 {
+		t.Fatalf("彻底删除后回收站应为空：%+v", model.ui.trashRows)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".trash", "健康检查.yml")); err == nil {
+		t.Fatal("文件还留在 .trash 里")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "健康检查.yml")); err == nil {
+		t.Fatal("彻底删除的文件不该回到集合根")
 	}
 }
 

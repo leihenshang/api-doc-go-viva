@@ -256,6 +256,13 @@ type workspaceUI struct {
 	exportRows   []exportRow
 	exportNote   string
 
+	// 环境变量表的列表状态：用 ui.List 才能拖拽重排。
+	envList ui.ListState
+
+	// 回收站：勾选、以及「彻底删除」是否已经点过一次（二次确认）。
+	trashSel   map[string]bool
+	trashArmed bool
+
 	// 集合运行器弹窗。
 	runOpen bool
 
@@ -272,11 +279,21 @@ type workspaceUI struct {
 	mockOn       bool
 	mockAddrText string
 
+	// Mock 单条规则弹窗：状态码 / 延迟 / 覆盖响应体。
+	mockRuleOpen   bool
+	mockRuleFile   string
+	mockRuleName   string
+	mockRuleStatus string
+	mockRuleDelay  string
+	mockRuleBody   string
+	mockRuleNote   string
+
 	// 导入弹窗：0 = Postman 集合 JSON，1 = 另一个 OpenCollection 集合目录。
 	importOpen    bool
 	importMode    int
 	importText    string
 	importDir     string
+	importBase    string
 	importFolder  string
 	importFolders []string
 	importNote    string

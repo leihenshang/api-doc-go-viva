@@ -863,6 +863,28 @@ func RestoreTrash(collectionDir, file string) (string, error) {
 	return filepath.ToSlash(rel), nil
 }
 
+// PurgeTrash 彻底删除回收站里的指定文件（目录也一并删掉），不可恢复。
+// 返回真正删掉的条数与第一条错误；单个失败不影响其余项。
+func PurgeTrash(collectionDir string, files []string) (int, error) {
+	trash := filepath.Join(collectionDir, trashDirName)
+	removed := 0
+	var firstErr error
+	for _, file := range files {
+		if file == "" || strings.ContainsAny(file, "/\\") || file == "." || file == ".." {
+			continue
+		}
+		target := filepath.Join(trash, file)
+		if err := os.RemoveAll(target); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("删除 %s: %w", file, err)
+			}
+			continue
+		}
+		removed++
+	}
+	return removed, firstErr
+}
+
 // moveToTrash 把一个集合内的文件移进 .trash（时间戳前缀，重名再补序号）。
 func moveToTrash(collectionDir, full string) error {
 	trash := filepath.Join(collectionDir, trashDirName)

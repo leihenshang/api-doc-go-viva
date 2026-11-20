@@ -26,6 +26,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.runnerDialog(c)
 	m.runRulesDialog(c)
 	m.exportDialog(c)
+	m.mockRuleDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
 	m.envDialog(c)
@@ -459,6 +460,41 @@ func (m *Model) settingsAbout(c ui.C) {
 		FontSize(11).Muted()
 }
 
+// mockRuleDialog 编辑一条请求的桩规则：状态码、延迟与整段响应体覆盖。
+func (m *Model) mockRuleDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.mockRuleOpen, "桩规则 · "+m.ui.mockRuleName, ui.ModalSpec{Width: 720, Height: 520}, func() {
+		ui.Column(c).FillWidth().Height(420).Gap(8).Children(func() {
+			ui.Text(c, "只影响本地桩服务；留空表示用默认值（200 / 不延迟 / 由字段表生成）。").
+				FontSize(11).Muted()
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				formLabel(c, "状态码")
+				ui.TextField(c, &m.ui.mockRuleStatus, "状态码", "201").Width(120)
+				formLabel(c, "延迟")
+				ui.TextField(c, &m.ui.mockRuleDelay, "延迟（毫秒）", "120").Width(120)
+				ui.Text(c, "毫秒").FontSize(11).Muted()
+				ui.Spacer(c)
+			})
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				formLabel(c, "响应体")
+				ui.Text(c, "留空则由请求体字段表生成示例 JSON").FontSize(11).Muted()
+			})
+			ui.TextArea(c, &m.ui.mockRuleBody, "覆盖响应体", `{"ok": true}`).FillWidth().Height(220)
+			if m.ui.mockRuleNote != "" {
+				ui.Text(c, m.ui.mockRuleNote).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "关闭").Clicked() {
+				m.ui.mockRuleOpen = false
+			}
+			if ui.Button(c, "保存").Clicked() {
+				c.After(m.saveMockRule)
+			}
+		})
+	})
+}
+
 // exportDialog 是导出范围：勾哪些分组 / 条目，按当前格式生成一份文件。
 func (m *Model) exportDialog(c ui.C) {
 	title := "导出 Markdown"
@@ -724,7 +760,21 @@ func (m *Model) mockDialog(c ui.C) {
 					ui.Text(c, item.Method).FontSize(10).Mono().Bold().Width(52).
 						Color(methodTint(item.Method, m.isLight()))
 					ui.Text(c, item.Path).FontSize(11).Mono().Grow(1).Ellipsis()
-					ui.Text(c, item.Name).FontSize(10).Muted().Width(160).Ellipsis()
+					rule := ""
+					if item.Status > 0 {
+						rule = strconv.Itoa(item.Status)
+					}
+					if item.DelayMS > 0 {
+						rule = strings.TrimSpace(rule + " · " + strconv.Itoa(item.DelayMS) + "ms")
+					}
+					if rule != "" {
+						ui.Text(c, rule).FontSize(10).Mono().Muted().Width(96)
+					}
+					ui.Text(c, item.Name).FontSize(10).Muted().Width(150).Ellipsis()
+					if ui.Button(c, "规则 "+item.Name).Ghost().XSmall().Icon(IconSliders).Clicked() {
+						file := item.File
+						c.After(func() { m.openMockRule(file) })
+					}
 				})
 			}
 		})
@@ -754,7 +804,31 @@ func (m *Model) importDialog(c ui.C) {
 				ui.Text(c, "导入到").FontSize(11).Muted().Width(48)
 				ui.Select(c, &m.ui.importFolder, m.ui.importFolders, nil).Width(200)
 			})
-			if m.ui.importMode == 1 {
+			if m.ui.importMode == 2 {
+				ui.Text(c, "OpenAPI 3 文档（JSON）：一个「路径 + 方法」导入成一条请求，"+
+					"查询参数与请求头进表，描述进文档；$ref 不展开。").
+					FontSize(11).Muted()
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					ui.Text(c, "地址前缀").FontSize(11).Muted().Width(64)
+					ui.TextField(c, &m.ui.importBase, "地址前缀", "{{host}}").Width(260)
+					ui.Text(c, "留空则只写路径").FontSize(11).Muted()
+					ui.Spacer(c)
+					if ui.Button(c, "选择 JSON 文件…").Icon(IconFilePlus).Outline().Clicked() {
+						c.After(m.pickImportFile)
+					}
+					if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
+						text, err := app.ClipboardText()
+						if err != nil {
+							m.ui.importErr = err.Error()
+						} else {
+							m.ui.importText = text
+							m.ui.importErr = ""
+						}
+					}
+				})
+				ui.TextArea(c, &m.ui.importText, "OpenAPI JSON", `{"openapi":"3.0.0","paths":{...}}`).
+					FillWidth().Height(200)
+			} else if m.ui.importMode == 1 {
 				ui.Text(c, "另一个 OpenCollection 集合：分组照层级复制，请求换成新 uid，文档进 docs/。").FontSize(11).Muted()
 				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 					ui.TextField(c, &m.ui.importDir, "集合目录", "/path/to/collection").Grow(1)
@@ -804,8 +878,8 @@ func (m *Model) importDialog(c ui.C) {
 
 // importModes / importModeNames 是导入来源的两个选项。
 var (
-	importModes     = []int{0, 1}
-	importModeNames = []string{"Postman 集合", "OpenCollection 集合"}
+	importModes     = []int{0, 1, 2}
+	importModeNames = []string{"Postman 集合", "OpenCollection 集合", "OpenAPI 3（JSON）"}
 )
 
 // curlImportDialog 是「导入 cURL」：粘贴命令，解析成一条新请求（参考 19）。
@@ -852,7 +926,7 @@ func (m *Model) curlImportDialog(c ui.C) {
 
 // trashDialog 是回收站：列出 .trash 里的文件，可逐个恢复（参考 22）。
 func (m *Model) trashDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.trashOpen, "回收站", ui.ModalSpec{Width: 640, Height: 420}, func() {
+	ui.ModalWith(c, &m.ui.trashOpen, "回收站", ui.ModalSpec{Width: 720, Height: 460}, func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
 			ui.Text(c, "恢复的文件会回到集合根；同名时自动补「-恢复2」后缀，不覆盖。").
 				FontSize(11).Muted()
@@ -860,12 +934,29 @@ func (m *Model) trashDialog(c ui.C) {
 				ui.Text(c, "回收站是空的").Muted()
 				return
 			}
-			for _, item := range m.ui.trashRows {
-				trashFile := item.File
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "勾选后可在底部批量恢复或彻底删除").FontSize(11).Muted()
+				ui.Spacer(c)
+				if ui.Button(c, "全选").Ghost().Small().Clicked() {
+					c.After(func() { m.toggleAllTrash(true) })
+				}
+				if ui.Button(c, "全不选").Ghost().Small().Clicked() {
+					c.After(func() { m.toggleAllTrash(false) })
+				}
+			})
+			for index := range m.ui.trashRows {
+				item := &m.ui.trashRows[index]
+				selected := m.ui.trashSel[item.File]
 				ui.Row(c).FillWidth().PadY(4).Gap(8).Items(ui.Center).Children(func() {
-					ui.Text(c, item.Name).FontSize(12).Grow(1).Ellipsis()
+					if ui.Checkbox(c, &selected, item.Name).Changed() {
+						// 勾选状态存进 map（行是每次重扫重建的，别挂在行结构上）。
+						file, on := item.File, selected
+						c.After(func() { m.ui.trashSel[file] = on })
+					}
 					ui.Text(c, item.File).FontSize(10).Mono().Muted().Ellipsis()
-					if ui.Button(c, "恢复 "+item.Name).Small().Clicked() {
+					ui.Spacer(c)
+					trashFile := item.File
+					if ui.Button(c, "恢复").Small().Clicked() {
 						c.After(func() { m.restoreTrash(trashFile) })
 					}
 				})
@@ -875,7 +966,17 @@ func (m *Model) trashDialog(c ui.C) {
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			purgeLabel := "彻底删除"
+			if m.ui.trashArmed {
+				purgeLabel = "确认彻底删除"
+			}
+			if ui.Button(c, purgeLabel).Icon(IconTrash).Destructive().Clicked() {
+				c.After(m.purgeSelectedTrash)
+			}
+			if ui.Button(c, "恢复选中").Outline().Clicked() {
+				c.After(m.restoreSelectedTrash)
+			}
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.trashOpen = false
 			}
@@ -887,7 +988,7 @@ func (m *Model) trashDialog(c ui.C) {
 func (m *Model) envDialog(c ui.C) {
 	theme := c.Theme()
 	ui.ModalWith(c, &m.ui.envOpen, "环境变量", ui.ModalSpec{Width: 880, Height: 520}, func() {
-		ui.Row(c).FillWidth().Height(400).Gap(16).Children(func() {
+		ui.Row(c).FillWidth().Gap(16).Children(func() {
 			ui.Column(c).Width(180).Gap(6).Children(func() {
 				for _, name := range m.ui.envs {
 					current := name
@@ -939,20 +1040,28 @@ func (m *Model) envDialog(c ui.C) {
 						ui.Text(c, "敏感值").FontSize(11).Muted().Width(56)
 						ui.Slot(c).Width(28)
 					})
-					for index, row := range m.ui.envRows {
-						slot := index
-						ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					// 变量表用 ui.List：按住行拖动即可重排（ListState.Reorder）。
+					ui.List(c, &m.ui.envList, len(m.ui.envRows), func(r ui.ListRow) {
+						row := m.ui.envRows[r.Index]
+						slot := r.Index
+						r.Element.Gap(8).Items(ui.Center).Children(func() {
 							ui.Checkbox(c, &row.enabled, "")
 							ui.TextField(c, &row.name, "变量名", "host").Width(150)
 							ui.TextField(c, &row.value, "值", "http://127.0.0.1:8080").Grow(1)
 							ui.Checkbox(c, &row.secret, "")
+							// 行尾也有上移 / 下移：拖拽之外给一个稳妥的键盘/点击路径。
+							m.rowMover(c, slot, len(m.ui.envRows), func(from, to int) {
+								if moveItem(m.ui.envRows, from, to) {
+									m.invalidator.Invalidate()
+								}
+							})
 							if ui.Button(c, "删除变量").Icon(IconX).IconOnly().Ghost().Tooltip("删除变量").Clicked() {
 								c.After(func() {
 									m.ui.envRows = append(m.ui.envRows[:slot], m.ui.envRows[slot+1:]...)
 								})
 							}
 						})
-					}
+					}).FillWidth().Height(240)
 				})
 				ui.Row(c).FillWidth().Children(func() {
 					if ui.Button(c, "添加变量").Icon(IconPlus).Ghost().Clicked() {

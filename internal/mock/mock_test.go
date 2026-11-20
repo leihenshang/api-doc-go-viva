@@ -2,12 +2,15 @@ package mock
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/leihenshang/api-doc-go-share/collection"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 )
 
@@ -148,6 +151,87 @@ func TestMockReportsRoutesAndMismatches(t *testing.T) {
 	defer func() { _ = missing.Body.Close() }()
 	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("未注册路径应 404，实际 %d", missing.StatusCode)
+	}
+}
+
+// TestMockRuleOverridesStatusDelayAndBody 单条规则：状态码、延迟与整段响应体都能按请求覆盖。
+func TestMockRuleOverridesStatusDelayAndBody(t *testing.T) {
+	dir := t.TempDir()
+	must := func(name, body string) {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("建目录: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("写 %s: %v", name, err)
+		}
+	}
+	must("opencollection.yml", "opencollection: 1.0.0\ninfo:\n  name: 规则桩\n")
+	must("下单.yml", `info:
+  name: 下单
+  type: http
+  seq: 1
+meta:
+  uid: mock-rule
+http:
+  method: POST
+  url: "{{host}}/api/orders"
+  headers: []
+  body:
+    type: none
+mock:
+  status: 201
+  delayMs: 60
+  body: '{"orderId":"A-1"}'
+`)
+
+	server, err := Start("127.0.0.1:0", []string{dir}, nil)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = server.Close() }()
+
+	routes := server.Routes()
+	if len(routes) != 1 || routes[0].Status != 201 || routes[0].DelayMS != 60 {
+		t.Fatalf("路由表应带上规则：%+v", routes)
+	}
+
+	start := time.Now()
+	resp, err := http.Post("http://"+server.Addr()+"/api/orders", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	elapsed := time.Since(start)
+	if resp.StatusCode != 201 {
+		t.Fatalf("状态码应被规则覆盖成 201，实际 %d", resp.StatusCode)
+	}
+	if elapsed < 50*time.Millisecond {
+		t.Fatalf("延迟没生效：%v", elapsed)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("读响应: %v", err)
+	}
+	if !strings.Contains(string(body), "A-1") {
+		t.Fatalf("响应体应被规则覆盖：%s", body)
+	}
+}
+
+// TestMockRuleRoundTrip 规则写进 Extra 再读出来一致；清空后键消失。
+func TestMockRuleRoundTrip(t *testing.T) {
+	file := &collection.RequestFile{}
+	ApplyRule(file, Rule{Status: 500, DelayMS: 120, Body: `{"e":true}`})
+	rule := RuleOf(file)
+	if rule.Status != 500 || rule.DelayMS != 120 || rule.Body != `{"e":true}` {
+		t.Fatalf("读回来不对：%+v", rule)
+	}
+	ApplyRule(file, Rule{})
+	if _, ok := file.Extra[RuleKey]; ok {
+		t.Fatal("清空后应删掉 mock 键")
+	}
+	if rule := RuleOf(file); rule.Status != 0 || rule.DelayMS != 0 || rule.Body != "" {
+		t.Fatalf("清空后不该还有规则：%+v", rule)
 	}
 }
 

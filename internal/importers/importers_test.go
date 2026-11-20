@@ -281,3 +281,75 @@ func TestWriteKeepsFolderHierarchy(t *testing.T) {
 		t.Fatalf("文件没落在「外层/内层」：%v", err)
 	}
 }
+
+// TestOpenAPIImport OpenAPI 3 文档：每个「路径 + 方法」一条请求，
+// 查询参数与请求头进表，描述进文档，路径参数保留 {id} 并留提示。
+func TestOpenAPIImport(t *testing.T) {
+	doc := `{
+	  "openapi": "3.0.0",
+	  "info": {"title": "示例", "version": "1.0.0"},
+	  "paths": {
+	    "/users/{id}": {
+	      "get": {
+	        "summary": "用户详情",
+	        "description": "按 id 取用户",
+	        "parameters": [
+	          {"name": "id", "in": "path", "required": true},
+	          {"name": "with", "in": "query", "example": "teams", "description": "附带信息"},
+	          {"name": "X-Trace", "in": "header", "example": "abc"}
+	        ],
+	        "responses": {"200": {"description": "ok"}}
+	      }
+	    },
+	    "/health": {"get": {"operationId": "healthCheck", "responses": {"200": {"description": "ok"}}}}
+	  }
+	}`
+	items, summary, err := OpenAPI([]byte(doc), "{{host}}/api")
+	if err != nil {
+		t.Fatalf("OpenAPI: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("应转出两条请求：%+v", items)
+	}
+	var detail *Item
+	for index := range items {
+		if items[index].Name == "用户详情" {
+			detail = &items[index]
+		}
+	}
+	if detail == nil || detail.Request == nil {
+		t.Fatalf("缺少「用户详情」：%+v", items)
+	}
+	if detail.Request.HTTP.Method != "GET" || detail.Request.HTTP.URL != "{{host}}/api/users/{id}" {
+		t.Fatalf("方法或地址不对：%+v", detail.Request.HTTP)
+	}
+	if len(detail.Request.HTTP.Params) != 1 || detail.Request.HTTP.Params[0].Name != "with" {
+		t.Fatalf("查询参数应进 params：%+v", detail.Request.HTTP.Params)
+	}
+	if len(detail.Request.HTTP.Headers) != 1 || detail.Request.HTTP.Headers[0].Name != "X-Trace" {
+		t.Fatalf("请求头应进 headers：%+v", detail.Request.HTTP.Headers)
+	}
+	if detail.Request.Docs != "按 id 取用户" {
+		t.Fatalf("描述应进文档：%q", detail.Request.Docs)
+	}
+	if !strings.Contains(strings.Join(summary.Notes, "；"), "path 参数 id") {
+		t.Fatalf("路径参数应留提示：%v", summary.Notes)
+	}
+
+	// 落到磁盘也能被 explorer 读到。
+	dir := newCollection(t, "openapi 目标")
+	if _, err := Write(dir, "", items); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(col.Entries) != 2 {
+		t.Fatalf("磁盘上应有两个请求：%+v", paintedNames(col))
+	}
+
+	if _, _, err := OpenAPI([]byte(`{"openapi":"3.0.0","paths":{}}`), ""); err == nil {
+		t.Fatal("没有操作时应当报错")
+	}
+}
