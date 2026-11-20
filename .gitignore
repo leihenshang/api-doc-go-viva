@@ -1,6 +1,7 @@
 # 构建与临时产物
 /.tmp/
 /build/
+/dist/
 
 # 调试脚本的构建产物、日志与 pid
 /bin/.cache/

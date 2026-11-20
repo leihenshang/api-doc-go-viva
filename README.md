@@ -193,6 +193,28 @@ COLLECTION=../api-doc-go-proj ENV_NAME= bin/dev start   # 换集合 / 关环境
 GOWORK=off go run . -collection "../api-doc-go-flutter/sample-collection,../api-doc-go-proj" -env dev
 ```
 
+## 构建 Windows 版
+
+Windows 后端是纯 Go（Viva 用 purego 动态调用 Win32），`CGO_ENABLED=0` 即可，不需要 MinGW。
+两个脚本都默认输出到 `dist/`，默认隐藏控制台；调试时加 `-Console` / `--console` 保留控制台看日志。
+前提：`api-doc-go-share` 与本仓库并排（`go.mod` 的 `replace` 指向 `../api-doc-go-share`）。
+
+```powershell
+# 在 Windows 上（PowerShell）
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1 -Arch arm64 -Console
+```
+
+```bash
+# 在 Linux / macOS / WSL 上交叉编译
+bash scripts/build-windows.sh                 # amd64 GUI 子系统
+bash scripts/build-windows.sh arm64           # Windows on ARM
+bash scripts/build-windows.sh --console       # 保留控制台
+bash scripts/build-windows.sh --out /tmp/win  # 自定义输出目录
+```
+
+产物：`dist/api-doc-viva-windows-amd64.exe`（或 `…-arm64.exe`）。
+
 ## 测试怎么证明它真的通了
 
 `internal/view/view_test.go` 用 Viva 的无头驱动（`app.NewDriver`，不需要 X11）走完整链路：

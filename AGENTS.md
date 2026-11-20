@@ -26,6 +26,10 @@ bash scripts/check.sh
 
 bin/dev start|stop|restart|status   # 后台启动/停止，日志 bin/.cache/dev.log
 COLLECTION=../api-doc-go-flutter/sample-collection bin/dev start
+
+# Windows 版（产物在 dist/，默认 windowsgui；调试加 --console / -Console）
+bash scripts/build-windows.sh
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
 ## 崩溃一：Viva Tree 树键重复（程序 panic，已修复，禁止回退）
