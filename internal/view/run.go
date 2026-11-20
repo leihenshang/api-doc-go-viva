@@ -74,8 +74,12 @@ func (m *Model) startRun() {
 		if entry == nil || entry.Payload == nil {
 			continue
 		}
+		rules, err := runner.RulesOf(entry.Payload)
+		if err != nil {
+			m.run.Note = "读取「" + entry.Name + "」的运行规则失败：" + err.Error()
+		}
 		cases = append(cases, runner.Case{
-			Name: entry.Name, File: entry.File, Plan: m.planFor(entry.Payload),
+			Name: entry.Name, File: entry.File, Plan: m.planFor(entry.Payload), Rules: rules,
 		})
 	}
 	if len(cases) == 0 {
@@ -83,7 +87,12 @@ func (m *Model) startRun() {
 		m.invalidator.Invalidate()
 		return
 	}
-	options := runner.Options{StopOnFailure: m.run.StopOnFail}
+	// 变量袋从当前环境起步，跑的过程中被提取结果覆盖。
+	bag := make(map[string]string, len(m.vars))
+	for name, value := range m.vars {
+		bag[name] = value
+	}
+	options := runner.Options{StopOnFailure: m.run.StopOnFail, Vars: bag}
 	ctx, cancel := context.WithCancel(context.Background())
 	channel := make(chan runner.Result, 4)
 	m.runCancel = cancel
@@ -149,6 +158,48 @@ func (m *Model) runSummary() string {
 		return "全部通过（" + strconv.Itoa(len(m.run.Results)) + " 条）"
 	}
 	return "失败 " + strconv.Itoa(failed) + " 条 / 共 " + strconv.Itoa(len(m.run.Results)) + " 条"
+}
+
+// openRunRules 打开某条请求的运行规则弹窗（提取 / 断言）。
+func (m *Model) openRunRules(file string) {
+	entry := m.entryByFile(file)
+	if entry == nil || entry.Payload == nil {
+		return
+	}
+	rules, err := runner.RulesOf(entry.Payload)
+	m.ui.rulesOpen = true
+	m.ui.rulesFile = file
+	m.ui.rulesName = entry.Name
+	m.ui.rulesNote = ""
+	m.ui.ruleExtracts = append([]runner.Extract(nil), rules.Extract...)
+	m.ui.ruleAsserts = append([]runner.Assert(nil), rules.Assert...)
+	if err != nil {
+		m.ui.rulesNote = "原来的规则读不出来：" + err.Error()
+	}
+	m.invalidator.Invalidate()
+}
+
+// saveRunRules 把弹窗里的规则写回请求文件的 run: 键，然后重扫让树上的草稿保持一致。
+func (m *Model) saveRunRules() {
+	entry := m.entryByFile(m.ui.rulesFile)
+	if entry == nil || entry.Payload == nil {
+		m.ui.rulesNote = "这条请求已经不在集合里了"
+		m.invalidator.Invalidate()
+		return
+	}
+	rules := runner.Rules{
+		Extract: append([]runner.Extract(nil), m.ui.ruleExtracts...),
+		Assert:  append([]runner.Assert(nil), m.ui.ruleAsserts...),
+	}
+	runner.Apply(entry.Payload, rules)
+	if err := explorer.SaveRequest(m.col.Dir, entry.File, entry.Payload); err != nil {
+		m.ui.rulesNote = "保存失败：" + err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.rulesNote = "已保存到 " + entry.File
+	m.reloadCollection()
+	m.invalidator.Invalidate()
 }
 
 // runMethodText 是列表里显示的方法（空值当 GET，与发送口径一致）。

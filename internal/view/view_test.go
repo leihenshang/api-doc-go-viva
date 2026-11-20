@@ -14,6 +14,7 @@ import (
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
+	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -2508,6 +2509,205 @@ func TestRunStopsOnFirstFailure(t *testing.T) {
 	}
 	if len(model.run.Results) != 1 {
 		t.Fatalf("应当第一条就停：%+v", model.run.Results)
+	}
+}
+
+// TestRunnerRulesAndVariables 规则编辑 → 落盘 → 运行：第一条提取 token，第二条带上它。
+func TestRunnerRulesAndVariables(t *testing.T) {
+	const token = "tok-7"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login" {
+			_, _ = fmt.Fprintf(w, `{"code":0,"data":{"token":%q}}`, token)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 规则集合\n")
+	writeFile(t, filepath.Join(dir, "登录.yml"), fmt.Sprintf(`info:
+  name: 登录
+  type: http
+  seq: 1
+meta:
+  uid: rule-login
+http:
+  method: POST
+  url: %q
+  headers: []
+  body:
+    type: none
+`, srv.URL+"/login"))
+	writeFile(t, filepath.Join(dir, "我的信息.yml"), fmt.Sprintf(`info:
+  name: 我的信息
+  type: http
+  seq: 2
+meta:
+  uid: rule-me
+http:
+  method: GET
+  url: %q
+  headers:
+    - name: Authorization
+      value: "Bearer {{token}}"
+      enabled: true
+  body:
+    type: none
+`, srv.URL+"/me"))
+
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	// 给「登录」加一条提取规则（弹窗默认就是 json + $.data.token，只差变量名）。
+	model.openRunRules("登录.yml")
+	pump(t, driver)
+	click(t, driver, "添加提取")
+	pump(t, driver)
+	if len(model.ui.ruleExtracts) != 1 {
+		t.Fatalf("应当有一行提取：%+v", model.ui.ruleExtracts)
+	}
+	model.ui.ruleExtracts[0].Name = "token"
+	pump(t, driver)
+	click(t, driver, "保存")
+	pump(t, driver)
+	click(t, driver, "关闭") // 规则弹窗收起，下面才点得到运行器
+	pump(t, driver)
+
+	raw, err := os.ReadFile(filepath.Join(dir, "登录.yml"))
+	if err != nil {
+		t.Fatalf("读回文件: %v", err)
+	}
+	if !strings.Contains(string(raw), "run:") || !strings.Contains(string(raw), "token") {
+		t.Fatalf("规则没落盘（应写进 run: 键）：\n%s", raw)
+	}
+
+	// 跑整个集合：第二条能拿到第一条提取的 token。
+	model.openRunner()
+	pump(t, driver)
+	click(t, driver, "运行")
+	deadline := time.Now().Add(5 * time.Second)
+	for model.run.Running && time.Now().Before(deadline) {
+		pump(t, driver)
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(model.run.Results) != 2 {
+		t.Fatalf("应跑完两条：%+v", model.run.Results)
+	}
+	if model.run.Results[0].Extracted["token"] != token {
+		t.Fatalf("第一条没提取到 token：%+v", model.run.Results[0])
+	}
+	if model.run.Results[1].Status != 200 {
+		t.Fatalf("第二条应带上 token 成功，实际 %d：%+v", model.run.Results[1].Status, model.run.Results[1])
+	}
+	if !strings.Contains(model.run.Note, "全部通过") {
+		t.Fatalf("小结应显示全部通过：%q", model.run.Note)
+	}
+}
+
+// TestSavingRequestKeepsRunRules 在请求页保存这条请求时，run: 规则不能被冲掉。
+func TestSavingRequestKeepsRunRules(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 规则集合\n")
+	writeFile(t, filepath.Join(dir, "登录.yml"), `info:
+  name: 登录
+  type: http
+  seq: 1
+meta:
+  uid: rule-keep
+http:
+  method: POST
+  url: http://127.0.0.1:1/login
+  headers: []
+  body:
+    type: none
+run:
+  extract:
+    - name: token
+      from: json
+      path: $.data.token
+  assert:
+    - kind: status
+      op: equals
+      want: "200"
+`)
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "POST 登录")
+	pump(t, driver)
+
+	// 改点别的东西再保存——保存是从草稿重建文件的，最容易把 run: 弄丢。
+	model.req.url = "http://127.0.0.1:1/login?v=2"
+	model.saveRequest()
+	pump(t, driver)
+
+	raw, err := os.ReadFile(filepath.Join(dir, "登录.yml"))
+	if err != nil {
+		t.Fatalf("读回文件: %v", err)
+	}
+	if !strings.Contains(string(raw), "run:") || !strings.Contains(string(raw), "$.data.token") {
+		t.Fatalf("保存请求把运行规则冲掉了：\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "v=2") {
+		t.Fatalf("地址没保存成功：\n%s", raw)
+	}
+}
+
+// TestRunnerShowsAssertionFailure 断言失败要在结果里给出「期望 vs 实际」，并计入失败条数。
+func TestRunnerShowsAssertionFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"code":1}`))
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// 给「健康检查」塞一条会失败的断言。
+	for _, entry := range col.Entries {
+		if entry.Name == "健康检查" && entry.Payload != nil {
+			runner.Apply(entry.Payload, runner.Rules{
+				Assert: []runner.Assert{{Kind: "json", Path: "$.code", Op: "equals", Want: "0"}},
+			})
+		}
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.openRunner()
+	pump(t, driver)
+	click(t, driver, "运行")
+	deadline := time.Now().Add(5 * time.Second)
+	for model.run.Running && time.Now().Before(deadline) {
+		pump(t, driver)
+		time.Sleep(10 * time.Millisecond)
+	}
+	var failed *runner.Result
+	for index := range model.run.Results {
+		if model.run.Results[index].Name == "健康检查" {
+			failed = &model.run.Results[index]
+		}
+	}
+	if failed == nil || !failed.Failed || len(failed.Failures) != 1 {
+		t.Fatalf("应有断言失败：%+v", model.run.Results)
+	}
+	if !strings.Contains(failed.Failures[0], "期望 \"0\"，实际 \"1\"") {
+		t.Fatalf("失败文案不对：%v", failed.Failures)
+	}
+	if !shows(driver, "✗") {
+		t.Fatalf("结果里应看到失败标记：%v", painted(driver))
 	}
 }
 

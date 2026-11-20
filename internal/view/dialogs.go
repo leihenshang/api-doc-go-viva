@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
@@ -23,6 +24,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.importDialog(c)
 	m.mockDialog(c)
 	m.runnerDialog(c)
+	m.runRulesDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
 	m.envDialog(c)
@@ -456,6 +458,82 @@ func (m *Model) settingsAbout(c ui.C) {
 		FontSize(11).Muted()
 }
 
+// runRulesDialog 编辑一条请求的运行规则：提取（写进变量袋）与断言（判定成败）。
+// 规则存进请求文件的顶层 run: 键，随集合走，不塞进本机偏好。
+func (m *Model) runRulesDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.rulesOpen, "运行规则 · "+m.ui.rulesName, ui.ModalSpec{Width: 820, Height: 580}, func() {
+		ui.Column(c).FillWidth().Height(480).Gap(6).Children(func() {
+			ui.Text(c, "规则写在请求文件的 run: 键里；提取到的变量供本次运行后面的请求用 {{名字}} 引用。").
+				FontSize(11).Muted()
+
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "提取").FontSize(11).Bold().Muted()
+				ui.Spacer(c)
+				if ui.Button(c, "添加提取").Icon(IconPlus).Ghost().Small().Clicked() {
+					m.ui.ruleExtracts = append(m.ui.ruleExtracts, runner.Extract{From: "json", Path: "$.data.token"})
+				}
+			})
+			for index := range m.ui.ruleExtracts {
+				row := &m.ui.ruleExtracts[index]
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					ui.TextField(c, &row.Name, "变量名", "token").Width(140)
+					ui.Select(c, &row.From, runExtractSources, nil).Width(110)
+					ui.TextField(c, &row.Path, "路径", "$.data.token（header 时填头名）").Grow(1)
+					if ui.Button(c, "删除提取").Icon(IconTrash).Outline().IconOnly().Clicked() {
+						m.ui.ruleExtracts = append(m.ui.ruleExtracts[:index], m.ui.ruleExtracts[index+1:]...)
+					}
+				})
+			}
+			if len(m.ui.ruleExtracts) == 0 {
+				ui.Text(c, "还没有提取规则。").FontSize(11).Muted()
+			}
+
+			ui.Divider(c)
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "断言").FontSize(11).Bold().Muted()
+				ui.Spacer(c)
+				if ui.Button(c, "添加断言").Icon(IconPlus).Ghost().Small().Clicked() {
+					m.ui.ruleAsserts = append(m.ui.ruleAsserts, runner.Assert{Kind: "status", Op: "equals", Want: "200"})
+				}
+			})
+			for index := range m.ui.ruleAsserts {
+				row := &m.ui.ruleAsserts[index]
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					ui.Select(c, &row.Kind, runAssertKinds, nil).Width(110)
+					ui.TextField(c, &row.Path, "路径", "$.code（status / time 留空）").Width(200)
+					ui.Select(c, &row.Op, runAssertOps, nil).Width(110)
+					ui.TextField(c, &row.Want, "期望值", "200").Grow(1)
+					if ui.Button(c, "删除断言").Icon(IconTrash).Outline().IconOnly().Clicked() {
+						m.ui.ruleAsserts = append(m.ui.ruleAsserts[:index], m.ui.ruleAsserts[index+1:]...)
+					}
+				})
+			}
+			if len(m.ui.ruleAsserts) == 0 {
+				ui.Text(c, "还没有断言规则。").FontSize(11).Muted()
+			}
+			if m.ui.rulesNote != "" {
+				ui.Text(c, m.ui.rulesNote).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "关闭").Clicked() {
+				m.ui.rulesOpen = false
+			}
+			if ui.Button(c, "保存").Clicked() {
+				c.After(m.saveRunRules)
+			}
+		})
+	})
+}
+
+// runExtractSources / runAssertKinds / runAssertOps 是规则弹窗里的下拉项。
+var (
+	runExtractSources = []string{"json", "header", "status"}
+	runAssertKinds    = []string{"status", "json", "header", "time"}
+	runAssertOps      = []string{"equals", "contains", "exists", "lt"}
+)
+
 // runnerDialog 是集合运行器：勾一批请求顺序跑，右边是逐条结果。
 func (m *Model) runnerDialog(c ui.C) {
 	ui.ModalWith(c, &m.ui.runOpen, "运行集合", ui.ModalSpec{Width: 820, Height: 620}, func() {
@@ -485,6 +563,10 @@ func (m *Model) runnerDialog(c ui.C) {
 								Color(methodTint(item.Method, m.isLight()))
 							ui.Text(c, item.Name).FontSize(11).Grow(1).Ellipsis()
 							ui.Text(c, item.URL).FontSize(10).Mono().Muted().Grow(1).Ellipsis()
+							if ui.Button(c, "规则 "+item.Name).Ghost().XSmall().Icon(IconSliders).Clicked() {
+								file := item.File
+								c.After(func() { m.openRunRules(file) })
+							}
 						})
 					}
 				})
@@ -516,6 +598,13 @@ func (m *Model) runnerDialog(c ui.C) {
 					}
 					ui.Text(c, detail).FontSize(10).Mono().Muted().Grow(1).Ellipsis()
 				})
+				for _, failure := range entry.Failures {
+					ui.Text(c, "　✗ "+failure).FontSize(10).Color(c.Theme().Danger)
+				}
+				if len(entry.Extracted) > 0 {
+					ui.Text(c, "　提取 "+strings.Join(runner.SortedVars(entry.Extracted), "；")).
+						FontSize(10).Mono().Muted()
+				}
 			}
 			if m.run.Note != "" {
 				ui.Text(c, m.run.Note).FontSize(11).Muted()

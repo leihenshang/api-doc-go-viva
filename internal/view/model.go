@@ -256,6 +256,14 @@ type workspaceUI struct {
 	// 集合运行器弹窗。
 	runOpen bool
 
+	// 运行规则弹窗：某条请求的提取 / 断言（存进请求文件的 run: 键）。
+	rulesOpen    bool
+	rulesFile    string
+	rulesName    string
+	rulesNote    string
+	ruleExtracts []runner.Extract
+	ruleAsserts  []runner.Assert
+
 	// Mock 弹窗：开关与监听地址。
 	mockOpen     bool
 	mockOn       bool
