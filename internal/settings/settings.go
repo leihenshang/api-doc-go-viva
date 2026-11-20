@@ -29,6 +29,11 @@ type Settings struct {
 	NoFollowRedirects bool `json:"noFollowRedirects"`
 	// InsecureSSL 是全局默认：忽略 HTTPS 证书校验（请求文件的 settings.insecureSsl 显式设置时优先）。
 	InsecureSSL bool `json:"insecureSsl,omitempty"`
+	// Proxy 是发送用的代理地址（http:// / https:// / socks5://），空表示直连。
+	Proxy string `json:"proxy,omitempty"`
+	// ClientCert / ClientKey 是双向 TLS 的证书与私钥路径（PEM）；两个都填才生效。
+	ClientCert string `json:"clientCert,omitempty"`
+	ClientKey  string `json:"clientKey,omitempty"`
 	// SplitSideBySide 为真时请求 / 响应左右分栏，否则上下分栏。
 	SplitSideBySide bool `json:"splitSideBySide,omitempty"`
 	// Envs 记住每个集合根上次选中的环境名（键是集合目录的绝对路径）。

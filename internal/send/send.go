@@ -44,6 +44,10 @@ type Plan struct {
 	FollowRedirects *bool
 	// InsecureSSL 是全局默认；请求文件里的 settings.insecureSsl 显式设置时优先。
 	InsecureSSL bool
+	// Proxy 是代理地址（http / https / socks5），空表示直连。
+	Proxy string
+	// ClientCert / ClientKey 是双向 TLS 的证书与私钥（PEM 路径），都填才生效。
+	ClientCert, ClientKey string
 }
 
 // Header 响应头的一行（按名称排序，便于稳定展示）。
@@ -79,7 +83,11 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start)}
 	}
 	sent := req.URL.String()
-	resp, err := newClient(plan).Do(req)
+	client, err := newClient(plan)
+	if err != nil {
+		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start), URL: sent}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start), URL: sent}
 	}
@@ -118,7 +126,7 @@ func Do(ctx context.Context, plan Plan) Outcome {
 }
 
 // newClient 按请求的超时与证书设置建客户端。
-func newClient(plan Plan) *http.Client {
+func newClient(plan Plan) (*http.Client, error) {
 	timeout := plan.Timeout
 	if timeout <= 0 && plan.File != nil && plan.File.Settings != nil {
 		timeout = time.Duration(plan.File.Settings.TimeoutSec) * time.Second
@@ -133,6 +141,15 @@ func newClient(plan Plan) *http.Client {
 	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.FollowRedirects != nil {
 		follow = *plan.File.Settings.FollowRedirects
 	}
+	client, err := newClientWith(plan, timeout, follow)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+// newClientWith 组装客户端：超时、重定向、TLS、代理与客户端证书。
+func newClientWith(plan Plan, timeout time.Duration, follow bool) (*http.Client, error) {
 	client := &http.Client{Timeout: timeout}
 	if !follow {
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -141,12 +158,30 @@ func newClient(plan Plan) *http.Client {
 	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.InsecureSSL != nil {
 		insecure = *plan.File.Settings.InsecureSSL
 	}
-	if insecure {
+	if insecure || plan.Proxy != "" || (plan.ClientCert != "" && plan.ClientKey != "") {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // 由集合里的 insecureSsl 显式开启
+		var tlsConfig *tls.Config
+		if insecure || plan.ClientCert != "" {
+			tlsConfig = &tls.Config{InsecureSkipVerify: insecure} //nolint:gosec // 由集合里的 insecureSsl 显式开启
+		}
+		if plan.ClientCert != "" && plan.ClientKey != "" {
+			cert, err := tls.LoadX509KeyPair(plan.ClientCert, plan.ClientKey)
+			if err != nil {
+				return nil, fmt.Errorf("客户端证书: %w", err)
+			}
+			tlsConfig.Certificates = []tls.Certificate{cert}
+		}
+		transport.TLSClientConfig = tlsConfig
+		if proxy := strings.TrimSpace(plan.Proxy); proxy != "" {
+			proxyURL, err := neturl.Parse(proxy)
+			if err != nil || proxyURL.Host == "" {
+				return nil, fmt.Errorf("代理地址无效（要写成 http://host:port）: %q", proxy)
+			}
+			transport.Proxy = http.ProxyURL(proxyURL)
+		}
 		client.Transport = transport
 	}
-	return client
+	return client, nil
 }
 
 // build 把集合请求翻译成 *http.Request，同时收集没解析到的变量名。

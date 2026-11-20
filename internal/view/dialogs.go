@@ -254,8 +254,21 @@ func (m *Model) settingsNetwork(c ui.C) {
 		ui.Switch(c, &m.ui.insecure, "忽略证书校验").Changed()
 		ui.Spacer(c)
 	})
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "代理地址")
+		ui.TextField(c, &m.ui.proxyText, "代理地址", "http://127.0.0.1:7890").Grow(1).Changed()
+	})
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "客户端证书")
+		ui.TextField(c, &m.ui.clientCertText, "客户端证书", "client.crt（PEM）").Grow(1).Changed()
+	})
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "客户端私钥")
+		ui.TextField(c, &m.ui.clientKeyText, "客户端私钥", "client.key（PEM）").Grow(1).Changed()
+	})
 	ui.Text(c, "「忽略证书校验」只用于自签 / 内网证书调试；请求文件里的 "+
-		"settings.timeout / followRedirects / insecureSsl 显式设置时优先于这里。").FontSize(11).Muted()
+		"settings.timeout / followRedirects / insecureSsl 显式设置时优先于这里。"+
+		"代理留空即直连（支持 http / https / socks5）；证书与私钥都填才启用双向 TLS。").FontSize(11).Muted()
 }
 
 // settingsLocal 是本地数据分区：集合路径、配置文件与当前环境。

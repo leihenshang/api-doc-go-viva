@@ -284,6 +284,9 @@ type workspaceUI struct {
 	envLine         string
 	collectionName  string
 	timeoutText     string
+	proxyText       string
+	clientCertText  string
+	clientKeyText   string
 	follow          bool
 	insecure        bool
 	splitSide       int // 0 = 上下，1 = 左右
@@ -871,6 +874,9 @@ func (m *Model) start(entry *explorer.Entry) {
 		Vars:            m.vars,
 		Timeout:         time.Duration(m.settings.TimeoutSec) * time.Second,
 		MaxBody:         1 << 20,
+		Proxy:           m.settings.Proxy,
+		ClientCert:      m.settings.ClientCert,
+		ClientKey:       m.settings.ClientKey,
 		Dir:             m.col.Dir,
 		FollowRedirects: &follow,
 		InsecureSSL:     m.settings.InsecureSSL,

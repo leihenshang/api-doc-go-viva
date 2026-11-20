@@ -993,6 +993,18 @@ func (m *Model) applySettingsEdits() {
 		m.settings.InsecureSSL = m.ui.insecure
 		changed = true
 	}
+	if proxy := strings.TrimSpace(m.ui.proxyText); proxy != m.settings.Proxy {
+		m.settings.Proxy = proxy
+		changed = true
+	}
+	if cert := strings.TrimSpace(m.ui.clientCertText); cert != m.settings.ClientCert {
+		m.settings.ClientCert = cert
+		changed = true
+	}
+	if key := strings.TrimSpace(m.ui.clientKeyText); key != m.settings.ClientKey {
+		m.settings.ClientKey = key
+		changed = true
+	}
 	if side := m.ui.splitSide == 1; side != m.settings.SplitSideBySide {
 		m.settings.SplitSideBySide = side
 		changed = true
@@ -1225,6 +1237,9 @@ func (m *Model) setSplitLayout(side bool) {
 // syncSettingsUI 把落盘的偏好装进设置表单（打开面板 / 启动时各一次）。
 func (m *Model) syncSettingsUI() {
 	m.ui.timeoutText = strconv.Itoa(m.settings.TimeoutSec)
+	m.ui.proxyText = m.settings.Proxy
+	m.ui.clientCertText = m.settings.ClientCert
+	m.ui.clientKeyText = m.settings.ClientKey
 	m.ui.follow = m.settings.FollowRedirects()
 	m.ui.insecure = m.settings.InsecureSSL
 	m.ui.splitSide = 0
