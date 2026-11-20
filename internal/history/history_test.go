@@ -56,3 +56,35 @@ func TestAppendTrimsToMax(t *testing.T) {
 		t.Fatalf("留下的应是最新的：%q", entries[0].URL)
 	}
 }
+
+// TestEntryKeepsRequestSnapshot 快照字段能落盘再读回（含打码后的头与截断标记）。
+func TestEntryKeepsRequestSnapshot(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := Clear(); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	entry := Entry{
+		Method: "POST", URL: "http://x/api", Status: 200,
+		Headers:       []Field{{Name: "Authorization", Value: "••••（已打码）"}, {Name: "X-Team", Value: "core"}},
+		Params:        []Field{{Name: "page", Value: "2"}},
+		Body:          `{"a":1}`,
+		BodyTruncated: true,
+	}
+	if err := Append(entry); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	rows := Load()
+	if len(rows) != 1 {
+		t.Fatalf("应有 1 条：%+v", rows)
+	}
+	got := rows[0]
+	if len(got.Headers) != 2 || got.Headers[0].Value != "••••（已打码）" {
+		t.Fatalf("请求头没读回：%+v", got.Headers)
+	}
+	if len(got.Params) != 1 || got.Params[0].Name != "page" {
+		t.Fatalf("参数没读回：%+v", got.Params)
+	}
+	if got.Body != `{"a":1}` || !got.BodyTruncated {
+		t.Fatalf("正文或截断标记不对：%q %v", got.Body, got.BodyTruncated)
+	}
+}

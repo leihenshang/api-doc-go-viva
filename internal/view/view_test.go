@@ -3769,3 +3769,86 @@ func TestExportOpenAPIThroughModel(t *testing.T) {
 		t.Fatalf("导出的文档解析失败：%v", err)
 	}
 }
+
+// TestHistoryDetailMasksSecrets 历史详情：发送时的请求头/参数/正文能展开看，
+// 但 Authorization 之类的敏感值落盘与展示都是打码的。
+func TestHistoryDetailMasksSecrets(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := history.Clear(); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 历史集合\n")
+	writeFile(t, filepath.Join(dir, "登录.yml"), fmt.Sprintf(`info:
+  name: 登录
+  type: http
+  seq: 1
+meta:
+  uid: hist-1
+http:
+  method: POST
+  url: %s/api/login
+  headers:
+    - name: X-Team
+      value: core
+      enabled: true
+  params:
+    - name: page
+      value: "2"
+      enabled: true
+  auth:
+    type: bearer
+    token: top-secret-token
+  body:
+    type: json
+    raw: '{"user":"neo"}'
+`, srv.URL))
+
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "POST 登录")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+
+	rows := history.Load()
+	if len(rows) != 1 {
+		t.Fatalf("应有 1 条历史：%+v", rows)
+	}
+	entry := rows[0]
+	if entry.Body != `{"user":"neo"}` {
+		t.Fatalf("请求体没记下来：%q", entry.Body)
+	}
+	leaked := false
+	for _, header := range entry.Headers {
+		if header.Name == "Authorization" {
+			if strings.Contains(header.Value, "top-secret-token") {
+				leaked = true
+			}
+		}
+	}
+	if leaked {
+		t.Fatalf("Authorization 明文落盘了：%+v", entry.Headers)
+	}
+
+	// 弹窗里展开详情：能看到 X-Team，看不到真 token。
+	click(t, driver, "历史")
+	pump(t, driver)
+	click(t, driver, "详情")
+	pump(t, driver)
+	if !shows(driver, "X-Team: core") {
+		t.Fatalf("详情里应有 X-Team：%v", painted(driver))
+	}
+	if shows(driver, "top-secret-token") {
+		t.Fatal("详情里不该出现明文 token")
+	}
+}

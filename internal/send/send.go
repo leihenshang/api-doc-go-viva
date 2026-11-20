@@ -74,6 +74,12 @@ type Outcome struct {
 	// 两者一起决定「这是不是一份要保存的文件」。
 	ContentType string
 	Filename    string
+	// ReqHeaders / ReqParams / ReqBody 是**真正发出去**的请求快照（变量已替换），
+	// 给历史详情用。请求体超过 reqBodyLimit 会截断并在 ReqBodyTruncated 标出来。
+	ReqHeaders       []Header
+	ReqParams        []Header
+	ReqBody          string
+	ReqBodyTruncated bool
 	// Truncated 表示正文超过 MaxBody，只读回了前 MaxBody 字节；TotalSize 是
 	// 服务端声明的总长度（没有 Content-Length 时为 0，即未知）。
 	// Body 里**不拼提示文字**：那会破坏 JSON，让格式化视图整段退化成纯文本。
@@ -89,6 +95,7 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start)}
 	}
 	sent := req.URL.String()
+	snapshot := snapshotRequest(req)
 	// 记下 host：Cookie Jar 只能按 URL 反查，列全部 cookie 时要用。
 	noteURL(req.URL)
 	client, err := newClient(plan)
@@ -126,18 +133,22 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		total = 0
 	}
 	return Outcome{
-		Status:      resp.StatusCode,
-		Reason:      http.StatusText(resp.StatusCode),
-		Duration:    time.Since(start),
-		Size:        len(body),
-		Body:        body,
-		Headers:     headerRows(resp.Header),
-		Missing:     missing,
-		URL:         sent,
-		ContentType: resp.Header.Get("Content-Type"),
-		Filename:    filenameFrom(resp.Header),
-		Truncated:   truncated,
-		TotalSize:   total,
+		Status:           resp.StatusCode,
+		Reason:           http.StatusText(resp.StatusCode),
+		Duration:         time.Since(start),
+		Size:             len(body),
+		Body:             body,
+		Headers:          headerRows(resp.Header),
+		Missing:          missing,
+		URL:              sent,
+		ContentType:      resp.Header.Get("Content-Type"),
+		Filename:         filenameFrom(resp.Header),
+		ReqHeaders:       snapshot.headers,
+		ReqParams:        snapshot.params,
+		ReqBody:          snapshot.body,
+		ReqBodyTruncated: snapshot.truncated,
+		Truncated:        truncated,
+		TotalSize:        total,
 	}
 }
 
@@ -418,4 +429,66 @@ func newUUID() string {
 	b[8] = b[8]&0x3f | 0x80
 	h := hex.EncodeToString(b[:])
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
+}
+
+// reqBodyLimit 是历史里保存的请求体上限：整段 body 进 jsonl 会把历史文件撑爆。
+const reqBodyLimit = 8 << 10
+
+// requestSnapshot 是这次发送的请求快照（历史详情用）。
+type requestSnapshot struct {
+	headers   []Header
+	params    []Header
+	body      string
+	truncated bool
+}
+
+// snapshotRequest 抓最终请求：头（含认证与默认头）、查询参数、请求体。
+// 请求体已经被 build 写进 req.GetBody，这里不去重新编码一遍。
+func snapshotRequest(req *http.Request) requestSnapshot {
+	out := requestSnapshot{headers: headerRows(req.Header)}
+	query := req.URL.Query()
+	for key, values := range query {
+		for _, value := range values {
+			out.params = append(out.params, Header{Name: key, Value: value})
+		}
+	}
+	sort.Slice(out.params, func(i, j int) bool {
+		if out.params[i].Name != out.params[j].Name {
+			return out.params[i].Name < out.params[j].Name
+		}
+		return out.params[i].Value < out.params[j].Value
+	})
+	if req.GetBody != nil {
+		if body, err := req.GetBody(); err == nil {
+			data, _ := io.ReadAll(io.LimitReader(body, reqBodyLimit+1))
+			_ = body.Close()
+			out.body = string(data)
+			if len(data) > reqBodyLimit {
+				out.body = string(data[:reqBodyLimit])
+				out.truncated = true
+			}
+		}
+	}
+	return out
+}
+
+// MaskHeaders 把敏感的请求头值打码：历史会留在这台机器上，不把会话抄进明文。
+func MaskHeaders(headers []Header) []Header {
+	out := make([]Header, len(headers))
+	for i, header := range headers {
+		out[i] = header
+		if sensitiveHeader(header.Name) {
+			out[i].Value = "••••（已打码）"
+		}
+	}
+	return out
+}
+
+// sensitiveHeader 报告某个头是不是「不该落盘明文」的那种。
+func sensitiveHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key", "api-key":
+		return true
+	}
+	return false
 }

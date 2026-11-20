@@ -3,6 +3,9 @@ package view
 import (
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/leihenshang/api-doc-go-viva/internal/history"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
@@ -389,9 +392,23 @@ func (m *Model) historyDialog(c ui.C) {
 					ui.Text(c, status).FontSize(10).Mono().Color(tint).Width(34)
 					ui.Text(c, item.URL).FontSize(11).Grow(1).Ellipsis()
 					ui.Text(c, meta).FontSize(10).Mono().Muted().Width(100)
+					if ui.Button(c, "详情").Ghost().XSmall().
+						Tooltip("看当时的请求头 / 参数 / 正文").Clicked() {
+						c.After(func() {
+							if m.ui.historyDetail == item.Time {
+								m.ui.historyDetail = time.Time{}
+							} else {
+								m.ui.historyDetail = item.Time
+							}
+							m.invalidator.Invalidate()
+						})
+					}
 				})
 				if row.Clicked() {
 					c.After(func() { m.reopenHistory(item) })
+				}
+				if m.ui.historyDetail.Equal(item.Time) {
+					m.historyDetailCard(c, item)
 				}
 			}
 			if shown == 0 {
@@ -410,6 +427,34 @@ func (m *Model) historyDialog(c ui.C) {
 				m.ui.historyOpen = false
 			}
 		})
+	})
+}
+
+// historyDetailCard 是历史里展开的详情：当时真正发出去的请求头、参数与正文。
+func (m *Model) historyDetailCard(c ui.C, item history.Entry) {
+	ui.Column(c).FillWidth().Gap(4).Pad(8).Radius(c.Theme().Metrics.RadiusControl).
+		Background(m.pal.panel).Border(1, m.pal.border).Children(func() {
+		ui.Text(c, "请求头（敏感值已打码）").FontSize(10).Muted()
+		if len(item.Headers) == 0 {
+			ui.Text(c, "没有请求头").FontSize(11).Muted()
+		}
+		for _, header := range item.Headers {
+			ui.Text(c, header.Name+": "+header.Value).FontSize(10).Mono().Ellipsis()
+		}
+		if len(item.Params) > 0 {
+			ui.Text(c, "查询参数").FontSize(10).Muted()
+			for _, param := range item.Params {
+				ui.Text(c, param.Name+" = "+param.Value).FontSize(10).Mono().Ellipsis()
+			}
+		}
+		if item.Body != "" {
+			label := "请求体"
+			if item.BodyTruncated {
+				label += "（只存了前 8 KB）"
+			}
+			ui.Text(c, label).FontSize(10).Muted()
+			ui.Text(c, item.Body).FontSize(10).Mono().MaxLines(6)
+		}
 	})
 }
 

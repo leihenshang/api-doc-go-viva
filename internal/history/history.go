@@ -26,11 +26,24 @@ type Entry struct {
 	Duration int64     `json:"durationMs,omitempty"`
 	Size     int       `json:"size,omitempty"`
 	Err      string    `json:"err,omitempty"`
+	// Headers / Params / Body 是当时**真正发出去**的请求快照（敏感头已打码）。
+	// 只在详情里展示，裁历史时随记录一起走。
+	Headers       []Field `json:"headers,omitempty"`
+	Params        []Field `json:"params,omitempty"`
+	Body          string  `json:"body,omitempty"`
+	BodyTruncated bool    `json:"bodyTruncated,omitempty"`
+
 	// Name / File / Dir 用来跳回那条请求：临时请求与没落盘的草稿只有 URL。
 	Name string `json:"name,omitempty"`
 	File string `json:"file,omitempty"` // 集合根下的相对路径
 	Dir  string `json:"dir,omitempty"`  // 集合根，换集合后也认得出
 	Env  string `json:"env,omitempty"`
+}
+
+// Field 是快照里的一行「名称 / 值」。
+type Field struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // Path 是历史文件的位置（与偏好同目录）。

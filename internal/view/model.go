@@ -266,10 +266,11 @@ type workspaceUI struct {
 	cookieNote string
 
 	// 请求历史弹窗：打开时从磁盘读一次，之后只读缓存。
-	historyOpen  bool
-	historyQuery string
-	historyRows  []history.Entry
-	historyNote  string
+	historyOpen   bool
+	historyQuery  string
+	historyRows   []history.Entry
+	historyNote   string
+	historyDetail time.Time // 展开详情的那条（按时间认，零值表示都没展开）
 
 	// 导出弹窗：格式、勾选范围与结果提示。
 	exportOpen   bool
@@ -995,6 +996,14 @@ func (m *Model) start(entry *explorer.Entry) {
 		out := send.Do(context.Background(), plan)
 		record.URL = out.URL
 		record.Status, record.Duration, record.Size, record.Err = out.Status, out.Duration.Milliseconds(), out.Size, out.Err
+		// 请求快照：敏感头打码后再进历史文件。
+		for _, header := range send.MaskHeaders(out.ReqHeaders) {
+			record.Headers = append(record.Headers, history.Field{Name: header.Name, Value: header.Value})
+		}
+		for _, param := range out.ReqParams {
+			record.Params = append(record.Params, history.Field{Name: param.Name, Value: param.Value})
+		}
+		record.Body, record.BodyTruncated = out.ReqBody, out.ReqBodyTruncated
 		if record.URL != "" {
 			_ = history.Append(record)
 		}
