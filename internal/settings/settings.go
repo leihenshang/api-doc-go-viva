@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/leihenshang/api-doc-go-viva/internal/mcp"
 )
 
 // 主题取值。
@@ -58,7 +60,8 @@ const (
 	DefaultTimeoutSec = 20
 	MaxTimeoutSec     = 600
 	// DefaultMCPAddr 是内嵌 MCP 服务的默认监听地址（只本机可连）。
-	DefaultMCPAddr = "127.0.0.1:8189"
+	// 与 mcp.DefaultAddr 同源，避免两处各写一份端口。
+	DefaultMCPAddr = mcp.DefaultAddr
 )
 
 // Default 返回默认偏好：日间模式、20 秒超时、跟随重定向。

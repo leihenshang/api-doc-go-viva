@@ -17,9 +17,12 @@ import (
 // ServerVersion 是 MCP 服务自报的版本（与客户端同样单独维护）。
 const ServerVersion = "0.1.0"
 
+// DefaultAddr 是没给地址时的监听地址：只绑回环，漏传地址不该把集合暴露到局域网。
+const DefaultAddr = "127.0.0.1:2026"
+
 // Config 是内嵌服务的启动配置。
 type Config struct {
-	// Addr 监听地址：默认 127.0.0.1:8189（只本机可连）。
+	// Addr 监听地址：空值用 DefaultAddr（只本机可连）。
 	Addr string
 	// Path 挂载路径，留空 = /mcp。
 	Path string
@@ -209,7 +212,7 @@ func originAllowed(origin string, allow []string) bool {
 func normalizeAddr(addr string) string {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
-		return "127.0.0.1:8189"
+		return DefaultAddr
 	}
 	if strings.HasPrefix(addr, ":") {
 		return "127.0.0.1" + addr
