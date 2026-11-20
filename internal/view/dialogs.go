@@ -20,6 +20,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.deleteFolderDialog(c)
 	m.codeDialog(c)
 	m.renameDialog(c)
+	m.defaultsDialog(c)
 	m.historyDialog(c)
 	m.cookieDialog(c)
 	m.importDialog(c)

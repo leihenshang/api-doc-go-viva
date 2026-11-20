@@ -3651,3 +3651,67 @@ func TestOpenRootsAreRemembered(t *testing.T) {
 		t.Fatalf("关闭后偏好没更新：%+v", saved.LastCollections)
 	}
 }
+
+// TestCollectionDefaultsDialog 集合公共参数：弹窗里加一条默认头 → 存进清单 →
+// 之后的请求自动带上；同名头以请求为准（这条在 send 包里测，这里测界面与落盘）。
+func TestCollectionDefaultsDialog(t *testing.T) {
+	var gotHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-Team")
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	// 概览页的「公共参数」入口。
+	click(t, driver, "公共参数")
+	pump(t, driver)
+	if !model.ui.defaultsOpen {
+		t.Fatalf("应打开公共参数弹窗：%v", painted(driver))
+	}
+
+	// 第一行填上 X-Team / core（占位符不是可点元素，按可见文字点进输入框）。
+	clickText(t, driver, "X-Team")
+	pump(t, driver)
+	if err := driver.Type("X-Team"); err != nil {
+		t.Fatalf("Type: %v", err)
+	}
+	pump(t, driver)
+	clickText(t, driver, "{{team}}")
+	pump(t, driver)
+	if err := driver.Type("core"); err != nil {
+		t.Fatalf("Type: %v", err)
+	}
+	pump(t, driver)
+	click(t, driver, "保存")
+	pump(t, driver)
+
+	if model.ui.defaultsOpen {
+		t.Fatal("保存后应关闭弹窗")
+	}
+	if len(model.defaults.Headers) != 1 || model.defaults.Headers[0].Name != "X-Team" {
+		t.Fatalf("内存里的默认头不对：%+v", model.defaults.Headers)
+	}
+	raw, err := os.ReadFile(filepath.Join(col.Dir, "opencollection.yml"))
+	if err != nil {
+		t.Fatalf("读清单: %v", err)
+	}
+	if !strings.Contains(string(raw), "X-Team") {
+		t.Fatalf("清单里没写入默认头：\n%s", raw)
+	}
+
+	// 真发一次：服务端应收到这条默认头。
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+	if gotHeader != "core" {
+		t.Fatalf("默认头没带上，服务端收到 %q", gotHeader)
+	}
+}

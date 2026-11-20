@@ -48,6 +48,8 @@ type Plan struct {
 	Proxy string
 	// ClientCert / ClientKey 是双向 TLS 的证书与私钥（PEM 路径），都填才生效。
 	ClientCert, ClientKey string
+	// Defaults 是集合级公共参数：请求头默认值，以及认证类型为 inherit 时用的认证。
+	Defaults collection.Defaults
 }
 
 // Header 响应头的一行（按名称排序，便于稳定展示）。
@@ -223,7 +225,7 @@ func build(ctx context.Context, plan Plan) (*http.Request, []string, error) {
 			query.Add(exp.text(kv.Name), exp.text(kv.Value))
 		}
 	}
-	if a := block.Auth; a != nil && a.Type == "apikey" && a.In == "query" {
+	if a := effectiveAuth(block.Auth, plan.Defaults); a != nil && a.Type == "apikey" && a.In == "query" {
 		query.Set(exp.text(a.Key), exp.text(a.Value))
 	}
 	target.RawQuery = query.Encode()
@@ -236,11 +238,12 @@ func build(ctx context.Context, plan Plan) (*http.Request, []string, error) {
 	if err != nil {
 		return nil, exp.missing, fmt.Errorf("构造请求: %w", err)
 	}
+	applyHeaders(req, plan.Defaults.Headers, exp)
 	applyHeaders(req, block.Headers, exp)
 	if contentType != "" && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	applyAuth(req, block.Auth, exp)
+	applyAuth(req, effectiveAuth(block.Auth, plan.Defaults), exp)
 	return req, exp.missing, nil
 }
 
@@ -316,6 +319,19 @@ func rawOf(body collection.Body) string {
 	return body.Data
 }
 
+// effectiveAuth 选这次请求实际生效的认证：请求写了 inherit 就用集合的 defaults.auth，
+// 否则用请求自己的（类型为 none 时不会挂任何头）。
+func effectiveAuth(auth *collection.Auth, defaults collection.Defaults) *collection.Auth {
+	if auth == nil {
+		return nil
+	}
+	if auth.Type == "inherit" {
+		return defaults.Auth
+	}
+	return auth
+}
+
+// applyHeaders 把启用的请求头写到 req；后写的覆盖先写的（集合默认在前、请求在后）。
 func applyHeaders(req *http.Request, headers []collection.KV, exp *expander) {
 	for _, kv := range headers {
 		if !kv.Enabled || strings.TrimSpace(kv.Name) == "" {

@@ -248,6 +248,18 @@ type workspaceUI struct {
 	newMethod  string
 	newURL     string
 
+	// 集合公共参数弹窗：默认请求头与默认认证的表单。
+	defaultsOpen bool
+	defHeaders   []*kvRow
+	defAuthType  string
+	defAuthUser  string
+	defAuthPass  string
+	defAuthToken string
+	defAuthKey   string
+	defAuthValue string
+	defAuthIn    string
+	defNote      string
+
 	// Cookie Jar 弹窗：打开时从共享 jar 读一次快照。
 	cookieOpen bool
 	cookieRows []send.Cookie
@@ -498,6 +510,9 @@ type Model struct {
 	respMenuOpen bool
 	live         send.Outcome
 
+	// 集合级公共参数（清单 defaults 段）：默认请求头 + inherit 认证的来源。
+	defaults collection.Defaults
+
 	// 响应正文的查找条状态（见 find.go）。
 	find findState
 
@@ -530,6 +545,9 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 		settings: settings.Load(),
 	}
 	m.mcpHost.errs = make(chan string, 1)
+	if col.Dir != "" {
+		m.defaults = explorer.LoadDefaults(col.Dir)
+	}
 	m.roots = []*rootState{{col: col}}
 	m.active = 0
 	m.col = col
@@ -1002,6 +1020,7 @@ func (m *Model) planFor(payload *collection.RequestFile) send.Plan {
 		ClientCert:      m.settings.ClientCert,
 		ClientKey:       m.settings.ClientKey,
 		Dir:             dir,
+		Defaults:        m.defaults,
 		FollowRedirects: &follow,
 		InsecureSSL:     m.settings.InsecureSSL,
 	}

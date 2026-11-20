@@ -901,6 +901,8 @@ func (m *Model) resetCollectionState() {
 // installRoot 装上一个根：集合、过滤词、环境、选中项都来自它自己的状态。
 func (m *Model) installRoot(root *rootState) {
 	m.col = root.col
+	// 公共参数跟着集合走：切换集合根时一起换掉，否则会拿上一个集合的默认头。
+	m.defaults = explorer.LoadDefaults(root.col.Dir)
 	m.menuOpen = false
 	m.expanded["root:"+root.col.Dir] = true
 	m.filter = root.filter

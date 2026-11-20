@@ -225,3 +225,60 @@ func TestDoInsecureSSLDefaultsAndFileOverride(t *testing.T) {
 		t.Fatalf("请求文件的 insecureSsl:false 应覆盖全局：%+v", out)
 	}
 }
+
+// TestCollectionDefaultsApply 集合公共参数：默认头每条请求都带，同名以请求为准；
+// 认证为 inherit 时用集合的 bearer。
+func TestCollectionDefaultsApply(t *testing.T) {
+	type captured struct {
+		team, debug, auth string
+	}
+	got := make(chan captured, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got <- captured{
+			team:  r.Header.Get("X-Team"),
+			debug: r.Header.Get("X-Debug"),
+			auth:  r.Header.Get("Authorization"),
+		}
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	plan := Plan{
+		File: &collection.RequestFile{
+			Info: collection.FileInfo{Name: "继承", Type: "http"},
+			HTTP: collection.HTTPBlock{
+				Method: "GET", URL: srv.URL + "/x",
+				Headers: []collection.KV{{Name: "X-Debug", Value: "请求值", Enabled: true}},
+				Auth:    &collection.Auth{Type: "inherit"},
+			},
+		},
+		Defaults: collection.Defaults{
+			Headers: []collection.KV{
+				{Name: "X-Team", Value: "{{team}}", Enabled: true},
+				{Name: "X-Debug", Value: "集合值", Enabled: true},
+			},
+			Auth: &collection.Auth{Type: "bearer", Token: "{{token}}"},
+		},
+		Vars: map[string]string{"team": "core", "token": "t-1"},
+	}
+	if out := Do(context.Background(), plan); out.Err != "" {
+		t.Fatalf("发送失败：%+v", out)
+	}
+	seen := <-got
+	if seen.team != "core" {
+		t.Fatalf("默认头没带上或变量没替换：%q", seen.team)
+	}
+	if seen.debug != "请求值" {
+		t.Fatalf("同名头应以请求为准，实际 %q", seen.debug)
+	}
+	if seen.auth != "Bearer t-1" {
+		t.Fatalf("inherit 应沿用集合认证，实际 %q", seen.auth)
+	}
+
+	// 请求自己写了认证时，集合认证不生效。
+	plan.File.HTTP.Auth = &collection.Auth{Type: "bearer", Token: "own"}
+	Do(context.Background(), plan)
+	if seen := <-got; seen.auth != "Bearer own" {
+		t.Fatalf("请求自己的认证应覆盖 inherit，实际 %q", seen.auth)
+	}
+}

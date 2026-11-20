@@ -27,6 +27,10 @@ func (m *Model) overviewPage(c ui.C) {
 			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Secondary().Clicked() {
 				c.After(m.chooseCollection)
 			}
+			if ui.Button(c, "公共参数").Icon(IconSliders).Secondary().
+				Tooltip("集合级默认请求头与认证").Clicked() {
+				c.After(m.openDefaults)
+			}
 			if ui.Button(c, "设置").Icon(IconSliders).Secondary().Clicked() {
 				m.openSettings()
 			}
