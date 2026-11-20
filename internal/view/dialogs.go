@@ -480,7 +480,7 @@ func (m *Model) runnerDialog(c ui.C) {
 					for index := range m.run.Rows {
 						item := &m.run.Rows[index]
 						ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
-							ui.Checkbox(c, &item.Selected, item.Name)
+							ui.Checkbox(c, &item.Selected, "")
 							ui.Text(c, runMethodText(item.Method)).FontSize(10).Mono().Bold().Width(52).
 								Color(methodTint(item.Method, m.isLight()))
 							ui.Text(c, item.Name).FontSize(11).Grow(1).Ellipsis()
