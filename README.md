@@ -95,7 +95,7 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 | 集合公共参数 | 默认请求头 + 默认认证（inherit），落清单 defaults 段 |
 | 集合包 / OpenAPI | 导出 .apidocgo.json 与 OpenAPI 3.0；导入新增集合包 |
 | 请求历史 | 每次真实发送在后台记一条（时间 / 方法 / 解析后的地址 / 状态 / 耗时 / 体积 / 请求名与相对路径 / 集合根 / 环境），落 `~/.config/api-doc-viva/history.jsonl`（超过 300 条裁掉最早的）；底栏「历史」或命令面板打开，按地址或请求名过滤，点一行回到那条请求（不在当前集合就复制地址），可一键清空 |
-| gRPC | 只读展示 target/service/method/proto/message（发送不在本次验证范围） |
+| gRPC | 请求页可编辑**元数据**与**请求消息**（protojson），右上角「调用」按 .proto 动态发起：地址 / 服务 / 方法取自请求文件，proto 用纯 Go 编译（不装 protoc），支持 unary 与服务器流、TLS / mTLS、gzip、变量替换；响应显示 gRPC 状态码 + 耗时 + JSON（非 OK 状态也照常展示） |
 
 ## UI 参考（`ui_reference/`）
 
