@@ -494,6 +494,13 @@ type Model struct {
 	respMenuOpen bool
 	live         send.Outcome
 
+	// 撤销 / 重做：整份草稿的快照栈（见 undo.go）。
+	undoStack []requestDraft
+	redoStack []requestDraft
+	editSeq   int
+	snapSeq   int
+	lastSnap  time.Time
+
 	// gen 是「当前选中请求」的代号：换请求后，旧请求在途的响应作废。
 	gen         int
 	results     chan sendResult

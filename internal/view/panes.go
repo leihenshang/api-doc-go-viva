@@ -44,10 +44,10 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 	}
 	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 		if ui.Select(c, &m.req.method, httpMethods, nil).Width(120).Changed() {
-			m.req.dirty = true
+			m.markEdited()
 		}
 		if ui.TextField(c, &m.req.url, "地址", "{{host}}/api/users").Grow(1).Changed() {
-			m.req.dirty = true
+			m.markEdited()
 		}
 		saveLabel := "保存请求"
 		if m.scratch {
@@ -102,26 +102,26 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 		slot := index
 		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &row.name, "名称", "name").Width(150).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &row.value, "值", "value").Grow(1).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &row.desc, "说明", "").Width(160).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			m.rowMover(c, index, len(*rows), func(from, to int) {
 				if moveItem(*rows, from, to) {
-					m.req.dirty = true
+					m.markEdited()
 				}
 			})
 			if ui.Button(c, "删除").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					*rows = append((*rows)[:slot], (*rows)[slot+1:]...)
-					m.req.dirty = true
+					m.markEdited()
 				})
 			}
 		})
@@ -129,7 +129,7 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 	ui.Row(c).FillWidth().Children(func() {
 		if ui.Button(c, addLabel).Icon(IconPlus).Ghost().Clicked() {
 			*rows = append(*rows, &kvRow{enabled: true})
-			m.req.dirty = true
+			m.markEdited()
 		}
 	})
 }
@@ -229,7 +229,7 @@ func (m *Model) bodyTab(c ui.C) {
 	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 		ui.Text(c, "类型").FontSize(11).Muted()
 		if ui.Select(c, &m.req.bodyType, bodyTypes, nil).Width(140).Changed() {
-			m.req.dirty = true
+			m.markEdited()
 		}
 		ui.Spacer(c)
 	})
@@ -240,7 +240,7 @@ func (m *Model) bodyTab(c ui.C) {
 		m.formEditor(c, m.req.bodyType == "multipart")
 	default:
 		if ui.TextArea(c, &m.req.bodyRaw, "请求体", `{"name": "value"}`).FillWidth().Height(240).Changed() {
-			m.req.dirty = true
+			m.markEdited()
 		}
 	}
 	m.fieldEditor(c)
@@ -260,29 +260,29 @@ func (m *Model) fieldEditor(c ui.C) {
 		slot := index
 		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 			if ui.TextField(c, &row.name, "字段名", "id").Width(150).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &row.typ, "类型", "string").Width(100).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.Checkbox(c, &row.required, "").Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &row.example, "示例", "abc").Width(160).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &row.desc, "说明", "").Grow(1).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			m.rowMover(c, index, len(m.req.fields), func(from, to int) {
 				if moveItem(m.req.fields, from, to) {
-					m.req.dirty = true
+					m.markEdited()
 				}
 			})
 			if ui.Button(c, "删除字段").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					m.req.fields = append(m.req.fields[:slot], m.req.fields[slot+1:]...)
-					m.req.dirty = true
+					m.markEdited()
 				})
 			}
 		})
@@ -290,7 +290,7 @@ func (m *Model) fieldEditor(c ui.C) {
 	ui.Row(c).FillWidth().Children(func() {
 		if ui.Button(c, "添加字段").Icon(IconPlus).Ghost().Clicked() {
 			m.req.fields = append(m.req.fields, &fieldRow{typ: "string"})
-			m.req.dirty = true
+			m.markEdited()
 		}
 	})
 }
@@ -311,35 +311,35 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 		slot := index
 		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &row.name, "名称", "field").Width(150).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			placeholder := "value"
 			if multipart && row.typ == "file" {
 				placeholder = "相对集合根的文件路径"
 			}
 			if ui.TextField(c, &row.value, "值", placeholder).Grow(1).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if multipart {
 				if ui.Select(c, &row.typ, formTypes, nil).Width(96).Changed() {
-					m.req.dirty = true
+					m.markEdited()
 				}
 			}
 			if ui.TextField(c, &row.desc, "说明", "").Width(140).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			m.rowMover(c, index, len(m.req.form), func(from, to int) {
 				if moveItem(m.req.form, from, to) {
-					m.req.dirty = true
+					m.markEdited()
 				}
 			})
 			if ui.Button(c, "删除").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					m.req.form = append(m.req.form[:slot], m.req.form[slot+1:]...)
-					m.req.dirty = true
+					m.markEdited()
 				})
 			}
 		})
@@ -347,7 +347,7 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 	ui.Row(c).FillWidth().Children(func() {
 		if ui.Button(c, "添加表单字段").Icon(IconPlus).Ghost().Clicked() {
 			m.req.form = append(m.req.form, &kvRow{enabled: true, typ: "text"})
-			m.req.dirty = true
+			m.markEdited()
 		}
 	})
 }
@@ -357,7 +357,7 @@ func (m *Model) authTab(c ui.C) {
 	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 		ui.Text(c, "类型").FontSize(11).Muted()
 		if ui.Select(c, &m.req.authType, authTypes, nil).Width(140).Changed() {
-			m.req.dirty = true
+			m.markEdited()
 		}
 		ui.Spacer(c)
 	})
@@ -369,26 +369,26 @@ func (m *Model) authTab(c ui.C) {
 	case "basic":
 		ui.Row(c).FillWidth().Gap(8).Children(func() {
 			if ui.TextField(c, &m.req.authUser, "用户名", "{{username}}").Grow(1).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &m.req.authPass, "口令", "{{password}}").Grow(1).Secure().Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 		})
 	case "bearer":
 		if ui.TextField(c, &m.req.authToken, "Token", "{{token}}").Grow(1).Changed() {
-			m.req.dirty = true
+			m.markEdited()
 		}
 	case "apikey":
 		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 			if ui.TextField(c, &m.req.authKey, "Key", "X-API-Key").Grow(1).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.TextField(c, &m.req.authValue, "Value", "{{apiKey}}").Grow(1).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 			if ui.Select(c, &m.req.authIn, authPlaces, nil).Width(110).Changed() {
-				m.req.dirty = true
+				m.markEdited()
 			}
 		})
 	}
@@ -405,7 +405,7 @@ func (m *Model) docsTab(c ui.C) {
 	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 		ui.Text(c, "概述").FontSize(11).Muted()
 		if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").Grow(1).Changed() {
-			m.req.dirty = true
+			m.markEdited()
 		}
 	})
 	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
@@ -417,7 +417,7 @@ func (m *Model) docsTab(c ui.C) {
 	})
 	if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").
 		FillWidth().Height(320).Changed() {
-		m.req.dirty = true
+		m.markEdited()
 	}
 }
 

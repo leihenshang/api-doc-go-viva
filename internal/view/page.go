@@ -14,6 +14,8 @@ import (
 func (m *Model) Page(c ui.C) {
 	m.drainMCP()
 	m.drainRun()
+	// 上一帧的编辑在这里落成一步撤销（按 400ms 合并连续输入）。
+	m.captureUndo()
 	if ui.Shortcut(c, ui.Primary, "k") {
 		c.After(func() {
 			if m.ui.paletteOpen {
@@ -32,6 +34,10 @@ func (m *Model) Page(c ui.C) {
 	}
 	if ui.Shortcut(c, ui.Primary, ",") {
 		c.After(m.openSettings)
+	}
+	// 撤销只对「正在编辑的请求」有意义：概览页没有草稿。
+	if !m.overview && (m.scratch || m.req.file != "") {
+		m.undoShortcuts(c)
 	}
 	m.toolbar(c)
 	if !m.hasCollection() {

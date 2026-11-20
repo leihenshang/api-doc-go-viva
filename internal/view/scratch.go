@@ -24,6 +24,7 @@ func (m *Model) openScratch() {
 	m.req.params = []*kvRow{{enabled: true}}
 	m.req.headers = []*kvRow{{enabled: true, name: "Content-Type", value: "application/json"}}
 	m.tables = requestTables{metaLine: "临时请求 · 未保存"}
+	m.resetUndo()
 	m.tree.Select(-1)
 	m.storeTab()
 }

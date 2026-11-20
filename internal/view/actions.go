@@ -1072,6 +1072,7 @@ func (m *Model) loadRequestDraft(entry *explorer.Entry) {
 		draft.authIn = "header"
 	}
 	m.req = draft
+	m.resetUndo()
 }
 
 // newKVEditor 把落盘的行转成可编辑行。
@@ -1538,7 +1539,7 @@ func (m *Model) formatURL() {
 		raw = base
 	}
 	m.req.url = raw
-	m.req.dirty = true
+	m.markEdited()
 	m.req.err = ""
 	m.invalidator.Invalidate()
 }
