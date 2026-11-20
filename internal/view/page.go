@@ -217,10 +217,10 @@ func (m *Model) collectionPicker(c ui.C) {
 		}
 		menu.Separator()
 		if menu.Item("导出 Markdown…").Icon(IconImport).Clicked() {
-			c.After(func() { m.exportCollection("md") })
+			c.After(func() { m.openExport("md") })
 		}
 		if menu.Item("导出 HTML…").Icon(IconImport).Clicked() {
-			c.After(func() { m.exportCollection("html") })
+			c.After(func() { m.openExport("html") })
 		}
 		closeItem := menu.Item("关闭当前集合")
 		if len(m.roots) <= 1 {

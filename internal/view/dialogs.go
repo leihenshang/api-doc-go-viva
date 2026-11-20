@@ -25,6 +25,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.mockDialog(c)
 	m.runnerDialog(c)
 	m.runRulesDialog(c)
+	m.exportDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
 	m.envDialog(c)
@@ -456,6 +457,67 @@ func (m *Model) settingsAbout(c ui.C) {
 	ui.Text(c, m.ui.imeDetail).FontSize(11).Muted()
 	ui.Text(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").
 		FontSize(11).Muted()
+}
+
+// exportDialog 是导出范围：勾哪些分组 / 条目，按当前格式生成一份文件。
+func (m *Model) exportDialog(c ui.C) {
+	title := "导出 Markdown"
+	if m.ui.exportFormat == "html" {
+		title = "导出 HTML"
+	}
+	ui.ModalWith(c, &m.ui.exportOpen, title, ui.ModalSpec{Width: 760, Height: 560}, func() {
+		ui.Column(c).FillWidth().Height(460).Gap(6).Children(func() {
+			requests, files := m.exportCounts()
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "勾选要导出的分组与请求；勾分组会带上它下面的条目。").FontSize(11).Muted()
+				ui.Spacer(c)
+				ui.Text(c, "已选 "+strconv.Itoa(requests)+" 条请求 · "+strconv.Itoa(files)+" 篇文档").
+					FontSize(11).Muted().Mono()
+				if ui.Button(c, "全选").Ghost().Small().Clicked() {
+					c.After(func() { m.selectAllExports(true) })
+				}
+				if ui.Button(c, "全不选").Ghost().Small().Clicked() {
+					c.After(func() { m.selectAllExports(false) })
+				}
+			})
+			ui.Divider(c)
+			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+				ui.Column(c).FillWidth().Gap(2).Children(func() {
+					if len(m.ui.exportRows) == 0 {
+						ui.Text(c, "这个集合里没有可导出的条目。").FontSize(11).Muted()
+					}
+					for index := range m.ui.exportRows {
+						row := &m.ui.exportRows[index]
+						ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
+							ui.Slot(c).Width(float32(row.Depth) * 14)
+							label := row.Title
+							if ui.Checkbox(c, &row.Selected, label).Changed() {
+								// 勾选状态变了才联动子项
+								on := row.Selected
+								c.After(func() { m.toggleExportRow(index, on) })
+							}
+							ui.Spacer(c)
+							if row.Group {
+								ui.Text(c, "分组").FontSize(10).Muted()
+							}
+						})
+					}
+				})
+			})
+			if m.ui.exportNote != "" {
+				ui.Text(c, m.ui.exportNote).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				m.ui.exportOpen = false
+			}
+			if ui.Button(c, "导出…").Clicked() {
+				c.After(m.saveExport)
+			}
+		})
+	})
 }
 
 // runRulesDialog 编辑一条请求的运行规则：提取（写进变量袋）与断言（判定成败）。

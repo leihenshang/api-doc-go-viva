@@ -19,6 +19,58 @@ type Doc struct {
 	Col  *explorer.Collection
 }
 
+// Selection 是要导出的条目：键是条目相对路径；nil 表示全选。
+// 分组不单独表示——勾一个分组就是把它下面的条目都放进来，导出层只认条目。
+type Selection map[string]bool
+
+// Has 报告某条条目是否被选中。
+func (sel Selection) Has(file string) bool { return sel == nil || sel[file] }
+
+// Count 数一下这次会导出多少条（请求 / 文档分开数）。
+func Count(docs []Doc, sel Selection) (requests, files int) {
+	for _, doc := range docs {
+		for _, entry := range doc.Col.Entries {
+			if !sel.Has(entry.File) {
+				continue
+			}
+			if entry.Kind == explorer.KindDoc {
+				files++
+				continue
+			}
+			requests++
+		}
+	}
+	return requests, files
+}
+
+// Row 是「导出范围」列表里的一行：分组行带 Group，条目行带 File。
+// 顺序与文档里的顺序一致，界面上看到的树就是导出的顺序。
+type Row struct {
+	File  string // 条目相对路径；分组行是目录
+	Title string
+	Depth int
+	Group bool
+}
+
+// Rows 列出可勾选的条目（按集合分组顺序，分组行在它的条目之前）。
+func Rows(docs []Doc) []Row {
+	out := make([]Row, 0, 16)
+	for _, doc := range docs {
+		for _, sec := range sections(doc.Col, nil) {
+			isRoot := sec.Depth == 0 && sec.Title == doc.Col.Name
+			if !isRoot {
+				out = append(out, Row{File: sec.Title, Title: sec.Title, Depth: sec.Depth, Group: true})
+			}
+			for _, entry := range sec.Entries {
+				out = append(out, Row{
+					File: entry.File, Title: entryTitle(entry), Depth: sec.Depth + 1,
+				})
+			}
+		}
+	}
+	return out
+}
+
 // section 是文档里的一个分组（集合根也算一节，Depth 为 0）。
 type section struct {
 	Depth   int
@@ -28,9 +80,12 @@ type section struct {
 
 // sections 按「根目录条目 → 各分组」整理成扁平顺序：分组按相对路径排，
 // 条目挂在各自目录下，和树里的顺序一致，导出的文档读起来也是同一棵树。
-func sections(col *explorer.Collection) []section {
+func sections(col *explorer.Collection, sel Selection) []section {
 	byDir := make(map[string][]*explorer.Entry, len(col.Folders)+1)
 	for _, entry := range col.Entries {
+		if !sel.Has(entry.File) {
+			continue
+		}
 		dir := ""
 		if slash := strings.LastIndex(entry.File, "/"); slash >= 0 {
 			dir = entry.File[:slash]
@@ -54,21 +109,30 @@ func sections(col *explorer.Collection) []section {
 	return out
 }
 
-// Markdown 生成整份文档的 Markdown。
-func Markdown(docs []Doc) string {
+// Markdown 生成整份文档的 Markdown（全选）。
+func Markdown(docs []Doc) string { return MarkdownSelected(docs, nil) }
+
+// MarkdownSelected 只导出 sel 里的条目；返回的 Markdown 不留空的分组。
+func MarkdownSelected(docs []Doc, sel Selection) string {
 	var b strings.Builder
-	for index, doc := range docs {
-		if index > 0 {
+	wrote := false
+	for _, doc := range docs {
+		// 一条都没勾就整卷跳过；空集合本身（没有任何条目）仍然留标题。
+		if len(sections(doc.Col, sel)) == 0 && len(doc.Col.Entries) > 0 {
+			continue
+		}
+		if wrote {
 			b.WriteString("\n---\n\n")
 		}
-		writeMarkdownDoc(&b, doc)
+		writeMarkdownDoc(&b, doc, sel)
+		wrote = true
 	}
 	return b.String()
 }
 
-func writeMarkdownDoc(b *strings.Builder, doc Doc) {
+func writeMarkdownDoc(b *strings.Builder, doc Doc, sel Selection) {
 	b.WriteString("# " + doc.Name + "\n\n")
-	for _, sec := range sections(doc.Col) {
+	for _, sec := range sections(doc.Col, sel) {
 		if len(doc.Col.Entries) > 0 && sec.Depth == 0 && sec.Title != doc.Col.Name {
 			b.WriteString("## " + sec.Title + "\n\n")
 		} else if sec.Depth > 0 {

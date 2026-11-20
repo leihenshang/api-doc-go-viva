@@ -2422,6 +2422,21 @@ func TestEntryMenuButtonStaysUnderPointer(t *testing.T) {
 	}
 }
 
+// clickRightOf 点「横坐标在 x 右侧」的那个同名命中——树与弹窗里可能有同名标签。
+func clickRightOf(t *testing.T, driver *app.Driver, label string, x float32) {
+	t.Helper()
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label != label || hit.IsLabel || hit.Bounds.X < x {
+			continue
+		}
+		if err := driver.Click(hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2); err != nil {
+			t.Fatalf("点击 %q: %v", label, err)
+		}
+		return
+	}
+	t.Fatalf("右侧没有名为 %q 的可点元素：%v", label, painted(driver))
+}
+
 // findHit 按标签找可命中区域（找不到返回零矩形）。
 func findHit(driver *app.Driver, label string) gfx.Rect {
 	for _, hit := range driver.Snapshot().Hits {
@@ -2509,6 +2524,110 @@ func TestRunStopsOnFirstFailure(t *testing.T) {
 	}
 	if len(model.run.Results) != 1 {
 		t.Fatalf("应当第一条就停：%+v", model.run.Results)
+	}
+}
+
+// TestExportDialogSelectsRange 导出范围：勾分组会带上子项，取消勾选的条目不出现在产物里。
+func TestExportDialogSelectsRange(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\ninfo:\n  name: 范围集合\n")
+	writeFile(t, filepath.Join(dir, "健康检查.yml"), `info:
+  name: 健康检查
+  type: http
+  seq: 1
+meta:
+  uid: range-health
+http:
+  method: GET
+  url: http://127.0.0.1:1/health
+  headers: []
+  body:
+    type: none
+`)
+	writeFile(t, filepath.Join(dir, "用户", "folder.yml"), "info:\n  name: 用户\n  type: folder\n  seq: 1\n")
+	writeFile(t, filepath.Join(dir, "用户", "登录.yml"), `info:
+  name: 登录
+  type: http
+  seq: 1
+meta:
+  uid: range-login
+http:
+  method: POST
+  url: http://127.0.0.1:1/login
+  headers: []
+  body:
+    type: none
+`)
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.openExport("md")
+	pump(t, driver)
+
+	if len(model.ui.exportRows) != 3 { // 分组 + 两条请求
+		t.Fatalf("应列出三条（1 分组 + 2 请求）：%+v", model.ui.exportRows)
+	}
+	if requests, _ := model.exportCounts(); requests != 2 {
+		t.Fatalf("默认应全选两条：%d", requests)
+	}
+
+	// 点掉分组「用户」：它下面的「登录」跟着取消。
+	groupIndex := -1
+	for index, row := range model.ui.exportRows {
+		if row.Group {
+			groupIndex = index
+		}
+	}
+	if groupIndex < 0 {
+		t.Fatalf("没找到分组行：%+v", model.ui.exportRows)
+	}
+	// 树里也有「用户」，只点弹窗里那一个（弹窗在右侧）。
+	clickRightOf(t, driver, "用户", 150)
+	pump(t, driver)
+	if requests, _ := model.exportCounts(); requests != 1 {
+		t.Fatalf("取消分组后应只剩根目录那条：%d（分组行 Selected=%v）",
+			requests, model.ui.exportRows[groupIndex].Selected)
+	}
+	content, ext, _ := model.exportContentFor("md", model.exportSelection())
+	if ext != "md" || !strings.Contains(content, "GET 健康检查") {
+		t.Fatalf("产物应包含仍在勾选里的请求：\n%s", content)
+	}
+	if strings.Contains(content, "POST 登录") {
+		t.Fatalf("取消勾选的请求不该出现：\n%s", content)
+	}
+
+	// 再勾回来：分组联动应当恢复两条。
+	clickRightOf(t, driver, "用户", 150)
+	pump(t, driver)
+	if requests, _ := model.exportCounts(); requests != 2 {
+		t.Fatalf("重新勾分组应带回子项：%d", requests)
+	}
+	html, _, _ := model.exportContentFor("html", model.exportSelection())
+	if !strings.Contains(html, "POST 登录") {
+		t.Fatal("HTML 也要跟着范围走")
+	}
+}
+
+// TestExportDialogRejectsEmptySelection 一条都不勾时给提示，不写文件。
+func TestExportDialogRejectsEmptySelection(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.openExport("html")
+	model.selectAllExports(false)
+	pump(t, driver)
+	model.saveExport()
+	if model.ui.exportNote != "至少勾一条再导出" {
+		t.Fatalf("应提示至少勾一条，实际 %q", model.ui.exportNote)
+	}
+	if !model.ui.exportOpen {
+		t.Fatal("拒绝导出时弹窗不该关掉")
 	}
 }
 

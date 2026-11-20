@@ -11,14 +11,17 @@ import (
 
 // HTML 生成单文件 HTML：内联样式、左侧目录树（可折叠 / 可搜索）、正文带锚点。
 // 交付时一个文件拷走就能看，不需要服务器。
-func HTML(docs []Doc) string {
+func HTML(docs []Doc) string { return HTMLSelected(docs, nil) }
+
+// HTMLSelected 只导出 sel 里的条目；空集合（什么都没选）会得到一个只有标题的文档。
+func HTMLSelected(docs []Doc, sel Selection) string {
 	var b strings.Builder
 	title := html.EscapeString(docTitle(docs))
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<title>" + title + "</title>\n<style>" + htmlStyle + "</style>\n</head>\n<body>\n")
 
-	body, toc := renderBody(docs)
+	body, toc := renderBody(docs, sel)
 	b.WriteString("<div class=\"layout\">\n<nav class=\"toc\"><div class=\"toc-title\">目录</div>")
 	b.WriteString("<input class=\"toc-search\" type=\"search\" placeholder=\"搜索…\" aria-label=\"搜索目录\">")
 	b.WriteString("<div class=\"toc-list\">" + toc + "</div></nav>\n<main>\n")
@@ -28,7 +31,7 @@ func HTML(docs []Doc) string {
 }
 
 // renderBody 同时生成正文与目录：锚点在一次遍历里编号，保证两边一一对应。
-func renderBody(docs []Doc) (body, toc string) {
+func renderBody(docs []Doc, sel Selection) (body, toc string) {
 	var out, nav strings.Builder
 	id := 0
 	emit := func(level int, title string, navClass, style string) {
@@ -40,7 +43,7 @@ func renderBody(docs []Doc) (body, toc string) {
 	}
 	for _, doc := range docs {
 		emit(1, doc.Name, "toc-root", "")
-		for _, sec := range sections(doc.Col) {
+		for _, sec := range sections(doc.Col, sel) {
 			if sec.Depth > 0 || sec.Title != doc.Col.Name {
 				emit(min(sec.Depth+2, 5), sec.Title, "toc-folder", "padding-left:"+strconv.Itoa(8+sec.Depth*14)+"px")
 			}

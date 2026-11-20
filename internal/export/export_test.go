@@ -158,6 +158,56 @@ func TestHTMLExportEscapesUserText(t *testing.T) {
 	}
 }
 
+// TestSelectedExportSkipsUnchecked 勾选导出：没勾的条目不出现在正文与目录里，
+// 勾空了的分组整节省略，计数与实际条数一致。
+func TestSelectedExportSkipsUnchecked(t *testing.T) {
+	doc := buildCollection(t)
+	// 只勾「登录」（在「用户」分组里），根目录那条与文档都不勾。
+	sel := Selection{}
+	for _, entry := range doc.Col.Entries {
+		if entry.Name == "登录" {
+			sel[entry.File] = true
+		}
+	}
+	requests, files := Count([]Doc{doc}, sel)
+	if requests != 1 || files != 0 {
+		t.Fatalf("计数不对：请求 %d、文档 %d", requests, files)
+	}
+
+	md := MarkdownSelected([]Doc{doc}, sel)
+	if !strings.Contains(md, "POST 登录") {
+		t.Fatalf("勾选的条目应当出现：\n%s", md)
+	}
+	for _, unwanted := range []string{"GET 健康检查", "接口约定"} {
+		if strings.Contains(md, unwanted) {
+			t.Fatalf("没勾的 %q 不该出现：\n%s", unwanted, md)
+		}
+	}
+
+	out := HTMLSelected([]Doc{doc}, sel)
+	if !strings.Contains(out, "POST 登录") || strings.Contains(out, "GET 健康检查") {
+		t.Fatalf("HTML 的勾选结果不对")
+	}
+	// 目录只应剩集合名 + 分组 + 登录三段。
+	links := regexp.MustCompile(`href="#toc-\d+"`).FindAllString(out, -1)
+	if len(links) != 3 {
+		t.Fatalf("目录应有 3 项（集合 / 用户 / 登录），实际 %d：\n%s", len(links), out)
+	}
+
+	// 什么都不勾：正文里没有任何请求，但仍然是完整文档。
+	empty := Selection{}
+	md = MarkdownSelected([]Doc{doc}, empty)
+	if strings.Contains(md, "POST 登录") || strings.Contains(md, "GET 健康检查") {
+		t.Fatalf("空选择不该导出条目：\n%s", md)
+	}
+	if requests, files := Count([]Doc{doc}, empty); requests != 0 || files != 0 {
+		t.Fatalf("空选择计数应为 0：%d %d", requests, files)
+	}
+	if out := HTMLSelected([]Doc{doc}, empty); !strings.Contains(out, "</html>") {
+		t.Fatal("空选择的 HTML 仍应是完整文档")
+	}
+}
+
 // TestMarkdownEscapesTablePipe 表格单元格里的竖线不能把表格撑歪。
 func TestMarkdownEscapesTablePipe(t *testing.T) {
 	rows := [][]string{{"a|b", "1", "x"}}

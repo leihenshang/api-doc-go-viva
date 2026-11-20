@@ -15,7 +15,6 @@ import (
 	"github.com/leihenshang/api-doc-go-share/collection"
 	curlc "github.com/leihenshang/api-doc-go-viva/internal/curl"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
-	"github.com/leihenshang/api-doc-go-viva/internal/export"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/importers"
@@ -423,14 +422,9 @@ func (m *Model) copyCurl(entry *explorer.Entry) {
 	m.invalidator.Invalidate()
 }
 
-// exportContent 生成导出内容：返回正文、扩展名与保存对话框的过滤器。
-// 与「选路径 + 写文件」分开，方便无头测试直接断言产物。
+// exportContent 生成整份导出（全选），供无头测试与「一键导出」使用。
 func (m *Model) exportContent(format string) (string, string, app.FileFilter) {
-	docs := []export.Doc{{Name: m.col.Name, Col: m.col}}
-	if format == "html" {
-		return export.HTML(docs), "html", app.FileFilter{Name: "HTML 文档", Pattern: "*.html"}
-	}
-	return export.Markdown(docs), "md", app.FileFilter{Name: "Markdown 文档", Pattern: "*.md"}
+	return m.exportContentFor(format, nil)
 }
 
 // exportCollection 把当前集合导出一份文件：format 是 "html" 或 "md"。
