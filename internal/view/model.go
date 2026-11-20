@@ -490,7 +490,9 @@ type Model struct {
 	// exSel 为空表示正在看实时响应；看示例时 live 不被覆盖，切回来用它还原。
 	exRows []explorer.Example
 	exSel  string
-	live   send.Outcome
+	// respMenuOpen 是右上角「保存响应」下拉的展开状态。
+	respMenuOpen bool
+	live         send.Outcome
 
 	// gen 是「当前选中请求」的代号：换请求后，旧请求在途的响应作废。
 	gen         int

@@ -67,9 +67,6 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 					c.After(m.saveRequest)
 				}
 				menu.Separator()
-				// 切换「看哪一份」在响应区右上角的下拉里；这里只放示例相关的动作。
-				m.exampleActions(c, menu)
-				menu.Separator()
 				if menu.Item("导入 CURL").Icon(IconImport).Clicked() {
 					c.After(func() { m.openCurlImport(m.newRequestFolder()) })
 				}
@@ -450,6 +447,9 @@ func (m *Model) docsPreview(c ui.C) {
 // responsePanel 是请求页下方的响应区：状态行固定，正文滚动。
 func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 	theme := c.Theme()
+	// 窄栏（左右分栏把响应拖窄、或窗口本身就窄）只留最要紧的信息：
+	// 状态码 + 下拉。reason / 耗时 / 体积 / 分段名会让这一行溢出，把下拉顶到窗外。
+	narrow := m.paneWidth(c) < 420
 	ui.Column(c).Fill().Pad(panePadding).Gap(8).Radius(theme.Metrics.RadiusSurface).
 		Background(theme.Card).Border(1, m.pal.border).Children(func() {
 		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
@@ -469,21 +469,22 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 				if m.status != "" {
 					ui.Text(c, m.status).FontSize(12).Bold().Color(statusTint).Shrink(0)
 				}
-				if m.reason != "" {
+				if m.reason != "" && !narrow {
 					ui.Text(c, m.reason).FontSize(11).Muted().Shrink(0)
 				}
-				if m.elapsed != "" {
+				if m.elapsed != "" && !narrow {
 					ui.Text(c, m.elapsed+" · "+m.size).FontSize(11).Muted().Mono().Shrink(0)
 				}
 				if m.copyNote != "" {
-					ui.Text(c, m.copyNote).FontSize(11).Muted().Shrink(0)
+					// 可收缩 + 省略号：提示再长也不能把右边的两个下拉顶出去。
+					ui.Text(c, m.copyNote).FontSize(11).Muted().Ellipsis()
 				}
 			}
-			if m.exSel != "" {
+			if m.exSel != "" && !narrow {
 				m.exampleTag(c)
 			}
 			ui.Spacer(c)
-			// 右上角是响应下拉（实时响应 / 已存示例 / 存为示例），与 Wails 版同位置。
+			// 右上角两个下拉，与 Wails 版同位置：切「看哪一份」+ 存 / 删当前这份。
 			if entry.Kind == explorer.KindHTTP {
 				m.examplePicker(c)
 			}
@@ -493,6 +494,8 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 				ui.Tabs(c, &m.respTab, respTabs, respTabLabel).Line().Grow(0)
 				ui.Spacer(c)
+				// 保存放在这一行：第一行被状态与下拉占满，1180 宽时按钮会被挤到窗外。
+				m.responseSaveMenu(c, narrow)
 				if m.respTab == 0 && len(m.tables.json) > 0 {
 					m.responseViewSwitch(c)
 				}

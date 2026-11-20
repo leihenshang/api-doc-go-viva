@@ -165,7 +165,8 @@ func (m *Model) examplePicker(c ui.C) {
 		choices = append(choices, item.File)
 	}
 	before := m.exSel
-	ui.Select(c, &m.exSel, choices, m.exampleLabel).Shrink(0)
+	// 定宽 + 不增长：它默认会吃掉空出来的宽度，把右边的「保存响应」挤出去。
+	ui.Select(c, &m.exSel, choices, m.exampleLabel).Shrink(0).Grow(0).Width(130)
 	if m.exSel != before {
 		picked := m.exSel
 		c.After(func() { m.applyExamplePick(picked) })
@@ -179,10 +180,20 @@ func (m *Model) exampleLabel(file string) string {
 	}
 	for _, item := range m.exRows {
 		if item.File == file {
-			return item.Name
+			// 示例名带时间戳，原样塞进下拉会把控件撑到面板外、把「保存响应」挤掉。
+			return truncateLabel(item.Name, 12)
 		}
 	}
 	return "当前响应"
+}
+
+// truncateLabel 按字数截断，尾部加省略号。
+func truncateLabel(text string, limit int) string {
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return string(runes[:limit]) + "…"
 }
 
 // applyExamplePick 切换展示：选实时就把最近一次真实响应铺回来，选示例就铺那份。
@@ -200,17 +211,37 @@ func (m *Model) applyExamplePick(file string) {
 	m.showLive()
 }
 
-// exampleActions 是「更多操作」里的响应示例动作：存一份、删当前这份、保存正文。
-// 切换看哪一份在响应区右上角的下拉里，这里只放动作。
-func (m *Model) exampleActions(c ui.C, menu *ui.MenuItems) {
-	save := menu.Item("存为示例").Disabled(!m.hasResp || m.failText != "" || m.exSel != "")
-	if save.Clicked() {
-		c.After(m.saveExample)
+// responseSaveMenu 是响应区右上角的「保存响应」下拉：存示例 / 存正文到文件 / 删当前示例。
+//
+// 与「当前响应」下拉并排，正好对齐 Wails 版的两个下拉；动作只操作**当前展示**的那一份
+// （示例或实时），所以正在看示例时「存为示例」置灰——不能把示例存成示例。
+func (m *Model) responseSaveMenu(c ui.C, narrow bool) {
+	button := ui.Button(c, "保存响应").Icon(IconImport).Outline().Shrink(0).
+		Tooltip("保存为示例，或把响应正文存成文件")
+	if narrow {
+		// 窄栏只留图标：文字版会把两个下拉和分段控件一起挤出去。
+		button = button.IconOnly()
 	}
-	if m.hasResp && menu.Item("保存响应体为文件").Clicked() {
-		c.After(m.saveResponseBody)
+	if button.Clicked() {
+		c.After(func() { m.respMenuOpen = !m.respMenuOpen })
 	}
-	if m.exSel != "" && menu.Item("删除这份示例").Destructive().Clicked() {
-		c.After(m.deleteExample)
+	if !m.respMenuOpen {
+		return
 	}
+	ui.Menu(c, button, &m.respMenuOpen, func(menu *ui.MenuItems) {
+		save := menu.Item("保存响应示例").Disabled(!m.hasResp || m.failText != "" || m.exSel != "")
+		if save.Clicked() {
+			c.After(m.saveExample)
+		}
+		body := menu.Item("保存响应体为文件").Disabled(!m.hasResp || m.failText != "")
+		if body.Clicked() {
+			c.After(m.saveResponseBody)
+		}
+		if m.exSel != "" {
+			menu.Separator()
+			if menu.Item("删除这份示例").Destructive().Clicked() {
+				c.After(m.deleteExample)
+			}
+		}
+	})
 }

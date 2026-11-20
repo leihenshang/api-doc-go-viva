@@ -3477,10 +3477,10 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 	}
 	send(`{"n":1}`)
 
-	// 保存动作在地址栏「更多操作」里（切换在响应区下拉里）。
-	click(t, driver, "更多操作")
+	// 保存也在响应区：右上角「保存响应」下拉。
+	click(t, driver, "保存响应")
 	pump(t, driver)
-	click(t, driver, "存为示例")
+	click(t, driver, "保存响应示例")
 	pump(t, driver)
 	list := explorer.Examples(col.Dir, "健康检查.yml")
 	if len(list) != 1 || list[0].Body != `{"n":1}` || list[0].Status != 200 {
@@ -3496,10 +3496,11 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 	// 右上角下拉：点开选示例。
 	clickText(t, driver, "当前响应")
 	pump(t, driver)
-	if !hasControl(driver, list[0].Name) {
+	shown := model.exampleLabel(list[0].File) // 下拉里显示的是截断后的名字
+	if !shows(driver, shown) {
 		t.Fatalf("下拉里没有示例项：%v", painted(driver))
 	}
-	clickText(t, driver, list[0].Name)
+	clickText(t, driver, shown)
 	pump(t, driver)
 	if model.exSel != list[0].File {
 		t.Fatalf("应选中示例 %q，实际 %q", list[0].File, model.exSel)
@@ -3509,7 +3510,7 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 	}
 
 	// 触发器现在显示示例名；再点它选回实时。
-	clickText(t, driver, list[0].Name)
+	clickText(t, driver, shown)
 	pump(t, driver)
 	clickText(t, driver, "当前响应")
 	pump(t, driver)
@@ -3517,12 +3518,12 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 		t.Fatalf("切回实时失败：sel=%q body=%q", model.exSel, model.resp.Body)
 	}
 
-	// 删掉示例：先切回示例视图，再从「更多操作」删。
+	// 删掉示例：先切回示例视图，再用「保存响应」下拉删。
 	clickText(t, driver, "当前响应")
 	pump(t, driver)
-	clickText(t, driver, list[0].Name)
+	clickText(t, driver, shown)
 	pump(t, driver)
-	click(t, driver, "更多操作")
+	click(t, driver, "保存响应")
 	pump(t, driver)
 	click(t, driver, "删除这份示例")
 	pump(t, driver)
