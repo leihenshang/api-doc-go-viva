@@ -471,37 +471,56 @@ func (m *Model) rootRow(c ui.C, row *treeRow, i int) {
 	})
 }
 
+// entryMenuVisible 决定行尾「···」看得见还是透明的：
+// 指针在行上、指针落在按钮自己身上（★ 少了这一条就会一闪一闪）、或这行的菜单还开着。
+func entryMenuVisible(rowHovered, buttonHovered, menuOpen bool) bool {
+	return menuOpen || rowHovered || buttonHovered
+}
+
 // entryRow 是请求 / gRPC / 文档：方法色块 + 名称，右键菜单沿用集合树的操作。
 func (m *Model) entryRow(c ui.C, row *treeRow, i int) {
 	entry := row.entry
 	ui.Text(c, methodText(entry)).FontSize(11).Mono().Bold().Width(46).
 		Color(entryTint(&m.theme, entry, m.isLight()))
 	name := ui.Text(c, entry.Name).FontSize(13).Ellipsis().LabelFor(m.tree.RowID(i))
-	// 行尾「···」只在悬停时出现，入口与右键菜单一致（参考 03）。
-	if canvas := c.Canvas(); canvas != nil && canvas.Hovered() == m.tree.RowID(i) {
-		ui.Spacer(c)
-		more := ui.Button(c, "更多 "+entry.Name).Icon(IconEllipsis).IconOnly().Ghost()
-		if more.Clicked() {
-			c.After(func() {
-				m.menuEntry = entry.File
-				m.menuOpen = true
-			})
-		}
-		if m.menuEntry == entry.File {
-			ui.Menu(c, more, &m.menuOpen, func(menu *ui.MenuItems) {
-				if menu.Item("新建请求").Icon(IconPlus).Clicked() {
-					m.selectEntryRow(entry.File)
-					m.openNewRequest()
-				}
-				if menu.Item("重命名").Clicked() {
-					m.openRenameEntry(entry)
-				}
-				if menu.Item("删除到回收站").Icon(IconTrash).Destructive().Clicked() {
-					file := entry.File
-					c.After(func() { m.trashEntry(file) })
-				}
-			})
-		}
+	// 行尾「···」只在悬停时**看得见**，但它一直声明着：之前是「悬停才声明」，
+	// 指针一移到按钮上，Hovered() 就变成按钮、下一帧按钮消失，指针又落回行上，
+	// 于是按钮反复出现/消失——看上去一闪一闪。入口与右键菜单一致（参考 03）。
+	ui.Spacer(c)
+	hovered := gfx.ID{}
+	if canvas := c.Canvas(); canvas != nil {
+		hovered = canvas.Hovered()
+	}
+	moreID := ui.ID(c)
+	more := ui.Row(c).Size(22, 22).Shrink(0).Center().Radius(4).
+		Hover(ui.Look{}.Background(m.pal.hover)).
+		Hit(moreID, "更多 "+entry.Name)
+	if !entryMenuVisible(hovered == m.tree.RowID(i), hovered == moreID, m.menuEntry == entry.File) {
+		more.Opacity(0)
+	}
+	more.Children(func() {
+		ui.Icon(c, IconEllipsis).Size(14, 14).Color(m.theme.MutedForeground).StateFrom(more)
+	})
+	if more.Clicked() {
+		c.After(func() {
+			m.menuEntry = entry.File
+			m.menuOpen = true
+		})
+	}
+	if m.menuEntry == entry.File {
+		ui.Menu(c, more, &m.menuOpen, func(menu *ui.MenuItems) {
+			if menu.Item("新建请求").Icon(IconPlus).Clicked() {
+				m.selectEntryRow(entry.File)
+				m.openNewRequest()
+			}
+			if menu.Item("重命名").Clicked() {
+				m.openRenameEntry(entry)
+			}
+			if menu.Item("删除到回收站").Icon(IconTrash).Destructive().Clicked() {
+				file := entry.File
+				c.After(func() { m.trashEntry(file) })
+			}
+		})
 	}
 	ui.ContextMenu(c, name, func(menu *ui.MenuItems) {
 		if menu.Item("新建请求").Icon(IconPlus).Clicked() {

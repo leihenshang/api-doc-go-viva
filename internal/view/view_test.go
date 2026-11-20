@@ -2324,6 +2324,113 @@ func TestRequestHistoryRecordsAndReopens(t *testing.T) {
 	}
 }
 
+// TestExportContentCoversTheCollection 导出的两种格式都覆盖当前集合：
+// Markdown 有标题与请求名，HTML 是完整文档且目录锚点对得上。
+func TestExportContentCoversTheCollection(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+
+	md, ext, filter := model.exportContent("md")
+	if ext != "md" || filter.Pattern != "*.md" {
+		t.Fatalf("Markdown 的扩展名/过滤器不对：%s %+v", ext, filter)
+	}
+	for _, want := range []string{"# 验证集合", "GET 健康检查", "DELETE 删除"} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("Markdown 缺 %q：\n%s", want, md)
+		}
+	}
+
+	htmlOut, ext, filter := model.exportContent("html")
+	if ext != "html" || filter.Pattern != "*.html" {
+		t.Fatalf("HTML 的扩展名/过滤器不对：%s %+v", ext, filter)
+	}
+	if !strings.HasPrefix(htmlOut, "<!DOCTYPE html>") || !strings.HasSuffix(htmlOut, "</html>\n") {
+		t.Fatal("HTML 不完整")
+	}
+	if !strings.Contains(htmlOut, "健康检查") || !strings.Contains(htmlOut, `class="toc"`) {
+		t.Fatal("HTML 缺正文或目录")
+	}
+	if strings.Count(htmlOut, "<script>") != 1 {
+		t.Fatal("只应有一段内嵌脚本")
+	}
+}
+
+// TestEntryMenuVisibility 行尾「···」的可见性：行悬停、按钮自己悬停、菜单开着都显示。
+// 少了「按钮自己悬停」这一条就会闪：指针压上去的那一帧判断成不可见，下一帧又回来。
+func TestEntryMenuVisibility(t *testing.T) {
+	cases := []struct {
+		name        string
+		row, button bool
+		menu        bool
+		want        bool
+	}{
+		{"指针在行上", true, false, false, true},
+		{"指针在按钮上", false, true, false, true},
+		{"指针在别处", false, false, false, false},
+		{"指针离开但菜单开着", false, false, true, true},
+	}
+	for _, item := range cases {
+		if got := entryMenuVisible(item.row, item.button, item.menu); got != item.want {
+			t.Fatalf("%s：应显示 = %v，实际 %v", item.name, item.want, got)
+		}
+	}
+}
+
+// TestEntryMenuButtonStaysUnderPointer 行尾「···」指过去要一直亮着。
+// 曾经的写法是「悬停才声明按钮」：指针一落到按钮上，Hovered() 变成按钮、
+// 下一帧按钮消失，指针又回到行上，于是按钮反复出现/消失，看着一闪一闪。
+func TestEntryMenuButtonStaysUnderPointer(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	row := findHit(driver, "GET 健康检查")
+	if row.Width == 0 {
+		t.Fatalf("找不到请求行：%v", painted(driver))
+	}
+	// 先落在行上（离开行的最右侧，别一上来就压到按钮）。
+	if err := driver.Move(row.X+row.Width*0.5, row.Y+row.Height*0.5); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	pump(t, driver)
+	more := findHit(driver, "更多 健康检查")
+	if more.Width == 0 {
+		t.Fatalf("悬停行后应出现「···」：%v", painted(driver))
+	}
+	// 移到按钮正中：按钮必须还在，并且能点开菜单。
+	if err := driver.Move(more.X+more.Width/2, more.Y+more.Height/2); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	pump(t, driver)
+	still := findHit(driver, "更多 健康检查")
+	if still.Width == 0 {
+		t.Fatalf("指针停在按钮上时按钮不该消失：%v", painted(driver))
+	}
+	if err := driver.Click(still.X+still.Width/2, still.Y+still.Height/2); err != nil {
+		t.Fatalf("Click: %v", err)
+	}
+	pump(t, driver)
+	if !shows(driver, "删除到回收站") {
+		t.Fatalf("点「···」应打开条目菜单：%v", painted(driver))
+	}
+}
+
+// findHit 按标签找可命中区域（找不到返回零矩形）。
+func findHit(driver *app.Driver, label string) gfx.Rect {
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label == label && !hit.IsLabel {
+			return hit.Bounds
+		}
+	}
+	return gfx.Rect{}
+}
+
 // TestRunCollectionFromDialog 运行器：勾两条（一条成功一条 500）跑完，
 // 结果逐条回来，失败计数对得上。
 func TestRunCollectionFromDialog(t *testing.T) {

@@ -250,6 +250,9 @@ type workspaceUI struct {
 	historyRows  []history.Entry
 	historyNote  string
 
+	// 导出结果的一句提示（底栏显示）。
+	exportNote string
+
 	// 集合运行器弹窗。
 	runOpen bool
 

@@ -215,6 +215,13 @@ func (m *Model) collectionPicker(c ui.C) {
 		if menu.Item("运行集合…").Icon(IconSend).Clicked() {
 			c.After(m.openRunner)
 		}
+		menu.Separator()
+		if menu.Item("导出 Markdown…").Icon(IconImport).Clicked() {
+			c.After(func() { m.exportCollection("md") })
+		}
+		if menu.Item("导出 HTML…").Icon(IconImport).Clicked() {
+			c.After(func() { m.exportCollection("html") })
+		}
 		closeItem := menu.Item("关闭当前集合")
 		if len(m.roots) <= 1 {
 			closeItem.Disabled(true)

@@ -51,6 +51,8 @@ var paletteGroups = []paletteGroup{
 		{name: "请求历史", run: func(m *Model) { m.openHistory() }},
 		{name: "本地 Mock 服务", run: func(m *Model) { m.openMock() }},
 		{name: "运行集合", run: func(m *Model) { m.openRunner() }},
+		{name: "导出 Markdown", run: func(m *Model) { m.exportCollection("md") }},
+		{name: "导出 HTML", run: func(m *Model) { m.exportCollection("html") }},
 	}},
 }
 

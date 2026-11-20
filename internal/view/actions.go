@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/leihenshang/api-doc-go-share/collection"
 	curlc "github.com/leihenshang/api-doc-go-viva/internal/curl"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/export"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/importers"
@@ -418,6 +420,52 @@ func (m *Model) copyCurl(entry *explorer.Entry) {
 	} else {
 		m.req.note = "cURL 已复制"
 	}
+	m.invalidator.Invalidate()
+}
+
+// exportContent 生成导出内容：返回正文、扩展名与保存对话框的过滤器。
+// 与「选路径 + 写文件」分开，方便无头测试直接断言产物。
+func (m *Model) exportContent(format string) (string, string, app.FileFilter) {
+	docs := []export.Doc{{Name: m.col.Name, Col: m.col}}
+	if format == "html" {
+		return export.HTML(docs), "html", app.FileFilter{Name: "HTML 文档", Pattern: "*.html"}
+	}
+	return export.Markdown(docs), "md", app.FileFilter{Name: "Markdown 文档", Pattern: "*.md"}
+}
+
+// exportCollection 把当前集合导出一份文件：format 是 "html" 或 "md"。
+// 生成与保存都在界面线程做——导出是一次性的，产物大小也就几百 KB。
+func (m *Model) exportCollection(format string) {
+	if m.col == nil || m.col.Dir == "" {
+		return
+	}
+	content, ext, filter := m.exportContent(format)
+	name := m.col.Name
+	if strings.TrimSpace(name) == "" {
+		name = "collection"
+	}
+	path, err := app.SaveFile(app.SaveFileOptions{
+		Title:            "导出集合",
+		SuggestedName:    name + "." + ext,
+		DefaultExtension: ext,
+		Filters:          []app.FileFilter{filter},
+	})
+	if err != nil {
+		if !errors.Is(err, app.ErrCanceled) {
+			m.ui.exportNote = "导出失败：" + err.Error()
+			m.invalidator.Invalidate()
+		}
+		return
+	}
+	if path == "" {
+		return // 用户取消
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		m.ui.exportNote = "导出失败：" + err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.ui.exportNote = "已导出 " + filepath.Base(path) + "（" + humanBytes(len(content)) + "）"
 	m.invalidator.Invalidate()
 }
 
