@@ -2,6 +2,7 @@ package view
 
 import (
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -29,6 +30,8 @@ var httpMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPT
 var (
 	themeOptions = []int{0, 1}
 	themeNames   = []string{"深色", "浅色"}
+	splitOptions = []int{0, 1}
+	splitNames   = []string{"上下", "左右"}
 )
 
 // 主色取 Wails 客户端的绿色令牌（frontend/src/styles/base.css）：
@@ -303,12 +306,33 @@ func (m *Model) trashEntry(file string) {
 	m.reload("", tabParams)
 }
 
-// openCurlImport 打开「导入 cURL」弹窗。
-func (m *Model) openCurlImport() {
+// curlRootOption 是「导入到」下拉里代表集合根的那一项。
+const curlRootOption = "(集合根)"
+
+// openCurlImport 打开「导入 cURL」弹窗；folder 是预设的分组（空=集合根）。
+func (m *Model) openCurlImport(folder string) {
 	m.ui.curlOpen = true
 	m.ui.curlText = ""
 	m.ui.curlErr = ""
+	m.ui.curlName = ""
+	m.ui.curlFolder = curlRootOption
+	if folder != "" {
+		m.ui.curlFolder = folder
+	}
+	m.ui.curlFolders = m.curlFolderOptions()
 	m.invalidator.Invalidate()
+}
+
+// curlFolderOptions 列出「导入到」选项：集合根 + 当前集合的分组相对路径。
+func (m *Model) curlFolderOptions() []string {
+	options := make([]string, 0, len(m.col.Folders)+1)
+	options = append(options, curlRootOption)
+	dirs := make([]string, 0, len(m.col.Folders))
+	for _, folder := range m.col.Folders {
+		dirs = append(dirs, folder.Dir)
+	}
+	sort.Strings(dirs)
+	return append(options, dirs...)
 }
 
 // importCurl 解析粘贴的 curl 并落盘成一条新请求，随后重扫并打开。
@@ -323,7 +347,14 @@ func (m *Model) importCurl() {
 	if name == "" {
 		name = "导入的请求"
 	}
-	path, err := explorer.CreateRequest(m.col.Dir, "", name, file.HTTP.Method, file.HTTP.URL)
+	folder := m.ui.curlFolder
+	if folder == curlRootOption {
+		folder = ""
+	}
+	if explicit := strings.TrimSpace(m.ui.curlName); explicit != "" {
+		name = explicit
+	}
+	path, err := explorer.CreateRequest(m.col.Dir, folder, name, file.HTTP.Method, file.HTTP.URL)
 	if err != nil {
 		m.ui.curlErr = err.Error()
 		m.invalidator.Invalidate()
@@ -350,6 +381,7 @@ func (m *Model) importCurl() {
 	saved.Payload.HTTP.Headers = file.HTTP.Headers
 	saved.Payload.HTTP.Body = file.HTTP.Body
 	saved.Payload.HTTP.Auth = file.HTTP.Auth
+	saved.Payload.Settings = file.Settings
 	if err := explorer.SaveRequest(m.col.Dir, path, saved.Payload); err != nil {
 		m.ui.curlErr = err.Error()
 		m.invalidator.Invalidate()
@@ -357,6 +389,8 @@ func (m *Model) importCurl() {
 	}
 	m.ui.curlOpen = false
 	m.ui.curlErr = ""
+	// 导入到折叠的分组后展开它，避免用户看不到新请求。
+	m.expandDir(folder)
 	m.reload(path, tabParams)
 }
 
@@ -579,6 +613,12 @@ func (m *Model) adoptCollection(col *explorer.Collection) {
 			return
 		}
 	}
+	if len(m.roots) == 1 && m.roots[0].col.Dir == "" {
+		m.roots[0] = &rootState{col: col, env: m.settings.Envs[col.Dir]}
+		m.active = 0
+		m.installRoot(m.roots[0])
+		return
+	}
 	m.syncRoot()
 	m.roots = append(m.roots, &rootState{col: col, env: m.settings.Envs[col.Dir]})
 	m.active = len(m.roots) - 1
@@ -770,6 +810,10 @@ func (m *Model) applyEnv(name string) {
 
 // refreshEnvs 重新列出环境（新建/保存后调用）。
 func (m *Model) refreshEnvs() {
+	if m.col.Dir == "" {
+		m.ui.envs = nil
+		return
+	}
 	names, err := explorer.ListEnvs(m.col.Dir)
 	if err != nil {
 		m.ui.envErr = err.Error()
@@ -869,8 +913,27 @@ func (m *Model) applySettingsEdits() {
 		m.settings.NoFollowRedirects = !m.ui.follow
 		changed = true
 	}
+	if m.ui.insecure != m.settings.InsecureSSL {
+		m.settings.InsecureSSL = m.ui.insecure
+		changed = true
+	}
+	if side := m.ui.splitSide == 1; side != m.settings.SplitSideBySide {
+		m.settings.SplitSideBySide = side
+		changed = true
+	}
 	if changed {
 		_ = settings.Save(m.settings)
+	}
+}
+
+// syncSettingsUI 把落盘的偏好装进设置表单（打开面板 / 启动时各一次）。
+func (m *Model) syncSettingsUI() {
+	m.ui.timeoutText = strconv.Itoa(m.settings.TimeoutSec)
+	m.ui.follow = m.settings.FollowRedirects()
+	m.ui.insecure = m.settings.InsecureSSL
+	m.ui.splitSide = 0
+	if m.settings.SplitSideBySide {
+		m.ui.splitSide = 1
 	}
 }
 
@@ -886,8 +949,7 @@ func (m *Model) openSettings() {
 	m.ui.dirLine = "集合：" + m.col.Dir
 	m.ui.envLine = "环境：" + envLabel(m.envName) + " · " + m.countText
 	m.ui.collectionName = m.col.Name
-	m.ui.timeoutText = strconv.Itoa(m.settings.TimeoutSec)
-	m.ui.follow = m.settings.FollowRedirects()
+	m.syncSettingsUI()
 	m.refreshEnvs()
 	m.ui.envPick = m.envName
 }

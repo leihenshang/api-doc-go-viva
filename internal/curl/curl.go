@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-share/collection"
@@ -31,15 +32,18 @@ func Parse(text string) (*collection.RequestFile, error) {
 	}
 
 	var (
-		method  string
-		target  string
-		headers []collection.KV
-		body    string
-		hasBody bool
-		basic   string
-		jsonOpt bool
-		get     bool
-		head    bool
+		method   string
+		target   string
+		headers  []collection.KV
+		body     string
+		hasBody  bool
+		basic    string
+		jsonOpt  bool
+		get      bool
+		head     bool
+		insecure bool
+		timeout  int
+		form     []collection.KV
 	)
 	positionals := make([]string, 0, 2)
 	args := tokens[1:]
@@ -73,13 +77,17 @@ func Parse(text string) (*collection.RequestFile, error) {
 			if name, val, ok := strings.Cut(value, ":"); ok {
 				headers = append(headers, collection.KV{Name: strings.TrimSpace(name), Value: strings.TrimSpace(val), Enabled: true})
 			}
-		case tok == "-d" || tok == "--data" || tok == "--data-raw" || tok == "--data-binary" || tok == "--data-ascii":
+		case tok == "-d" || tok == "--data" || tok == "--data-raw" || tok == "--data-binary" ||
+			tok == "--data-ascii" || tok == "--data-urlencode":
 			value, err := take()
 			if err != nil {
 				return nil, err
 			}
 			if strings.HasPrefix(value, "@") {
 				return nil, fmt.Errorf("-d @文件 需要请求体文件，验证版不支持")
+			}
+			if len(form) > 0 {
+				return nil, fmt.Errorf("-d 与 -F 不能同时导入")
 			}
 			if hasBody {
 				body += "&"
@@ -96,11 +104,19 @@ func Parse(text string) (*collection.RequestFile, error) {
 			}
 			body += value
 			hasBody, jsonOpt = true, true
-		case tok == "-F" || tok == "--form":
-			if _, err := take(); err != nil {
+		case tok == "-F" || tok == "--form" || tok == "--form-string":
+			value, err := take()
+			if err != nil {
 				return nil, err
 			}
-			return nil, fmt.Errorf("multipart 导入暂不支持（%s）", tok)
+			if hasBody {
+				return nil, fmt.Errorf("-F 与 -d 不能同时导入")
+			}
+			row, rowErr := parseFormField(value)
+			if rowErr != nil {
+				return nil, rowErr
+			}
+			form = append(form, row)
 		case tok == "-u" || tok == "--user":
 			value, err := take()
 			if err != nil {
@@ -129,6 +145,21 @@ func Parse(text string) (*collection.RequestFile, error) {
 			get = true
 		case tok == "-I" || tok == "--head":
 			head = true
+		case tok == "-k" || tok == "--insecure":
+			insecure = true
+		case tok == "-m" || tok == "--max-time":
+			value, err := take()
+			if err != nil {
+				return nil, err
+			}
+			seconds, convErr := strconv.ParseFloat(value, 64)
+			if convErr != nil || seconds <= 0 {
+				return nil, fmt.Errorf("--max-time 取值不合法: %q", value)
+			}
+			timeout = int(seconds)
+			if timeout < 1 {
+				timeout = 1
+			}
 		case strings.HasPrefix(tok, "-"):
 			// 其余选项（-sS、--compressed、-k、-L…）不改变请求内容；带取值的按已知表跳过。
 			if optionNeedsValue(tok) {
@@ -158,7 +189,9 @@ func Parse(text string) (*collection.RequestFile, error) {
 		user, pass, _ := strings.Cut(basic, ":")
 		file.HTTP.Auth = &collection.Auth{Type: "basic", Username: user, Password: pass}
 	}
-	if hasBody {
+	if len(form) > 0 {
+		file.HTTP.Body = collection.Body{Type: "multipart", Form: form}
+	} else if hasBody {
 		bodyType := "text"
 		if jsonOpt || isJSON(body) || hasJSONHeader(headers) {
 			bodyType = "json"
@@ -166,6 +199,16 @@ func Parse(text string) (*collection.RequestFile, error) {
 		file.HTTP.Body = collection.Body{Type: bodyType, Raw: body}
 	} else {
 		file.HTTP.Body = collection.Body{Type: "none"}
+	}
+	if insecure || timeout > 0 {
+		file.Settings = &collection.RequestSettings{}
+		if insecure {
+			yes := true
+			file.Settings.InsecureSSL = &yes
+		}
+		if timeout > 0 {
+			file.Settings.TimeoutSec = timeout
+		}
 	}
 	if get && hasBody {
 		// -G 把 -d 的内容拼进 query。
@@ -181,6 +224,25 @@ func Parse(text string) (*collection.RequestFile, error) {
 		}
 	}
 	return file, nil
+}
+
+// parseFormField 把 -F 的 name=value 拆成表单行；@ / < 开头视为文件。
+// 只保留路径本身（去掉 curl 的 ;type=... 参数），发送时按集合根解析。
+func parseFormField(value string) (collection.KV, error) {
+	name, val, ok := strings.Cut(value, "=")
+	name = strings.TrimSpace(name)
+	if !ok || name == "" {
+		return collection.KV{}, fmt.Errorf("-F 需要 字段=值 的形式: %q", value)
+	}
+	row := collection.KV{Name: name, Value: val, Enabled: true, Type: "text"}
+	if strings.HasPrefix(val, "@") || strings.HasPrefix(val, "<") {
+		path := strings.TrimPrefix(strings.TrimPrefix(val, "@"), "<")
+		if semi := strings.IndexByte(path, ';'); semi >= 0 {
+			path = path[:semi]
+		}
+		row.Type, row.Value = "file", path
+	}
+	return row, nil
 }
 
 // Generate 把请求导出成一条可粘贴的 curl 命令。

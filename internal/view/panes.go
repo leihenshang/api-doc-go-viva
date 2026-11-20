@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -378,12 +379,15 @@ func (m *Model) toggleJSONFold(line int) {
 }
 
 // copyResponse 把响应正文写进系统剪贴板；失败时留一句提示。
-func (m *Model) copyResponse() {
-	if err := app.SetClipboardText(m.resp.Body); err != nil {
+func (m *Model) copyResponse() { m.copyValue(m.resp.Body) }
+
+// copyValue 把任意响应片段写进剪贴板：整段正文、某一行 JSON 或某条响应头。
+func (m *Model) copyValue(value string) {
+	if err := app.SetClipboardText(value); err != nil {
 		m.copyNote = "复制失败：" + err.Error()
-		return
+	} else {
+		m.copyNote = "已复制"
 	}
-	m.copyNote = "已复制"
 	m.storeTab()
 	m.invalidator.Invalidate()
 }
@@ -398,7 +402,11 @@ func (m *Model) jsonBody(c ui.C) {
 		end, foldable := m.tables.jsonFolds[index]
 		folded := foldable && m.tables.jsonFolded[index]
 		lineIndex := index
-		ui.Row(c).Gap(2).Items(ui.Center).Children(func() {
+		raw := jsonLineText(line)
+		id := ui.ID(c)
+		row := ui.Row(c).FillWidth().Gap(2).Items(ui.Center).
+			Hit(id, "响应行 "+strconv.Itoa(index+1))
+		row.Children(func() {
 			if foldable {
 				arrow := "▾"
 				if folded {
@@ -415,6 +423,16 @@ func (m *Model) jsonBody(c ui.C) {
 			}
 			if folded {
 				ui.Text(c, "…").Mono().FontSize(11).Muted()
+			}
+			ui.Spacer(c)
+			if canvas := c.Canvas(); canvas != nil && canvas.Hovered() == id {
+				if ui.Button(c, "复制第 "+strconv.Itoa(index+1)+" 行").
+					Icon(IconCopy).IconOnly().Ghost().XSmall().
+					Tooltip("复制这一行").Clicked() {
+					c.After(func() { m.copyValue(raw) })
+				}
+			} else {
+				ui.Slot(c).Width(22)
 			}
 		})
 		if folded {
@@ -434,9 +452,20 @@ func (m *Model) responseHeaders(c ui.C) {
 		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
 	})
 	for _, header := range m.tables.respHeaders {
-		ui.Row(c).FillWidth().Gap(12).PadY(2).Children(func() {
+		value := header.Name + ": " + header.Value
+		id := ui.ID(c)
+		row := ui.Row(c).FillWidth().Gap(12).PadY(2).Hit(id, "响应头 "+header.Name)
+		row.Children(func() {
 			ui.Text(c, header.Name).Mono().FontSize(11).Width(220)
 			ui.Text(c, header.Value).Mono().FontSize(11).Grow(1).Ellipsis()
+			if canvas := c.Canvas(); canvas != nil && canvas.Hovered() == id {
+				if ui.Button(c, "复制 "+header.Name).Icon(IconCopy).
+					IconOnly().Ghost().XSmall().Tooltip("复制这条响应头").Clicked() {
+					c.After(func() { m.copyValue(value) })
+				}
+			} else {
+				ui.Slot(c).Width(22)
+			}
 		})
 	}
 }

@@ -29,6 +29,15 @@ type jsonSpan struct {
 // jsonLine 是格式化后的一行。
 type jsonLine []jsonSpan
 
+// jsonLineText 把一行拼回纯文本（含缩进），复制某一行时用。
+func jsonLineText(line jsonLine) string {
+	var b strings.Builder
+	for _, span := range line {
+		b.WriteString(span.text)
+	}
+	return b.String()
+}
+
 // parseJSON 把响应体排成缩进 2 的 JSON 并切成带类别的行；不是 JSON 时返回 nil。
 // 只在收到响应时算一次，绘制期只遍历，不再分配。
 func parseJSON(body string) ([]jsonLine, map[int]int) {

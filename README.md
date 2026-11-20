@@ -20,9 +20,17 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 
 ![集合切换下拉：工具条显示当前集合，可切到另一个已打开的集合、打开新集合或关闭当前集合](doc/viva-collection-picker.png)
 
+![没有集合时的首屏：不再直接退出，点「打开集合」即可；Windows 双击 exe 同样能进这个界面](doc/viva-welcome.png)
+
 ![请求页：树里选中请求，右侧地址栏与分段编辑，动作按钮紧跟 URL](doc/viva-request.png)
 
 ![响应头分段：Content-Length / Content-Type / Date / Server / X-Trace-Id 原样列出](doc/viva-headers.png)
+
+![响应复制：悬停任意 JSON 行出现「复制第 N 行」，响应头每行也能单独复制](doc/viva-response-copy.png)
+
+![请求 / 响应左右分栏：设置 → 外观切换，分隔条可拖动](doc/viva-split-side.png)
+
+![网络与安全：全局「忽略证书校验」，请求文件的 insecureSsl 显式设置时优先](doc/viva-settings-insecure.png)
 
 ![环境变量：左侧环境列表 + 右侧变量表，敏感值单独写 *.secrets.yml](doc/viva-env.png)
 
@@ -56,18 +64,18 @@ api-doc-go 桌面客户端的**可行性验证版**：同一份集合文件、�
 | 请求编辑 | 排版对齐 Wails：标题（名称 + 概述）→ 地址栏（方法 + 地址，**紧跟**「保存请求」「发送」）→ 下划线分段「参数 / 请求体 / 请求头 / 认证 / 文档」→ 下方常驻响应区（可拖拽分隔条）。参数、请求头、form / multipart、请求体字段表（字段名 / 类型 / 必填 / 示例 / 说明）都是表格式编辑；保存写回原文件，`meta`、`settings` 与未知字段原样保留 |
 | 快捷键 | Ctrl/Cmd+S 保存请求（文档编辑页也是保存文档）、Ctrl/Cmd+Enter 发送 |
 | 环境变量 | 标签栏右侧「环境 dev ▾」菜单：列出环境（当前项打勾）、「环境设置…」打开**环境变量弹窗**——左侧环境列表（选中高亮、垃圾桶删除）、新建环境、右侧「环境名」（改名即重命名主文件与密钥文件）、变量表（启用 / 变量名 / 值 / **敏感值**）；敏感值写 `environments/<名>.secrets.yml`、主文件只留标记，普通值写主文件（0600）；删除环境把两个文件都移进 `.trash/`；选中的环境按集合根记进偏好，发送立即使用 |
-| 真实发送 | `{{变量}}` 替换（含 `$uuid`/`$timestamp`）、basic/bearer/apikey、json/text/form/**multipart**（`file` 行按集合根解析路径）正文、超时与 `insecureSsl`、状态码/耗时/体积/响应体/响应头 |
+| 真实发送 | `{{变量}}` 替换（含 `$uuid`/`$timestamp`）、basic/bearer/apikey、json/text/form/**multipart**（`file` 行按集合根解析路径）正文、超时与 `insecureSsl`（全局默认 + 请求文件覆盖）、状态码/耗时/体积/响应体/响应头 |
 | 请求文档 | Docs 用 `markdown` 解析 + `components.MarkdownView` 排版：标题、列表、引用、行内代码、表格、代码块；**左边写原文、右边实时预览**；排版结果按「源文本 + 可用宽度」缓存，绘制只画不算 |
-| 响应展示 | 正文是 JSON 时缩进 2 并语法着色、可逐层折叠（`▾/▸`）（键 / 字符串 / 数字 / 字面量 / 标点，浅暗成对），非 JSON 回退等宽文本；响应头是「名称 / 值」两列表格；右上「复制正文」写系统剪贴板 |
+| 响应展示 | 正文是 JSON 时缩进 2 并语法着色、可逐层折叠（`▾/▸`）（键 / 字符串 / 数字 / 字面量 / 标点，浅暗成对），非 JSON 回退等宽文本；响应头是「名称 / 值」两列表格；右上「复制正文」复制整段，悬停 JSON 行 / 响应头行出现单行复制按钮（写系统剪贴板） |
 | Markdown 条目 | 集合里的 `.md` 也是树里的条目（子目录 README 除外，与客户端同规则）；`MD` 角标、分组/`seq` 排序一致 |
 | 新建文档 | 集合树上的「新建文档」→ 与客户端同样的 `docs/` 默认位、`新建文档` 默认名、重名自动 `-2`，绝不覆盖；随后重扫并选中新文件 |
 | 新建请求 | 弹窗填名称 / 方法 / 地址，落进当前选中条目所在分组（根目录则落根）；默认值与客户端一致（`Content-Type: application/json`、一行空参数、`body.type: none`），重名 `-2` |
 | 集合树操作 | 右键菜单与行尾悬停「···」：新建请求 / 文档 / 分组、重命名（只改显示名，文件名不动）、克隆分组、删除到回收站（`<集合>/.trash/<时间戳>.<名字>`，分组整棵进回收站）；设置 → 本地数据 → 回收站可列出并恢复文件与分组（都回到集合根，同名自动补「-恢复2」） |
-| cURL | 「导入 cURL」把粘贴的命令（-X/-H/-d/--json/-u/-b/-A/-G…）解析成新请求并落盘；请求标题「复制 cURL」把当前请求导出到剪贴板；解析口径取自 Wails 客户端的 `collection/curl.go` |
+| cURL | 「导入 cURL」把粘贴的命令（-X/-H/-d/--data-urlencode/--json/-F/-u/-b/-A/-G/-k/-m…）解析成新请求：可选**落点分组**与**请求名**、支持从剪贴板一键粘贴；`-F` 生成 multipart 表单（`@文件` 记为 file 行），`-k` / `-m` 写进请求的 `insecureSsl` / `timeout`；请求标题「复制 cURL」把当前请求导出到剪贴板 |
 | 命令面板 | Ctrl/Cmd+K 打开，列出新建请求 / 文档 / 临时请求、打开集合、环境设置、切换主题、设置、关闭标签；输入即过滤，点击执行 |
 | 主题 | **默认日间模式**，工具条「日间 / 夜间」即时切换（Markdown 配色一起换）；主色对齐 Wails 的绿色（浅色 `#18a058` / 暗色 `#36ad6a`，按钮文字白色，文本选区用同色系浅底）；偏好写 `~/.config/api-doc-viva/settings.json`，下次启动沿用 |
 | 打开集合 | 工具条「打开集合」走系统目录选择框（portal / zenity），失败可手输路径；**缺 `opencollection.yml` 一律先确认再初始化**，取消则不载入、不写盘；打开成功后记住目录，下次启动自动恢复 |
-| 设置 | 左侧分区导航 + 右侧表单：外观（主题立即生效）、网络与安全（默认超时 / 跟随重定向）、本地数据（集合路径 / 偏好文件 / 环境 / 回收站入口）、关于（版本 / 输入法）；偏好落 `settings.json` |
+| 设置 | 左侧分区导航 + 右侧表单：外观（主题、**请求 / 响应上下或左右分栏**，立即生效）、网络与安全（默认超时 / 跟随重定向 / **全局忽略证书校验**）、本地数据（集合路径 / 偏好文件 / 环境 / 回收站入口）、关于（版本 / 输入法）；偏好落 `settings.json` |
 | 文档条目 | 左栏源码、右栏实时预览（`ui.TextArea` + 同一个 Markdown 渲染器）；Ctrl+S 或「保存」原子写回，frontmatter 原样保留；未保存有提示，切走再回来草稿还在 |
 | gRPC | 只读展示 target/service/method/proto/message（发送不在本次验证范围） |
 
@@ -107,7 +115,7 @@ MCP 分区为范围外。
 | 树行 | `ui.Text` + `ui.ContextMenu` + `ui.Menu` | 方法列等宽着色，名称用 `LabelFor(Tree.RowID)` 让整行可点、右键出菜单；根行右侧「更多」用点击式 `ui.Menu` |
 | 标签条 | `ui.Row` + `ui.Button`（关闭用 `IconX`） | 每个已打开条目一个标签；当前标签有底色与描边，关闭按钮只画图标但保留无障碍名 |
 | 请求分段 | `ui.Tabs` | 参数 / 请求体 / 请求头 / 认证 / 文档；点击即写回模型，键盘方向键可用 |
-| 响应分段 | `ui.Tabs` | 正文 / 响应头；响应头用等宽 `Paragraph`，拼一次文本、绘制期只画 |
+| 响应分段 | `ui.Tabs` | 正文 / 响应头；JSON 行与响应头行悬停时在行尾显示复制按钮 |
 | 参数表、请求头表、请求体字段表 | `ui.Table` + `ui.TableRows`（表头 / 斑马纹 / 选中 / 横向滚动） | 列宽与表头是包级常量，不再逐帧拼切片 |
 | 卡片底 | `components.Card` | 地址块、正文块、文档块统一走同一套背景/边框/阴影 |
 | 空状态 | `components.Empty` | 未选中、无匹配、尚未发送、gRPC 无响应 |
@@ -186,7 +194,10 @@ bin/dev restart
 COLLECTION=../api-doc-go-proj ENV_NAME= bin/dev start   # 换集合 / 关环境
 ```
 
-`-collection` 省略时会回落到 `../api-doc-go-flutter/sample-collection`；用逗号分隔可以一次打开多个集合
+`-collection` 省略时会先找上次打开的集合，再回落到 `../api-doc-go-flutter/sample-collection`；
+都找不到就打开「尚未打开集合」首屏（点「打开集合」选目录），不会再直接退出——Windows 双击 exe 同理。
+只有**显式写了 `-collection` 但路径不可用**时才报错退出，避免手误被静默吞掉。
+用逗号分隔可以一次打开多个集合
 （第一个是活动集合，其余作为折叠的根出现在树里）：
 
 ```bash
@@ -214,6 +225,14 @@ bash scripts/build-windows.sh --out /tmp/win  # 自定义输出目录
 ```
 
 产物：`dist/api-doc-viva-windows-amd64.exe`（或 `…-arm64.exe`）。
+
+从 Git Bash 启动时，Windows 路径的反斜杠会被 shell 吃掉（`D:\project\...` 变成 `D:project...`）。
+用单引号或正斜杠：
+
+```bash
+./api-doc-viva-windows-amd64.exe -collection 'D:\project\zq\api-doc-go-test1'
+./api-doc-viva-windows-amd64.exe -collection D:/project/zq/api-doc-go-test1
+```
 
 ## 测试怎么证明它真的通了
 
@@ -255,7 +274,11 @@ bash scripts/build-windows.sh --out /tmp/win  # 自定义输出目录
 33. 删除到回收站后打开回收站（1 个文件），恢复后文件回到集合根、列表清空并自动打开该条目；
 34. 标签栏「+」新建临时请求：可直接发送到 `httptest` 服务器；点「另存为」预填方法/地址，创建后文件落盘、临时标签自动关闭、新文件标签打开；
 35. 两个集合有同名分组 / 条目时同时展开：树键按「集合根 + 相对路径」区分，绘制不 panic（Viva Tree 要求键唯一）；
-36. 克隆分组后出现「名字 副本1」，`folder.yml` / 请求 `meta.uid` / 文档 uid 全部换新、其余字段保留；删除分组后整个目录进 `.trash`，回收站能恢复回集合根。
+36. 不带 `-collection` 启动（模拟双击 exe）：窗口打开并显示「尚未打开集合」；点「打开集合」选目录后占位根被真实集合替换；
+37. 设置里切到「左右」分栏后请求与响应左右并排（分隔条可拖动），切回「上下」恢复；偏好写入 `settings.json`；
+38. 打开全局「忽略证书校验」后 `httptest.NewTLSServer` 能通；请求文件显式 `insecureSsl: false` 仍会拒绝自签证书；
+39. 悬停响应 JSON 某一行出现「复制第 N 行」，点击剪贴板得到该行原文（含缩进）；响应头行同样可单独复制；
+40. 克隆分组后出现「名字 副本1」，`folder.yml` / 请求 `meta.uid` / 文档 uid 全部换新、其余字段保留；删除分组后整个目录进 `.trash`，回收站能恢复回集合根。
 
 另外 `internal/explorer` 覆盖清单闸门、分组/`seq` 排序、坏 YAML 只跳过、环境与密文合并；
 `internal/send` 覆盖变量替换、参数/头/正文/认证真实抵达服务端、连接失败与不支持正文类型的报错。

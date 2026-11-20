@@ -250,6 +250,9 @@ type workspaceUI struct {
 	curlOpen        bool
 	curlText        string
 	curlErr         string
+	curlFolder      string   // 导入到哪个分组（"(集合根)" 表示根）
+	curlName        string   // 可选：导入后的显示名
+	curlFolders     []string // 打开弹窗时算好的分组下拉选项
 	trashRows       []explorer.TrashItem
 	trashMsg        string
 	paletteQuery    string
@@ -260,6 +263,8 @@ type workspaceUI struct {
 	collectionName  string
 	timeoutText     string
 	follow          bool
+	insecure        bool
+	splitSide       int // 0 = 上下，1 = 左右
 	envs            []string
 	envPick         string
 
@@ -306,6 +311,7 @@ type Model struct {
 	pal    palette
 	split  ui.SplitterState
 	rsplit ui.SplitterState
+	hsplit ui.SplitterState
 	// tree 是集合树：行由 rebuildTree 摊平，展开状态、过滤词、集合根本身变化时重建。
 	tree      ui.TreeState
 	rows      []treeRow
@@ -378,6 +384,10 @@ type Model struct {
 
 // New 建模型：列表行名直接取自集合，过滤后仍按「方法 + 名称」朗读。
 func New(col *explorer.Collection, envName string, vars map[string]string) *Model {
+	if col == nil {
+		// 空状态：窗口照常打开，首屏只提供「打开集合」。
+		col = &explorer.Collection{Name: "未打开集合"}
+	}
 	m := &Model{
 		col:      col,
 		envName:  envName,
@@ -395,7 +405,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.ui.newMethod = "GET"
 	m.ui.newEnvName = "dev"
 	// 没显式指定环境时沿用该集合上次的选择（偏好按集合根记）。
-	if m.envName == "" {
+	if m.envName == "" && m.col.Dir != "" {
 		m.envName = m.settings.Envs[m.col.Dir]
 		if m.envName != "" {
 			if loaded, err := explorer.LoadEnv(m.col.Dir, m.envName); err == nil {
@@ -407,6 +417,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.ui.imeDetail = ime.Detect().Detail
 	m.split.Pos = 260
 	m.rsplit.Pos = 260
+	m.hsplit.Pos = 460
 	m.overview = true
 	m.menuRoot = -1
 	m.expanded = map[string]bool{}
@@ -419,6 +430,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.refreshShown()
 	m.refreshEnvs()
 	m.ui.envPick = m.envName
+	m.syncSettingsUI()
 	return m
 }
 
@@ -794,6 +806,7 @@ func (m *Model) start(entry *explorer.Entry) {
 		MaxBody:         1 << 20,
 		Dir:             m.col.Dir,
 		FollowRedirects: &follow,
+		InsecureSSL:     m.settings.InsecureSSL,
 	}
 	tab := m.activeTab()
 	if tab == nil {

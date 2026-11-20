@@ -24,6 +24,10 @@ type Settings struct {
 	TimeoutSec int `json:"timeoutSec"`
 	// NoFollowRedirects 为真时不自动跟随重定向（同样可被请求文件的设置覆盖）。
 	NoFollowRedirects bool `json:"noFollowRedirects"`
+	// InsecureSSL 是全局默认：忽略 HTTPS 证书校验（请求文件的 settings.insecureSsl 显式设置时优先）。
+	InsecureSSL bool `json:"insecureSsl,omitempty"`
+	// SplitSideBySide 为真时请求 / 响应左右分栏，否则上下分栏。
+	SplitSideBySide bool `json:"splitSideBySide,omitempty"`
 	// Envs 记住每个集合根上次选中的环境名（键是集合目录的绝对路径）。
 	Envs map[string]string `json:"envs,omitempty"`
 	// LastCollection 是上次打开的集合目录（启动时没给 -collection 就用它）。

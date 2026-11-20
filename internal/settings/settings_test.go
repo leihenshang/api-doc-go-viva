@@ -42,3 +42,16 @@ func TestCorruptSettingsFallBackToDefault(t *testing.T) {
 		t.Fatalf("坏配置应回默认值：%+v", got)
 	}
 }
+
+func TestSavesNetworkAndSplitPreferences(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	if err := Save(Settings{Theme: ThemeLight, InsecureSSL: true, SplitSideBySide: true}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got := Load()
+	if !got.InsecureSSL || !got.SplitSideBySide {
+		t.Fatalf("新偏好没落盘：%+v", got)
+	}
+}

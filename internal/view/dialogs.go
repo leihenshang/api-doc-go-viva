@@ -2,6 +2,7 @@ package view
 
 import (
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -174,6 +175,10 @@ func (m *Model) settingsAppearance(c ui.C) {
 	ui.Choice(c, &m.ui.themePick, themeOptions, func(i int) string { return themeNames[i] })
 	ui.Text(c, "切换后立即生效，并写入本地偏好；Markdown 预览的配色一起切换。").
 		FontSize(11).Muted()
+	ui.Text(c, "请求 / 响应分栏").FontSize(11).Muted()
+	ui.Choice(c, &m.ui.splitSide, splitOptions, func(i int) string { return splitNames[i] })
+	ui.Text(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。").
+		FontSize(11).Muted()
 }
 
 // settingsNetwork 是网络与安全分区：默认超时与重定向策略。
@@ -187,8 +192,12 @@ func (m *Model) settingsNetwork(c ui.C) {
 		ui.Text(c, "跟随重定向").FontSize(11).Muted().Width(120)
 		ui.Switch(c, &m.ui.follow, "跟随重定向").Changed()
 	})
-	ui.Text(c, "请求文件里的 settings.timeout / followRedirects 优先于这里的默认值；"+
-		"单条请求的 insecureSsl 仍在请求文件里配置。").FontSize(11).Muted()
+	ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+		ui.Text(c, "忽略证书校验").FontSize(11).Muted().Width(120)
+		ui.Switch(c, &m.ui.insecure, "忽略证书校验").Changed()
+	})
+	ui.Text(c, "「忽略证书校验」只用于自签 / 内网证书调试；请求文件里的 "+
+		"settings.timeout / followRedirects / insecureSsl 显式设置时优先于这里。").FontSize(11).Muted()
 }
 
 // settingsLocal 是本地数据分区：集合路径、配置文件与当前环境。
@@ -221,10 +230,28 @@ func (m *Model) settingsAbout(c ui.C) {
 func (m *Model) curlImportDialog(c ui.C) {
 	ui.ModalWith(c, &m.ui.curlOpen, "导入 cURL", ui.ModalSpec{Width: 720, Height: 460}, func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "支持 Chrome / Firefox / Postman 的 Copy as cURL；-d/-H/-u/-b/-A 会映射到请求。").
+			ui.Text(c, "支持 Chrome / Firefox / Postman 的 Copy as cURL；-d/-F/-H/-u/-b/-A/-k/-m 会映射到请求。").
 				FontSize(11).Muted()
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "导入到").FontSize(11).Muted().Width(48)
+				ui.Select(c, &m.ui.curlFolder, m.ui.curlFolders, nil).Width(200)
+				ui.Text(c, "请求名").FontSize(11).Muted().Width(48)
+				ui.TextField(c, &m.ui.curlName, "请求名", "留空则用 URL 末段").Grow(1)
+			})
+			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+				if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
+					text, err := app.ClipboardText()
+					if err != nil {
+						m.ui.curlErr = err.Error()
+					} else {
+						m.ui.curlText = text
+						m.ui.curlErr = ""
+					}
+				}
+				ui.Text(c, "命令行把整段 curl 复制过来即可。").FontSize(11).Muted()
+			})
 			ui.TextArea(c, &m.ui.curlText, "curl 命令", "curl 'https://api.example.com/users'").
-				FillWidth().Height(240)
+				FillWidth().Height(210)
 			if m.ui.curlErr != "" {
 				ui.Text(c, m.ui.curlErr).FontSize(11).Color(c.Theme().Danger)
 			}

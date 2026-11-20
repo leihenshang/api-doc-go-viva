@@ -9,6 +9,9 @@
 复用 `api-doc-go-share/collection` 的集合文件与发送逻辑，界面用 `github.com/vivaui/viva@v0.6.5` 重写。
 
 - 入口：`main.go`（`-collection A,B` 一次可开多个集合根，`-env` 选环境）
+- 无集合启动是正常路径：`view.New(nil, …)` 会造一个空占位集合，首屏走 `welcomePage`
+  （「打开集合」）；打开成功后 `adoptCollection` 替换占位根。**不要**把"没有集合"当错误直接退出，
+  否则 Windows 双击 exe 只会闪退。
 - 界面：`internal/view/`（`model.go` 状态、`tree.go` 集合树、`page.go` 布局、`panes.go` 请求/响应分段、`dialogs.go` 弹窗）
 - 读写：`internal/explorer/`（集合扫描、新建/重命名/移动/克隆/回收站）
 - 发送：`internal/send/`

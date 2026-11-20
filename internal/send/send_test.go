@@ -169,3 +169,28 @@ func writeFile(t *testing.T, path, body string) {
 		t.Fatalf("写 %s: %v", path, err)
 	}
 }
+
+func TestDoInsecureSSLDefaultsAndFileOverride(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+	file := &collection.RequestFile{
+		Info: collection.FileInfo{Name: "自签", Type: "http"},
+		HTTP: collection.HTTPBlock{Method: "GET", URL: srv.URL},
+	}
+
+	// 全局默认打开：不校验证书，请求能通。
+	out := Do(context.Background(), Plan{File: file, InsecureSSL: true})
+	if out.Err != "" || out.Status != http.StatusOK {
+		t.Fatalf("全局忽略证书失败: %+v", out)
+	}
+
+	// 请求文件显式 false 优先于全局 true。
+	off := false
+	file.Settings = &collection.RequestSettings{InsecureSSL: &off}
+	out = Do(context.Background(), Plan{File: file, InsecureSSL: true})
+	if out.Err == "" || !strings.Contains(out.Err, "certificate") {
+		t.Fatalf("请求文件的 insecureSsl:false 应覆盖全局：%+v", out)
+	}
+}

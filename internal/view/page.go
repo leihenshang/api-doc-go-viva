@@ -20,6 +20,11 @@ func (m *Model) Page(c ui.C) {
 		})
 	}
 	m.toolbar(c)
+	if !m.hasCollection() {
+		m.welcomePage(c)
+		m.dialogs(c)
+		return
+	}
 	ui.Row(c).Fill().Children(func() {
 		ui.Column(c).Width(m.split.Pos).FillHeight().Background(m.pal.sidebar).Children(func() {
 			m.sidebar(c)
@@ -35,6 +40,29 @@ func (m *Model) Page(c ui.C) {
 		})
 	})
 	m.dialogs(c)
+}
+
+// hasCollection 报告当前有没有可用的集合根（双击启动时可能还没有）。
+func (m *Model) hasCollection() bool {
+	return m.col != nil && m.col.Dir != ""
+}
+
+// welcomePage 是还没打开集合时的首屏：一个说明 + 打开集合 / 打开上次集合。
+func (m *Model) welcomePage(c ui.C) {
+	ui.Column(c).Fill().Items(ui.Center).Justify(ui.Center).Gap(12).Children(func() {
+		ui.Text(c, "尚未打开集合").FontSize(20).Bold()
+		ui.Text(c, "选择一个含 opencollection.yml 的目录，或在命令行用 -collection 指定。").FontSize(12).Muted()
+		ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Clicked() {
+				c.After(m.chooseCollection)
+			}
+			if m.settings.LastCollection != "" {
+				if ui.Button(c, "打开上次的集合").Secondary().Clicked() {
+					c.After(func() { m.openCollection(m.settings.LastCollection) })
+				}
+			}
+		})
+	})
 }
 
 // appVersion 是顶栏展示的版本号（与窗口标题一起构成产品标识）。
@@ -82,6 +110,9 @@ func (m *Model) collectionPicker(c ui.C) {
 	}
 	ui.Menu(c, button, &m.collectionMenuOpen, func(menu *ui.MenuItems) {
 		for index := range m.roots {
+			if m.roots[index].col.Dir == "" {
+				continue
+			}
 			slot := index
 			item := menu.Item(m.collectionLabel(slot))
 			if slot == m.active {
@@ -111,6 +142,9 @@ func (m *Model) collectionLabel(index int) string {
 		return "未打开集合"
 	}
 	root := m.roots[index]
+	if root.col.Dir == "" {
+		return "未打开集合"
+	}
 	name := root.col.Name
 	if name == "" {
 		name = filepath.Base(root.col.Dir)
@@ -173,7 +207,7 @@ func (m *Model) sidebar(c ui.C) {
 				c.After(m.createDoc)
 			}
 			if ui.Button(c, "导入 cURL").Icon(IconImport).IconOnly().Tooltip("导入 cURL").Clicked() {
-				m.openCurlImport()
+				m.openCurlImport("")
 			}
 		})
 		if ui.TextField(c, &m.filter, "搜索请求", "搜索请求…").Icon(IconSearch).FillWidth().Changed() {
@@ -385,30 +419,53 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 		m.requestTitle(c, entry)
 		m.requestBar(c, entry)
 		ui.Tabs(c, &m.tab, httpSegments, tabLabel).Line()
-		ui.Column(c).FillWidth().Height(m.rsplit.Pos).Children(func() {
-			ui.Scroll(c).Fill().Children(func() {
-				ui.Column(c).FillWidth().Gap(10).Children(func() {
-					switch m.tab {
-					case tabBody:
-						m.bodyTab(c)
-					case tabHeaders:
-						m.kvEditor(c, &m.req.headers, "添加请求头")
-					case tabAuth:
-						m.authTab(c)
-					case tabDocs:
-						m.docsTab(c, entry)
-					default:
-						m.kvEditor(c, &m.req.params, "添加参数")
-					}
-					if m.req.err != "" {
-						ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
-					}
-				})
+		m.requestResponsePanes(c, entry)
+	})
+}
+
+// requestResponsePanes 按设置把请求与响应排成上下或左右；两种方向各用一个分隔条状态，
+// 这样切换方向后各自记住拖动位置。
+func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
+	if m.settings.SplitSideBySide {
+		ui.Row(c).FillWidth().Grow(1).Children(func() {
+			ui.Column(c).Width(m.hsplit.Pos).FillHeight().Children(func() {
+				m.requestPane(c, entry)
+			})
+			ui.Splitter(c, &m.hsplit).Mins(320, 260)
+			ui.Column(c).Grow(1).FillHeight().Children(func() {
+				m.responsePanel(c, entry)
 			})
 		})
-		ui.Splitter(c, &m.rsplit).Mins(200, 120)
-		ui.Column(c).Grow(1).FillWidth().Children(func() {
-			m.responsePanel(c, entry)
+		return
+	}
+	ui.Column(c).FillWidth().Height(m.rsplit.Pos).Children(func() {
+		m.requestPane(c, entry)
+	})
+	ui.Splitter(c, &m.rsplit).Mins(200, 120)
+	ui.Column(c).Grow(1).FillWidth().Children(func() {
+		m.responsePanel(c, entry)
+	})
+}
+
+// requestPane 是请求编辑区（参数 / 请求体 / 请求头 / 认证 / 文档），两种分栏共用。
+func (m *Model) requestPane(c ui.C, entry *explorer.Entry) {
+	ui.Scroll(c).Fill().Children(func() {
+		ui.Column(c).FillWidth().Gap(10).Children(func() {
+			switch m.tab {
+			case tabBody:
+				m.bodyTab(c)
+			case tabHeaders:
+				m.kvEditor(c, &m.req.headers, "添加请求头")
+			case tabAuth:
+				m.authTab(c)
+			case tabDocs:
+				m.docsTab(c, entry)
+			default:
+				m.kvEditor(c, &m.req.params, "添加参数")
+			}
+			if m.req.err != "" {
+				ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
+			}
 		})
 	})
 }

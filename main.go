@@ -21,26 +21,29 @@ func main() {
 	env := flag.String("env", "", "环境名（environments/<name>.yml，留空表示不替换变量）")
 	flag.Parse()
 
+	explicit := strings.TrimSpace(*dir) != ""
 	target, err := resolveDir(firstDir(*dir))
+	var col *explorer.Collection
+	var vars map[string]string
 	if err != nil {
-		log.Fatal(err)
+		if explicit {
+			log.Fatal(err)
+		}
+		// 双击启动 / 上次集合不可用：进界面后点「打开集合」，不要直接退出。
+		log.Printf("没有可用的集合：%v", err)
+	} else {
+		col = loadStartup(target, explicit)
+		if col != nil {
+			vars, err = explorer.LoadEnv(col.Dir, *env)
+			if err != nil {
+				if explicit {
+					log.Fatal(err)
+				}
+				log.Printf("读取环境 %q 失败：%v", *env, err)
+			}
+			log.Printf("已载入「%s」：%d 条内容，环境 %q", col.Name, len(col.Entries), *env)
+		}
 	}
-	col, err := explorer.Load(target)
-	if errors.Is(err, explorer.ErrNeedsInit) {
-		fmt.Fprintf(os.Stderr, "%v\n\n先用桌面客户端初始化该目录（会写入 opencollection.yml），或换一个已有集合。\n", err)
-		os.Exit(2)
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-	vars, err := explorer.LoadEnv(col.Dir, *env)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, warning := range col.Warnings {
-		log.Printf("跳过：%s", warning)
-	}
-	log.Printf("已载入「%s」：%d 条内容，环境 %q", col.Name, len(col.Entries), *env)
 	model := view.New(col, *env, vars)
 	for _, extra := range otherDirs(*dir) {
 		other, loadErr := explorer.Load(extra)
@@ -54,6 +57,27 @@ func main() {
 	if err := model.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// loadStartup 读启动集合：显式指定的路径读不动就退出（用户要看得到错误）；
+// 自动回落 / 上次集合读不动时返回 nil，让界面进空状态再由用户点「打开集合」。
+func loadStartup(target string, explicit bool) *explorer.Collection {
+	col, err := explorer.Load(target)
+	if err == nil {
+		for _, warning := range col.Warnings {
+			log.Printf("跳过：%s", warning)
+		}
+		return col
+	}
+	if explicit {
+		if errors.Is(err, explorer.ErrNeedsInit) {
+			fmt.Fprintf(os.Stderr, "%v\n\n先用桌面客户端初始化该目录（会写入 opencollection.yml），或换一个已有集合。\n", err)
+			os.Exit(2)
+		}
+		log.Fatal(err)
+	}
+	log.Printf("跳过集合 %s：%v", target, err)
+	return nil
 }
 
 // firstDir 取 -collection 里的第一个目录（逗号分隔，路径本身不含逗号）。

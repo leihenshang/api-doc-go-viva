@@ -946,7 +946,7 @@ func TestCurlImportCreatesRequest(t *testing.T) {
 	model := New(col, "", nil)
 	driver := openWindow(t, model)
 
-	model.openCurlImport()
+	model.openCurlImport("")
 	pump(t, driver)
 	if !hasControl(driver, "导入") {
 		t.Fatalf("导入弹窗应有「导入」按钮：%v", painted(driver))
@@ -1560,5 +1560,126 @@ func TestCollectionPickerSwitchesRoots(t *testing.T) {
 	pump(t, driver)
 	if model.active != 1 {
 		t.Fatal("点当前集合不应改变活动根")
+	}
+}
+
+// TestStartsWithoutCollection 双击启动（没有 -collection）时窗口照常打开，
+// 首屏给「打开集合」；打开后占位根被真实集合替换，不留下「未打开集合」。
+func TestStartsWithoutCollection(t *testing.T) {
+	model := New(nil, "", nil)
+	driver := openWindow(t, model)
+
+	if !shows(driver, "尚未打开集合") {
+		t.Fatalf("空状态首屏没画出来：%v", painted(driver))
+	}
+	if !hasControl(driver, "打开集合") {
+		t.Fatal("空状态里没有「打开集合」入口")
+	}
+
+	dir := writeCollection(t, "http://example.invalid")
+	model.openCollection(dir)
+	pump(t, driver)
+	if model.col.Dir != dir {
+		t.Fatalf("打开集合失败：col=%q", model.col.Dir)
+	}
+	if len(model.roots) != 1 || model.roots[0].col.Dir != dir {
+		t.Fatalf("占位根没被替换：%+v", model.roots)
+	}
+	if shows(driver, "尚未打开集合") {
+		t.Fatal("打开集合后还停在空状态")
+	}
+	if !shows(driver, "健康检查") {
+		t.Fatalf("集合内容没画出来：%v", painted(driver))
+	}
+}
+
+// TestJSONLineTextForCopy 响应行复制要能还原缩进与全部片段。
+func TestJSONLineTextForCopy(t *testing.T) {
+	line := jsonLine{
+		{text: "  ", kind: jsonPlain},
+		{text: `"name"`, kind: jsonKey},
+		{text: ": ", kind: jsonPunct},
+		{text: `"neo"`, kind: jsonString},
+	}
+	if got := jsonLineText(line); got != `  "name": "neo"` {
+		t.Fatalf("jsonLineText = %q", got)
+	}
+}
+
+// TestRequestResponseSplitLayout 设置里的「左右」分栏应把响应放到请求的右侧。
+func TestRequestResponseSplitLayout(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	find := func(want string) (x, y float32, ok bool) {
+		for _, label := range driver.Snapshot().Labels {
+			if label.Value == want {
+				return label.Bounds.X, label.Bounds.Y, true
+			}
+		}
+		return 0, 0, false
+	}
+	reqX, reqY, okReq := find("参数")
+	respX, respY, okResp := find("响应")
+	if !okReq || !okResp {
+		t.Fatalf("找不到分栏标题：req=%v resp=%v", okReq, okResp)
+	}
+	if !(respY > reqY) {
+		t.Fatalf("默认应为上下分栏：参数 y=%.1f 响应 y=%.1f", reqY, respY)
+	}
+
+	model.settings.SplitSideBySide = true
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	reqX, reqY, _ = find("参数")
+	respX, respY, _ = find("响应")
+	if !(respX > reqX+100) {
+		t.Fatalf("左右分栏时响应应在请求右侧：参数 x=%.1f 响应 x=%.1f", reqX, respX)
+	}
+	if respY > 400 {
+		t.Fatalf("左右分栏时响应不应掉到下方：响应 y=%.1f", respY)
+	}
+}
+
+// TestCurlImportIntoFolderAndName 粘贴 curl 时可指定落点分组与请求名；
+// 导入后展开目标分组并打开新请求。
+func TestCurlImportIntoFolderAndName(t *testing.T) {
+	dir := writeCollection(t, "http://example.invalid")
+	writeFile(t, filepath.Join(dir, "分组", "folder.yml"), "info:\n  name: 分组\n  seq: 1\n")
+	col, err := explorer.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.openCurlImport("分组")
+	if model.ui.curlFolder != "分组" {
+		t.Fatalf("预设分组 = %q", model.ui.curlFolder)
+	}
+	model.ui.curlName = "自定义导入"
+	model.ui.curlText = `curl 'http://example.invalid/v1/things' -H 'X-A: 1'`
+	model.importCurl()
+	pump(t, driver)
+	pump(t, driver)
+
+	data, err := os.ReadFile(filepath.Join(dir, "分组", "自定义导入.yml"))
+	if err != nil {
+		t.Fatalf("请求没落到分组：%v", err)
+	}
+	if !strings.Contains(string(data), "X-A") || !strings.Contains(string(data), "/v1/things") {
+		t.Fatalf("导入内容不对：\n%s", data)
+	}
+	if !model.expanded[dirKey(col.Dir, "分组")] {
+		t.Fatal("导入到折叠分组后应自动展开")
+	}
+	if len(model.tabs) != 1 || model.tabs[0].file != "分组/自定义导入.yml" {
+		t.Fatalf("导入后应打开新请求：%+v", model.tabs)
 	}
 }

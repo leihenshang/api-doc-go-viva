@@ -372,6 +372,12 @@ func (m *Model) treeContent(i int) {
 			if menu.Item("新建分组").Icon(IconFolderOpen).Clicked() {
 				c.After(func() { m.openNewFolderIn(folder.Dir) })
 			}
+			if menu.Item("导入 cURL…").Icon(IconImport).Clicked() {
+				c.After(func() {
+					m.activateFolderRoot(row.root)
+					m.openCurlImport(folder.Dir)
+				})
+			}
 			menu.Separator()
 			if menu.Item("重命名").Clicked() {
 				c.After(func() { m.openRenameFolder(folder) })
@@ -444,6 +450,14 @@ func (m *Model) rootRow(c ui.C, row *treeRow, i int) {
 					m.activateRoot(root)
 				}
 				m.openNewFolderIn("")
+			})
+		}
+		if menu.Item("导入 cURL…").Icon(IconImport).Clicked() {
+			c.After(func() {
+				if m.active != root && root >= 0 && root < len(m.roots) {
+					m.activateRoot(root)
+				}
+				m.openCurlImport("")
 			})
 		}
 		menu.Separator()

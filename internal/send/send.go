@@ -42,6 +42,8 @@ type Plan struct {
 	Dir string
 	// FollowRedirects 是全局默认；请求文件里的 settings.followRedirects 优先。
 	FollowRedirects *bool
+	// InsecureSSL 是全局默认；请求文件里的 settings.insecureSsl 显式设置时优先。
+	InsecureSSL bool
 }
 
 // Header 响应头的一行（按名称排序，便于稳定展示）。
@@ -118,8 +120,11 @@ func newClient(plan Plan) *http.Client {
 	if !follow {
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	}
-	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.InsecureSSL != nil &&
-		*plan.File.Settings.InsecureSSL {
+	insecure := plan.InsecureSSL
+	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.InsecureSSL != nil {
+		insecure = *plan.File.Settings.InsecureSSL
+	}
+	if insecure {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // 由集合里的 insecureSsl 显式开启
 		client.Transport = transport
