@@ -10,6 +10,7 @@ import (
 // Page 声明整窗：工具条 + （集合树 | 分隔条 | 详情）。
 // 搜索框在 sidebar 里先声明、当帧写入过滤词，随后重建树，避免一帧延迟。
 func (m *Model) Page(c ui.C) {
+	m.drainMCP()
 	if ui.Shortcut(c, ui.Primary, "k") {
 		c.After(func() {
 			if m.ui.paletteOpen {
@@ -22,10 +23,11 @@ func (m *Model) Page(c ui.C) {
 	m.toolbar(c)
 	if !m.hasCollection() {
 		m.welcomePage(c)
+		m.statusBar(c)
 		m.dialogs(c)
 		return
 	}
-	ui.Row(c).Fill().Children(func() {
+	ui.Row(c).Grow(1).FillWidth().Children(func() {
 		ui.Column(c).Width(m.split.Pos).FillHeight().Background(m.pal.sidebar).Children(func() {
 			m.sidebar(c)
 		})
@@ -39,6 +41,7 @@ func (m *Model) Page(c ui.C) {
 			}
 		})
 	})
+	m.statusBar(c)
 	m.dialogs(c)
 }
 
@@ -75,19 +78,24 @@ func (m *Model) toolbar(c ui.C) {
 			ui.Text(c, "api-doc-go").FontSize(15).Bold()
 			ui.Text(c, appVersion).FontSize(11).Muted().Mono()
 		})
-		ui.Row(c).Grow(1).Height(44).PadLeft(24).PadRight(12).Gap(8).Items(ui.Center).Children(func() {
+		// PadLeft(6)：集合 / 环境下拉的左缘与下方标签条、内容区左侧对齐（侧栏右框的 x）。
+		ui.Row(c).Grow(1).Height(44).PadLeft(6).PadRight(12).Gap(8).Items(ui.Center).Children(func() {
 			m.collectionPicker(c)
 			m.envPicker(c)
 			ui.Spacer(c)
+			splitLabel, splitIcon := "上下", IconRows
+			if m.settings.SplitSideBySide {
+				splitLabel, splitIcon = "左右", IconColumns
+			}
+			if ui.Button(c, splitLabel).Icon(splitIcon).Tooltip("切换请求 / 响应分栏方向").Clicked() {
+				m.setSplitLayout(!m.settings.SplitSideBySide)
+			}
 			themeLabel, themeIcon := "日间", IconSun
 			if m.isLight() {
 				themeLabel, themeIcon = "夜间", IconMoon
 			}
 			if ui.Button(c, themeLabel).Icon(themeIcon).Clicked() {
 				m.setTheme(!m.isLight())
-			}
-			if ui.Button(c, "设置").Icon(IconSliders).Clicked() {
-				m.openSettings()
 			}
 		})
 	})
@@ -101,7 +109,7 @@ func (m *Model) collectionPicker(c ui.C) {
 	if m.col != nil && m.col.Name != "" {
 		label = m.collectionLabel(m.active)
 	}
-	button := ui.Button(c, label).Icon(IconFolderOpen).Secondary().Tooltip("切换集合")
+	button := ui.Button(c, label).Icon(IconFolderOpen).Outline().Tooltip("切换集合")
 	if button.Clicked() {
 		c.After(func() { m.collectionMenuOpen = !m.collectionMenuOpen })
 	}
@@ -167,7 +175,7 @@ func (m *Model) envPicker(c ui.C) {
 	if m.envName != "" {
 		label = m.envName
 	}
-	envButton := ui.Button(c, "环境 "+label).Icon(IconGlobe).Secondary().Tooltip("切换环境")
+	envButton := ui.Button(c, "环境 "+label).Icon(IconGlobe).Outline().Tooltip("切换环境")
 	if envButton.Clicked() {
 		c.After(func() { m.envMenuOpen = !m.envMenuOpen })
 	}
@@ -196,17 +204,17 @@ func (m *Model) sidebar(c ui.C) {
 	m.sideC = c
 	ui.Column(c).Fill().Pad(6).Gap(6).Children(func() {
 		ui.Row(c).FillWidth().Gap(4).Items(ui.Center).Children(func() {
-			if ui.Button(c, "打开集合").Icon(IconFolderOpen).IconOnly().Tooltip("打开集合").Clicked() {
+			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Outline().IconOnly().Tooltip("打开集合").Clicked() {
 				c.After(m.chooseCollection)
 			}
 			ui.Spacer(c)
-			if ui.Button(c, "新建请求").Icon(IconPlus).IconOnly().Tooltip("新建请求").Clicked() {
+			if ui.Button(c, "新建请求").Icon(IconPlus).Outline().IconOnly().Tooltip("新建请求").Clicked() {
 				m.openNewRequest()
 			}
-			if ui.Button(c, "新建文档").Icon(IconFilePlus).IconOnly().Tooltip("新建文档").Clicked() {
+			if ui.Button(c, "新建文档").Icon(IconFilePlus).Outline().IconOnly().Tooltip("新建文档").Clicked() {
 				c.After(m.createDoc)
 			}
-			if ui.Button(c, "导入 cURL").Icon(IconImport).IconOnly().Tooltip("导入 cURL").Clicked() {
+			if ui.Button(c, "导入 cURL").Icon(IconImport).Outline().IconOnly().Tooltip("导入 cURL").Clicked() {
 				m.openCurlImport("")
 			}
 		})
@@ -418,7 +426,6 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 	ui.Column(c).Fill().Pad(16).Gap(10).Children(func() {
 		m.requestTitle(c, entry)
 		m.requestBar(c, entry)
-		ui.Tabs(c, &m.tab, httpSegments, tabLabel).Line()
 		m.requestResponsePanes(c, entry)
 	})
 }
@@ -428,18 +435,20 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
 	if m.settings.SplitSideBySide {
 		ui.Row(c).FillWidth().Grow(1).Children(func() {
-			ui.Column(c).Width(m.hsplit.Pos).FillHeight().Children(func() {
-				m.requestPane(c, entry)
+			ui.Column(c).Width(m.hsplit.Pos).MinWidth(m.hsplit.Pos).FillHeight().Children(func() {
+				m.requestPane(c)
 			})
 			ui.Splitter(c, &m.hsplit).Mins(320, 260)
-			ui.Column(c).Grow(1).FillHeight().Children(func() {
+			// MinWidth(0)：响应内容（格式化 JSON 的行）不该反过来决定这一列的宽度，
+			// 否则切「原始 / 格式化」时请求列会被挤窄或放宽。
+			ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
 				m.responsePanel(c, entry)
 			})
 		})
 		return
 	}
 	ui.Column(c).FillWidth().Height(m.rsplit.Pos).Children(func() {
-		m.requestPane(c, entry)
+		m.requestPane(c)
 	})
 	ui.Splitter(c, &m.rsplit).Mins(200, 120)
 	ui.Column(c).Grow(1).FillWidth().Children(func() {
@@ -448,24 +457,33 @@ func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
 }
 
 // requestPane 是请求编辑区（参数 / 请求体 / 请求头 / 认证 / 文档），两种分栏共用。
-func (m *Model) requestPane(c ui.C, entry *explorer.Entry) {
-	ui.Scroll(c).Fill().Children(func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			switch m.tab {
-			case tabBody:
-				m.bodyTab(c)
-			case tabHeaders:
-				m.kvEditor(c, &m.req.headers, "添加请求头")
-			case tabAuth:
-				m.authTab(c)
-			case tabDocs:
-				m.docsTab(c, entry)
-			default:
-				m.kvEditor(c, &m.req.params, "添加参数")
-			}
-			if m.req.err != "" {
-				ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
-			}
+// 分段页签放在这一栏**内部**：左右分栏时它只占请求列（与 Wails 版一致），
+// 不再横跨整幅、跑到分栏线之上；上下分栏时它本来就在请求区顶部，观感不变。
+// 页签固定、内容单独滚动，滚到底部时页签仍可见。
+// 整栏是一张和响应区同款的卡片（同内边距 / 圆角 / 描边）—— 两栏观感一致。
+func (m *Model) requestPane(c ui.C) {
+	theme := c.Theme()
+	ui.Column(c).Fill().Pad(panePadding).Gap(8).Radius(theme.Metrics.RadiusSurface).
+		Background(theme.Card).Border(1, m.pal.border).Children(func() {
+		ui.Tabs(c, &m.tab, httpSegments, tabLabel).Line()
+		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+			ui.Column(c).FillWidth().Gap(10).Children(func() {
+				switch m.tab {
+				case tabBody:
+					m.bodyTab(c)
+				case tabHeaders:
+					m.kvEditor(c, &m.req.headers, "添加请求头")
+				case tabAuth:
+					m.authTab(c)
+				case tabDocs:
+					m.docsTab(c)
+				default:
+					m.kvEditor(c, &m.req.params, "添加参数")
+				}
+				if m.req.err != "" {
+					ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
+				}
+			})
 		})
 	})
 }

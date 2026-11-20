@@ -1,6 +1,7 @@
 package view
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -45,14 +47,18 @@ func TestClickingSendShowsTheResponse(t *testing.T) {
 	if !shows(driver, "尚未发送") {
 		t.Fatalf("响应区应提示尚未发送：%v", painted(driver))
 	}
-	// 分段页签换成 Wails 的顺序：点「文档」看概述与 Markdown 预览。
+	// 概述常驻在标题下方（不再随分段切换），标题下也不再重复路径与分组。
+	if !shows(driver, "服务探活") {
+		t.Fatalf("标题下方应显示接口概述：%v", painted(driver))
+	}
+	if shows(driver, "健康检查.yml") {
+		t.Fatalf("标题下不应再显示路径与分组：%v", painted(driver))
+	}
+	// 分段页签换成 Wails 的顺序：点「文档」默认就是 Markdown 预览。
 	click(t, driver, "文档")
 	pump(t, driver)
-	if !shows(driver, "服务探活") {
-		t.Fatalf("文档分段应显示概述：%v", painted(driver))
-	}
 	if !shows(driver, "渲染检查") {
-		t.Fatalf("Docs 应按 Markdown 排版（标题未画出）：%v", painted(driver))
+		t.Fatalf("Docs 默认应按 Markdown 排版（标题未画出）：%v", painted(driver))
 	}
 	click(t, driver, "参数")
 	pump(t, driver)
@@ -64,6 +70,396 @@ func TestClickingSendShowsTheResponse(t *testing.T) {
 	}
 	if !shows(driver, "200") {
 		t.Fatalf("界面没有画状态码：%v", painted(driver))
+	}
+}
+
+// TestReqDocsPreviewThenEdit 请求的「文档」分段默认只读预览，点「编辑」才进编辑态；
+// 接口概述排在标题行下方（不再是标题右侧的一句话，也不再重复路径与分组）。
+func TestReqDocsPreviewThenEdit(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	// 概述的 y 必须大于标题行（用同一行的「复制 cURL」定位，标题文字与树里的同名行不好区分）。
+	sumY := float32(0)
+	for _, label := range driver.Snapshot().Labels {
+		if label.Value == "服务探活" && label.Bounds.X > model.split.Pos {
+			sumY = label.Bounds.Y
+		}
+	}
+	titleY := float32(0)
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label == "复制 cURL" {
+			titleY = hit.Bounds.Y
+		}
+	}
+	if sumY == 0 || titleY == 0 {
+		t.Fatalf("找不到概述或标题行：sumY=%.1f titleY=%.1f %v", sumY, titleY, painted(driver))
+	}
+	if sumY <= titleY {
+		t.Fatalf("概述应在标题行下方：标题 y=%.1f 概述 y=%.1f", titleY, sumY)
+	}
+
+	click(t, driver, "文档")
+	pump(t, driver)
+	if !shows(driver, "渲染检查") {
+		t.Fatalf("文档分段默认应是预览：%v", painted(driver))
+	}
+	if hasControl(driver, "详细说明") {
+		t.Fatal("默认预览态不该出现正文输入框")
+	}
+
+	click(t, driver, "编辑")
+	pump(t, driver)
+	if !model.docsEditing {
+		t.Fatal("点「编辑」应进编辑态")
+	}
+	if !hasControl(driver, "详细说明") {
+		t.Fatalf("编辑态应出现正文输入框：%v", painted(driver))
+	}
+
+	click(t, driver, "预览")
+	pump(t, driver)
+	if model.docsEditing {
+		t.Fatal("点「预览」应回到预览态")
+	}
+	if hasControl(driver, "详细说明") || !shows(driver, "渲染检查") {
+		t.Fatalf("回到预览应收起输入框并重新排版：%v", painted(driver))
+	}
+
+	// 预览区整块也可点：点预览内容同样进编辑态。
+	click(t, driver, "文档预览")
+	pump(t, driver)
+	if !model.docsEditing {
+		t.Fatal("点预览区应进编辑态")
+	}
+}
+
+// TestStatusBarShowsCountsAndMCP 底栏常驻：左侧只读信息，右侧回收站 / MCP / 设置与集合规模。
+func TestStatusBarShowsCountsAndMCP(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	if !shows(driver, "离线优先") {
+		t.Fatalf("底栏左侧应显示只读信息：%v", painted(driver))
+	}
+	if !shows(driver, "2 个请求") || !shows(driver, "个环境") {
+		t.Fatalf("底栏计数不对：%v", painted(driver))
+	}
+	for _, label := range []string{"回收站", "MCP", "设置"} {
+		if !hasControl(driver, label) {
+			t.Fatalf("底栏缺少入口 %q：%v", label, painted(driver))
+		}
+	}
+	if !hasControl(driver, "MCP 未启用") {
+		t.Fatalf("MCP 状态点应标注未启用：%v", painted(driver))
+	}
+
+	// 底栏 MCP 入口打开的是**独立**弹窗：有 MCP 面板，没有软件设置的左侧分区菜单。
+	click(t, driver, "MCP")
+	pump(t, driver)
+	if !shows(driver, "启用服务") || !shows(driver, "监听地址") {
+		t.Fatalf("MCP 入口应打开 MCP 面板：%v", painted(driver))
+	}
+	if hasControl(driver, "设置分区 外观") || hasControl(driver, "设置分区 关于") {
+		t.Fatal("MCP 弹窗里不该出现软件设置的分区菜单")
+	}
+	// 而「设置」入口回到软件设置的第一屏（先关掉 MCP 面板）。
+	click(t, driver, "完成")
+	pump(t, driver)
+	click(t, driver, "设置")
+	pump(t, driver)
+	if !shows(driver, "主题") {
+		t.Fatalf("设置入口应落在外观分区：%v", painted(driver))
+	}
+}
+
+// TestMCPStartsAndStops 设置里的开关能起停内嵌 MCP 服务（地址用 0 端口避免占用）。
+func TestMCPStartsAndStops(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	// 别把测试用的开关写进后续用例读到的偏好里。
+	t.Cleanup(func() {
+		model.settings.MCPEnabled = false
+		model.settings.MCPAddr = settings.DefaultMCPAddr
+		_ = settings.Save(model.settings)
+	})
+
+	model.settings.MCPAddr = "127.0.0.1:0"
+	model.ui.mcpAddr = "127.0.0.1:0"
+	model.ui.mcpEnabled = true
+	model.applyMCPEdits()
+	if !model.mcp.running {
+		t.Fatalf("打开开关后服务应运行：err=%q", model.mcp.err)
+	}
+	if model.settings.MCPToken == "" {
+		t.Fatal("首次启用应生成访问令牌")
+	}
+
+	model.ui.mcpEnabled = false
+	model.applyMCPEdits()
+	if model.mcp.running || model.mcp.addr != "" {
+		t.Fatalf("关掉开关后服务应停止：%+v", model.mcp)
+	}
+}
+
+// TestResponseCopyByClick 响应里的 JSON 行与响应头条目可以点一下复制
+// （画布文字不支持拖选，改用「点行复制」+ 工具行的「复制正文」）。
+func TestResponseCopyByClick(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ok":true,"n":1}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+
+	// JSON 正文：从第 2 行行首拖到行尾，松手复制选中文本。
+	body := gfx.Rect{}
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label == "响应正文" {
+			body = hit.Bounds
+			break
+		}
+	}
+	if body.Width == 0 {
+		t.Fatalf("找不到响应正文区域：%v", painted(driver))
+	}
+	const lineH = 18
+	lineY := body.Y + 1.5*lineH // 第 2 行（`  "ok": true,`）的中线
+	if err := driver.Press(body.X+22, lineY, gfx.PointerButtonPrimary); err != nil {
+		t.Fatalf("Press: %v", err)
+	}
+	if err := driver.Move(body.X+22+160, lineY); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if err := driver.Release(body.X+22+160, lineY, gfx.PointerButtonPrimary); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	pump(t, driver)
+	// 松手只保留选区，不自动复制。
+	if got := driver.Clipboard(); strings.Contains(got, `"ok": true`) {
+		t.Fatalf("松手不该自动复制，剪贴板 = %q", got)
+	}
+	if err := driver.Chord(gfx.ModifierControl, "c"); err != nil {
+		t.Fatalf("Chord: %v", err)
+	}
+	pump(t, driver)
+	if got := driver.Clipboard(); !strings.Contains(got, `"ok": true`) {
+		t.Fatalf("Ctrl+C 应复制选中文本，剪贴板 = %q", got)
+	}
+
+	// 响应头：点一行复制「名称: 值」。
+	click(t, driver, "响应头")
+	pump(t, driver)
+	click(t, driver, "响应头 Content-Type")
+	pump(t, driver)
+	if got := driver.Clipboard(); !strings.HasPrefix(got, "Content-Type: ") {
+		t.Fatalf("点响应头应复制「名称: 值」，剪贴板 = %q", got)
+	}
+
+	// 原始视图同样可选：拖一行 + Ctrl+C。
+	click(t, driver, "正文")
+	pump(t, driver)
+	click(t, driver, "原始")
+	pump(t, driver)
+	raw := gfx.Rect{}
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label == "响应正文" {
+			raw = hit.Bounds
+			break
+		}
+	}
+	if raw.Width == 0 {
+		t.Fatalf("原始视图里找不到正文区域：%v", painted(driver))
+	}
+	y := raw.Y + 0.5*lineH
+	if err := driver.Press(raw.X+4, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatalf("Press: %v", err)
+	}
+	if err := driver.Move(raw.X+raw.Width*0.6, y); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if err := driver.Release(raw.X+raw.Width*0.6, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	pump(t, driver)
+	if err := driver.Chord(gfx.ModifierControl, "c"); err != nil {
+		t.Fatalf("Chord: %v", err)
+	}
+	pump(t, driver)
+	if got := driver.Clipboard(); !strings.Contains(got, `"ok":true`) {
+		t.Fatalf("原始正文的选中复制应生效，剪贴板 = %q", got)
+	}
+}
+
+// TestSelectionTracksPointer 选区跟着指针走：拖动越远选得越多，且拿到的是该行的前缀。
+// 中文是双宽字符，坐标换算若按「等宽 × 字数」估算就会越拖越偏。
+func TestSelectionTracksPointer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"名字":"张三丰","n":1}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+
+	body := gfx.Rect{}
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label == "响应正文" {
+			body = hit.Bounds
+			break
+		}
+	}
+	if body.Width == 0 {
+		t.Fatalf("找不到响应正文区域：%v", painted(driver))
+	}
+
+	// 中文那一行是 `  "名字": "张三丰",`（带缩进）。
+	line := `  "名字": "张三丰",`
+	lineY := body.Y + 1.5*18
+	last := 0
+	for _, dx := range []float32{30, 70, 110} {
+		if err := driver.Press(body.X+20, lineY, gfx.PointerButtonPrimary); err != nil {
+			t.Fatalf("Press: %v", err)
+		}
+		if err := driver.Move(body.X+20+dx, lineY); err != nil {
+			t.Fatalf("Move: %v", err)
+		}
+		if err := driver.Release(body.X+20+dx, lineY, gfx.PointerButtonPrimary); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		pump(t, driver)
+		if err := driver.Chord(gfx.ModifierControl, "c"); err != nil {
+			t.Fatalf("Chord: %v", err)
+		}
+		pump(t, driver)
+		got := driver.Clipboard()
+		if got == "" || !strings.HasPrefix(line, got) {
+			t.Fatalf("dx=%.0f 选中内容应是该行前缀：%q", dx, got)
+		}
+		if n := len([]rune(got)); n < last {
+			t.Fatalf("拖得越远不应选得更少：dx=%.0f n=%d last=%d", dx, n, last)
+		} else {
+			last = n
+		}
+	}
+	if last <= 1 {
+		t.Fatalf("拖动后应选中多个字符，实际 %d", last)
+	}
+}
+
+// TestMCPAllowListGatesWorkspaces 工作区白名单：没勾选时 AI 看不到集合，勾选后才可见；
+// 并核对「一键复制配置」的片段内容。
+func TestMCPAllowListGatesWorkspaces(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	t.Cleanup(func() {
+		model.settings.MCPAllow = nil
+		model.settings.MCPEnabled = false
+		_ = settings.Save(model.settings)
+	})
+
+	model.refreshMCPAllowRows()
+	if len(model.ui.mcpAllow) != 1 {
+		t.Fatalf("应列出当前打开的集合：%+v", model.ui.mcpAllow)
+	}
+	if model.ui.mcpAllow[0].Allowed {
+		t.Fatal("默认不该自动授权")
+	}
+	if dirs := model.mcpRoots(); len(dirs) != 0 {
+		t.Fatalf("未授权时不该暴露集合：%v", dirs)
+	}
+
+	model.ui.mcpAllow[0].Allowed = true
+	model.applyMCPEdits()
+	if dirs := model.mcpRoots(); len(dirs) != 1 || dirs[0] != col.Dir {
+		t.Fatalf("授权后应暴露该集合：%v", dirs)
+	}
+	if len(model.settings.MCPAllow) != 1 || model.settings.MCPAllow[0].Dir != col.Dir {
+		t.Fatalf("白名单没落到偏好：%+v", model.settings.MCPAllow)
+	}
+
+	cfg := model.mcpConfigJSON()
+	for _, want := range []string{`"type": "http"`, `"url": "http://`, `"Authorization": "Bearer `} {
+		if !strings.Contains(cfg, want) {
+			t.Fatalf("配置片段缺少 %q：\n%s", want, cfg)
+		}
+	}
+}
+
+// TestWindowTitle 应用标题栏标题固定为 API-DOC-GO。
+func TestWindowTitle(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if title := New(col, "", nil).config().Title; title != "API-DOC-GO" {
+		t.Fatalf("窗口标题 = %q", title)
+	}
+}
+
+// TestChooseCollectionCancelKeepsQuiet 「打开集合」点取消时什么都不做：
+// 不再弹「请输入集合目录」的兜底框；只有真的失败（没有对话框后端）才退回手输路径。
+func TestChooseCollectionCancelKeepsQuiet(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	if err := driver.QueueOpenDirectory("", app.ErrCanceled); err != nil {
+		t.Fatalf("QueueOpenDirectory: %v", err)
+	}
+	model.chooseCollection()
+	pump(t, driver)
+	if model.ui.pathOpen || model.ui.openErr != "" {
+		t.Fatalf("取消后不该弹手输路径框：pathOpen=%v err=%q", model.ui.pathOpen, model.ui.openErr)
+	}
+
+	if err := driver.QueueOpenDirectory("", errors.New("no dialog backend")); err != nil {
+		t.Fatalf("QueueOpenDirectory: %v", err)
+	}
+	model.chooseCollection()
+	pump(t, driver)
+	if !model.ui.pathOpen {
+		t.Fatal("没有目录对话框可用时应退回手输路径")
 	}
 }
 
@@ -303,6 +699,8 @@ http:
 	model.req.method = "PUT"
 	model.req.dirty = true
 	model.invalidator.Invalidate()
+	pump(t, driver)
+	click(t, driver, "更多操作")
 	pump(t, driver)
 	click(t, driver, "保存请求")
 	pump(t, driver)
@@ -733,6 +1131,8 @@ func TestScratchRequestSendAndSaveAs(t *testing.T) {
 	if !model.hasResp {
 		t.Fatal("临时请求应能直接发送")
 	}
+	click(t, driver, "更多操作")
+	pump(t, driver)
 	click(t, driver, "另存为")
 	pump(t, driver)
 	if !model.ui.newReqOpen || !model.ui.savingScratch {
@@ -1593,19 +1993,6 @@ func TestStartsWithoutCollection(t *testing.T) {
 	}
 }
 
-// TestJSONLineTextForCopy 响应行复制要能还原缩进与全部片段。
-func TestJSONLineTextForCopy(t *testing.T) {
-	line := jsonLine{
-		{text: "  ", kind: jsonPlain},
-		{text: `"name"`, kind: jsonKey},
-		{text: ": ", kind: jsonPunct},
-		{text: `"neo"`, kind: jsonString},
-	}
-	if got := jsonLineText(line); got != `  "name": "neo"` {
-		t.Fatalf("jsonLineText = %q", got)
-	}
-}
-
 // TestRequestResponseSplitLayout 设置里的「左右」分栏应把响应放到请求的右侧。
 func TestRequestResponseSplitLayout(t *testing.T) {
 	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
@@ -1634,9 +2021,11 @@ func TestRequestResponseSplitLayout(t *testing.T) {
 		t.Fatalf("默认应为上下分栏：参数 y=%.1f 响应 y=%.1f", reqY, respY)
 	}
 
-	model.settings.SplitSideBySide = true
-	model.invalidator.Invalidate()
+	click(t, driver, "上下")
 	pump(t, driver)
+	if !model.settings.SplitSideBySide {
+		t.Fatal("工具条分栏按钮应切到左右分栏")
+	}
 	reqX, reqY, _ = find("参数")
 	respX, respY, _ = find("响应")
 	if !(respX > reqX+100) {
@@ -1644,6 +2033,20 @@ func TestRequestResponseSplitLayout(t *testing.T) {
 	}
 	if respY > 400 {
 		t.Fatalf("左右分栏时响应不应掉到下方：响应 y=%.1f", respY)
+	}
+	// 分段页签（参数 / 请求体 / 请求头 / 认证 / 文档）只占请求列：
+	// 它曾画在分栏之上、横跨整幅宽度，看起来像独立于两栏的一条横幅。
+	lastTabRight := float32(0)
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Role == gfx.RoleTab && hit.Label == "文档" {
+			lastTabRight = hit.Bounds.X + hit.Bounds.Width
+		}
+	}
+	if lastTabRight == 0 {
+		t.Fatalf("找不到分段页签「文档」：%v", painted(driver))
+	}
+	if lastTabRight > respX {
+		t.Fatalf("分段页签应止于响应列左侧：页签右边界 %.1f，响应 x=%.1f", lastTabRight, respX)
 	}
 }
 
@@ -1681,5 +2084,102 @@ func TestCurlImportIntoFolderAndName(t *testing.T) {
 	}
 	if len(model.tabs) != 1 || model.tabs[0].file != "分组/自定义导入.yml" {
 		t.Fatalf("导入后应打开新请求：%+v", model.tabs)
+	}
+}
+
+// TestRequestMenuUtilities 地址栏「更多操作」包含导入/导出/代码生成/格式化 URL。
+func TestRequestMenuUtilities(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	model.req.url = "  http://example.invalid/a?x=1&&y=2  "
+	model.req.dirty = true
+	click(t, driver, "更多操作")
+	pump(t, driver)
+	for _, item := range []string{"导入 CURL", "导出 CURL", "代码生成", "格式化 URL"} {
+		if !hasControl(driver, item) {
+			t.Fatalf("菜单缺少 %q：%v", item, painted(driver))
+		}
+	}
+	click(t, driver, "格式化 URL")
+	pump(t, driver)
+	if model.req.url != "http://example.invalid/a?x=1&y=2" {
+		t.Fatalf("格式化 URL = %q", model.req.url)
+	}
+
+	click(t, driver, "更多操作")
+	pump(t, driver)
+	click(t, driver, "代码生成")
+	pump(t, driver)
+	if !model.codeOpen || !strings.Contains(model.codeText, "curl") {
+		t.Fatalf("代码生成没打开或片段不对：open=%v code=%q", model.codeOpen, model.codeText)
+	}
+}
+
+// TestResponseRawView 响应可切回原始报文：关闭格式化后原样显示响应体。
+func TestResponseRawView(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"ok":true,"n":1}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "200")
+	if len(model.tables.json) == 0 {
+		t.Fatal("默认应解析成可折叠 JSON")
+	}
+	click(t, driver, "原始")
+	pump(t, driver)
+	if !model.rawResp {
+		t.Fatal("点「原始」应切到原始报文")
+	}
+	if !shows(driver, `{"ok":true,"n":1}`) {
+		t.Fatalf("原始报文没显示原样正文：%v", painted(driver))
+	}
+}
+
+// TestOpenRootsAreRemembered 多集合打开状态与活动根要写进偏好，关掉一个后同步更新。
+func TestOpenRootsAreRemembered(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	first := writeCollection(t, "http://example.invalid")
+	second := writeCollection(t, "http://example.invalid")
+	colA, err := explorer.Load(first)
+	if err != nil {
+		t.Fatalf("Load A: %v", err)
+	}
+	colB, err := explorer.Load(second)
+	if err != nil {
+		t.Fatalf("Load B: %v", err)
+	}
+	model := New(colA, "", nil)
+	model.AddRoot(colB)
+	model.ActivateCollection(colB.Dir)
+
+	saved := settings.Load()
+	if len(saved.LastCollections) != 2 || saved.LastCollections[1] != colB.Dir {
+		t.Fatalf("打开的集合没记住：%+v", saved.LastCollections)
+	}
+	if saved.ActiveCollection != colB.Dir {
+		t.Fatalf("活动根没记住：%q", saved.ActiveCollection)
+	}
+
+	model.closeRoot(1)
+	saved = settings.Load()
+	if len(saved.LastCollections) != 1 || saved.LastCollections[0] != colA.Dir {
+		t.Fatalf("关闭后偏好没更新：%+v", saved.LastCollections)
 	}
 }

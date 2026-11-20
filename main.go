@@ -25,27 +25,39 @@ func main() {
 	target, err := resolveDir(firstDir(*dir))
 	var col *explorer.Collection
 	var vars map[string]string
-	if err != nil {
-		if explicit {
-			log.Fatal(err)
+	var reopen []string
+	if !explicit {
+		reopen = startupCollections()
+	}
+	if err != nil && explicit {
+		log.Fatal(err)
+	}
+	if !explicit && len(reopen) > 0 {
+		col = loadStartup(reopen[0], false)
+		if col != nil {
+			reopen = reopen[1:]
 		}
+	} else if err == nil {
+		col = loadStartup(target, explicit)
+	} else {
 		// 双击启动 / 上次集合不可用：进界面后点「打开集合」，不要直接退出。
 		log.Printf("没有可用的集合：%v", err)
-	} else {
-		col = loadStartup(target, explicit)
-		if col != nil {
-			vars, err = explorer.LoadEnv(col.Dir, *env)
-			if err != nil {
-				if explicit {
-					log.Fatal(err)
-				}
-				log.Printf("读取环境 %q 失败：%v", *env, err)
+	}
+	if col != nil {
+		vars, err = explorer.LoadEnv(col.Dir, *env)
+		if err != nil {
+			if explicit {
+				log.Fatal(err)
 			}
-			log.Printf("已载入「%s」：%d 条内容，环境 %q", col.Name, len(col.Entries), *env)
+			log.Printf("读取环境 %q 失败：%v", *env, err)
 		}
+		log.Printf("已载入「%s」：%d 条内容，环境 %q", col.Name, len(col.Entries), *env)
 	}
 	model := view.New(col, *env, vars)
-	for _, extra := range otherDirs(*dir) {
+	for _, extra := range append(reopen, otherDirs(*dir)...) {
+		if extra == "" {
+			continue
+		}
 		other, loadErr := explorer.Load(extra)
 		if loadErr != nil {
 			log.Printf("跳过集合 %s：%v", extra, loadErr)
@@ -54,9 +66,24 @@ func main() {
 		model.AddRoot(other)
 		log.Printf("已载入「%s」：%d 条内容", other.Name, len(other.Entries))
 	}
+	if !explicit {
+		model.ActivateCollection(settings.Load().ActiveCollection)
+	}
 	if err := model.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// startupCollections 是上次同时打开的集合根；老配置只有 LastCollection 时退回它。
+func startupCollections() []string {
+	st := settings.Load()
+	if len(st.LastCollections) > 0 {
+		return st.LastCollections
+	}
+	if st.LastCollection != "" {
+		return []string{st.LastCollection}
+	}
+	return nil
 }
 
 // loadStartup 读启动集合：显式指定的路径读不动就退出（用户要看得到错误）；

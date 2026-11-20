@@ -139,7 +139,7 @@ journalctl --since "..." --no-pager | grep -iE "oom|killed process|gpu|drm"
 3. **每次重启都重新取窗口 ID 与位置**，不要复用上一次的 `/tmp/wid` 或坐标：
 
    ```bash
-   WID=$(xdotool search --name "API-DOC · Viva" | while read id; do
+   WID=$(xdotool search --name "API-DOC-GO" | while read id; do
      [ "$(xdotool getwindowpid $id)" = "$(cat bin/.cache/dev.pid)" ] && echo $id
    done | head -1)
    eval $(xdotool getwindowgeometry --shell $WID)   # 得到 X / Y

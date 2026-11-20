@@ -55,3 +55,21 @@ func TestSavesNetworkAndSplitPreferences(t *testing.T) {
 		t.Fatalf("新偏好没落盘：%+v", got)
 	}
 }
+
+func TestSavesOpenCollections(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	want := Settings{
+		Theme:            ThemeLight,
+		LastCollections:  []string{"/tmp/a", "/tmp/b"},
+		ActiveCollection: "/tmp/b",
+	}
+	if err := Save(want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got := Load()
+	if len(got.LastCollections) != 2 || got.LastCollections[1] != "/tmp/b" || got.ActiveCollection != "/tmp/b" {
+		t.Fatalf("多集合偏好没落盘：%+v", got)
+	}
+}

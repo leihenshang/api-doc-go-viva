@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // 主题取值。
@@ -32,17 +33,37 @@ type Settings struct {
 	Envs map[string]string `json:"envs,omitempty"`
 	// LastCollection 是上次打开的集合目录（启动时没给 -collection 就用它）。
 	LastCollection string `json:"lastCollection,omitempty"`
+	// LastCollections 是上次同时打开的全部集合根（按打开顺序）；启动时逐个恢复。
+	LastCollections []string `json:"lastCollections,omitempty"`
+	// ActiveCollection 是上次停留的集合根目录，恢复时切回它。
+	ActiveCollection string `json:"activeCollection,omitempty"`
+	// MCPEnabled 打开内嵌 MCP 服务（把当前打开的集合暴露给 AI 工具）。
+	MCPEnabled bool `json:"mcpEnabled,omitempty"`
+	// MCPAddr 是 MCP 服务的监听地址，默认只绑回环。
+	MCPAddr string `json:"mcpAddr,omitempty"`
+	// MCPToken 是访问令牌（首次启用时生成），客户端用 `Authorization: Bearer <token>` 连接。
+	MCPToken string `json:"mcpToken,omitempty"`
+	// MCPAllow 是可访问工作区的白名单：出现在列表里 = 授权，Writable 决定写工具能否落盘。
+	MCPAllow []MCPAllowEntry `json:"mcpAllow,omitempty"`
+}
+
+// MCPAllowEntry 是一个被授权给 AI 的集合根（绝对路径 + 是否允许写）。
+type MCPAllowEntry struct {
+	Dir      string `json:"dir"`
+	Writable bool   `json:"writable,omitempty"`
 }
 
 // 默认值：深色主题、20 秒超时、跟随重定向。
 const (
 	DefaultTimeoutSec = 20
 	MaxTimeoutSec     = 600
+	// DefaultMCPAddr 是内嵌 MCP 服务的默认监听地址（只本机可连）。
+	DefaultMCPAddr = "127.0.0.1:8189"
 )
 
 // Default 返回默认偏好：日间模式、20 秒超时、跟随重定向。
 func Default() Settings {
-	return Settings{Theme: ThemeLight, TimeoutSec: DefaultTimeoutSec, Envs: map[string]string{}}
+	return Settings{Theme: ThemeLight, TimeoutSec: DefaultTimeoutSec, MCPAddr: DefaultMCPAddr, Envs: map[string]string{}}
 }
 
 // FollowRedirects 报告是否跟随重定向（默认跟随）。
@@ -86,6 +107,9 @@ func Load() Settings {
 	}
 	if out.Envs == nil {
 		out.Envs = map[string]string{}
+	}
+	if strings.TrimSpace(out.MCPAddr) == "" {
+		out.MCPAddr = DefaultMCPAddr
 	}
 	return out
 }

@@ -31,6 +31,43 @@ var IconChevronRight = gfx.Icon{
 	},
 }
 
+// icon-code is a compiled vector icon.
+var IconCode = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(16.0, 18.0),
+		gfx.LineTo(22.0, 12.0),
+		gfx.LineTo(16.0, 6.0),
+		gfx.MoveTo(8.0, 6.0),
+		gfx.LineTo(2.0, 12.0),
+		gfx.LineTo(8.0, 18.0),
+	},
+}
+
+// icon-columns is a compiled vector icon.
+var IconColumns = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(19.0, 3.0),
+		gfx.CubicTo(20.1046, 3.0, 21.0, 3.89543, 21.0, 5.0),
+		gfx.LineTo(21.0, 19.0),
+		gfx.CubicTo(21.0, 20.1046, 20.1046, 21.0, 19.0, 21.0),
+		gfx.LineTo(5.0, 21.0),
+		gfx.CubicTo(3.89543, 21.0, 3.0, 20.1046, 3.0, 19.0),
+		gfx.LineTo(3.0, 5.0),
+		gfx.CubicTo(3.0, 3.89543, 3.89543, 3.0, 5.0, 3.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(12.0, 3.0),
+		gfx.LineTo(12.0, 21.0),
+	},
+}
+
 // icon-copy is a compiled vector icon.
 var IconCopy = gfx.Icon{
 	ViewBox: 24.0,
@@ -205,6 +242,27 @@ var IconPlus = gfx.Icon{
 		gfx.LineTo(19.0, 12.0),
 		gfx.MoveTo(12.0, 5.0),
 		gfx.LineTo(12.0, 19.0),
+	},
+}
+
+// icon-rows is a compiled vector icon.
+var IconRows = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(19.0, 3.0),
+		gfx.CubicTo(20.1046, 3.0, 21.0, 3.89543, 21.0, 5.0),
+		gfx.LineTo(21.0, 19.0),
+		gfx.CubicTo(21.0, 20.1046, 20.1046, 21.0, 19.0, 21.0),
+		gfx.LineTo(5.0, 21.0),
+		gfx.CubicTo(3.89543, 21.0, 3.0, 20.1046, 3.0, 19.0),
+		gfx.LineTo(3.0, 5.0),
+		gfx.CubicTo(3.0, 3.89543, 3.89543, 3.0, 5.0, 3.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(3.0, 12.0),
+		gfx.LineTo(21.0, 12.0),
 	},
 }
 

@@ -1,7 +1,6 @@
 package view
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -10,14 +9,13 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-// requestTitle 是请求标题行：方法角标、名称、概述与脏状态。
+// requestTitle 是请求标题行：方法角标、名称、脏状态与「复制 cURL」；
+// 接口概述排在标题**下方**（取草稿里的 summary，编辑后立刻跟着变）。
+// 不再显示文件路径与分组：页签和集合树已经标明这是哪个条目。
 func (m *Model) requestTitle(c ui.C, entry *explorer.Entry) {
 	ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
 		methodBadge(c, entry)
 		ui.Text(c, entry.Name).FontSize(17).Bold()
-		if entry.Summary != "" {
-			ui.Text(c, entry.Summary).FontSize(12).Muted().Ellipsis()
-		}
 		ui.Spacer(c)
 		if m.req.note != "" {
 			ui.Text(c, m.req.note).FontSize(11).Muted()
@@ -29,7 +27,9 @@ func (m *Model) requestTitle(c ui.C, entry *explorer.Entry) {
 			ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
 		}
 	})
-	ui.Text(c, m.tables.metaLine).FontSize(11).Muted().Mono()
+	if summary := strings.TrimSpace(m.req.summary); summary != "" {
+		ui.Text(c, summary).FontSize(12).Muted().Ellipsis()
+	}
 }
 
 // requestBar 是地址栏：方法 + 地址，紧跟「保存请求」「发送」两个动作，
@@ -52,12 +52,33 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 		if m.scratch {
 			saveLabel = "另存为"
 		}
-		save := ui.Button(c, saveLabel).Secondary().Tooltip("保存请求（Ctrl/Cmd+S）")
-		if !m.req.dirty && !m.scratch {
-			save.Disabled(true)
+		more := ui.Button(c, "更多操作").Icon(IconEllipsis).Ghost().Tooltip("更多操作")
+		if more.Clicked() {
+			c.After(func() { m.reqMenuOpen = !m.reqMenuOpen })
 		}
-		if save.Clicked() {
-			c.After(m.saveRequest)
+		if m.reqMenuOpen {
+			ui.Menu(c, more, &m.reqMenuOpen, func(menu *ui.MenuItems) {
+				saveItem := menu.Item(saveLabel)
+				if !m.req.dirty && !m.scratch {
+					saveItem.Disabled(true)
+				}
+				if saveItem.Clicked() {
+					c.After(m.saveRequest)
+				}
+				menu.Separator()
+				if menu.Item("导入 CURL").Icon(IconImport).Clicked() {
+					c.After(func() { m.openCurlImport(m.newRequestFolder()) })
+				}
+				if menu.Item("导出 CURL").Icon(IconCopy).Clicked() {
+					c.After(m.exportCurl)
+				}
+				if menu.Item("代码生成").Icon(IconCode).Clicked() {
+					c.After(m.openCodeDialog)
+				}
+				if menu.Item("格式化 URL").Icon(IconGlobe).Clicked() {
+					c.After(m.formatURL)
+				}
+			})
 		}
 		if m.sending {
 			ui.Button(c, "发送中…").Disabled(true)
@@ -91,7 +112,7 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 			if ui.TextField(c, &row.desc, "说明", "").Width(160).Changed() {
 				m.req.dirty = true
 			}
-			if ui.Button(c, "删除").Icon(IconTrash).IconOnly().Clicked() {
+			if ui.Button(c, "删除").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					*rows = append((*rows)[:slot], (*rows)[slot+1:]...)
 					m.req.dirty = true
@@ -109,8 +130,10 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 
 // respTabs / respTabLabel 是响应区的两个分段：正文与响应头。
 var (
-	respTabs  = []int{0, 1}
-	formTypes = []string{"text", "file"}
+	respTabs      = []int{0, 1}
+	respViewModes = []bool{false, true}
+	respViewNames = []string{"格式化", "原始"}
+	formTypes     = []string{"text", "file"}
 )
 
 func respTabLabel(index int) string {
@@ -170,7 +193,7 @@ func (m *Model) fieldEditor(c ui.C) {
 			if ui.TextField(c, &row.desc, "说明", "").Grow(1).Changed() {
 				m.req.dirty = true
 			}
-			if ui.Button(c, "删除字段").Icon(IconTrash).IconOnly().Clicked() {
+			if ui.Button(c, "删除字段").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					m.req.fields = append(m.req.fields[:slot], m.req.fields[slot+1:]...)
 					m.req.dirty = true
@@ -222,7 +245,7 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 			if ui.TextField(c, &row.desc, "说明", "").Width(140).Changed() {
 				m.req.dirty = true
 			}
-			if ui.Button(c, "删除").Icon(IconTrash).IconOnly().Clicked() {
+			if ui.Button(c, "删除").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
 					m.req.form = append(m.req.form[:slot], m.req.form[slot+1:]...)
 					m.req.dirty = true
@@ -280,41 +303,73 @@ func (m *Model) authTab(c ui.C) {
 	}
 }
 
-// docsTab 是接口文档：左边写概述与 Markdown 原文，右边实时预览（参考 10）。
-func (m *Model) docsTab(c ui.C, entry *explorer.Entry) {
-	ui.Row(c).FillWidth().Gap(12).Children(func() {
-		ui.Column(c).Grow(1).Gap(8).Children(func() {
-			ui.Text(c, "概述").FontSize(11).Muted()
-			if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").FillWidth().Changed() {
-				m.req.dirty = true
-			}
-			ui.Text(c, "详细说明（Markdown）").FontSize(11).Muted()
-			if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").
-				FillWidth().Height(240).Changed() {
-				m.req.dirty = true
-			}
-		})
-		ui.Divider(c)
-		ui.Column(c).Grow(1).Gap(6).Children(func() {
-			ui.Text(c, "预览").FontSize(11).Muted()
-			if strings.TrimSpace(m.req.docs) == "" {
-				ui.Text(c, "（没有详细说明）").Muted()
-				return
-			}
-			m.previewBlock(c, m.req.docs, m.tables.docsKey, m.contentWidth(c)/2-20)
-		})
+// docsTab 是接口文档：默认只读预览，点预览区或「编辑」才进编辑态。
+// 编辑态只放概述与 Markdown 原文 —— 左右分栏时左栏只有 400 多像素，
+// 再并排一列实时预览会把两边都挤没；要看效果就切回预览。
+func (m *Model) docsTab(c ui.C) {
+	if !m.docsEditing {
+		m.docsPreview(c)
+		return
+	}
+	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Text(c, "概述").FontSize(11).Muted()
+		if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").Grow(1).Changed() {
+			m.req.dirty = true
+		}
 	})
+	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Text(c, "详细说明（Markdown）").FontSize(11).Muted()
+		ui.Spacer(c)
+		if ui.Button(c, "预览").Ghost().Small().Tooltip("完成编辑，回到预览").Clicked() {
+			c.After(func() { m.docsEditing = false })
+		}
+	})
+	if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").
+		FillWidth().Height(320).Changed() {
+		m.req.dirty = true
+	}
+}
+
+// docsPreview 是文档分段的只读视图：整块可点进编辑态，右上角另有「编辑」按钮。
+func (m *Model) docsPreview(c ui.C) {
+	area := ui.Column(c).FillWidth().Gap(6).Pad(2).
+		Hit(ui.ID(c), "文档预览").Tooltip("点击编辑这个接口的文档")
+	area.Children(func() {
+		ui.Row(c).FillWidth().Items(ui.Center).Children(func() {
+			ui.Text(c, "点击内容或「编辑」修改").FontSize(11).Muted()
+			ui.Spacer(c)
+			if ui.Button(c, "编辑").Ghost().Small().Tooltip("编辑概述与 Markdown 原文").Clicked() {
+				c.After(func() { m.docsEditing = true })
+			}
+		})
+		if strings.TrimSpace(m.req.docs) == "" {
+			ui.Text(c, "（还没有文档，点击这里开始写）").FontSize(12).Muted()
+			return
+		}
+		m.previewBlock(c, m.req.docs, m.tables.docsKey, m.paneWidth(c))
+	})
+	if area.Clicked() {
+		c.After(func() { m.docsEditing = true })
+	}
 }
 
 // responsePanel 是请求页下方的响应区：状态行固定，正文滚动。
 func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 	theme := c.Theme()
-	ui.Column(c).Fill().Pad(12).Gap(8).Radius(theme.Metrics.RadiusSurface).
+	ui.Column(c).Fill().Pad(panePadding).Gap(8).Radius(theme.Metrics.RadiusSurface).
 		Background(theme.Card).Border(1, m.pal.border).Children(func() {
 		ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
 			ui.Text(c, "响应").FontSize(12).Bold()
 			if entry.Kind == explorer.KindHTTP {
 				ui.Tabs(c, &m.respTab, respTabs, respTabLabel).Line()
+				if m.respTab == 0 && len(m.tables.json) > 0 {
+					ui.Choice(c, &m.rawResp, respViewModes, func(raw bool) string {
+						if raw {
+							return respViewNames[1]
+						}
+						return respViewNames[0]
+					})
+				}
 			}
 			switch {
 			case entry.Kind != explorer.KindHTTP:
@@ -338,7 +393,7 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 				ui.Text(c, m.elapsed+" · "+m.size).FontSize(11).Muted().Mono()
 			}
 		})
-		ui.Scroll(c).Grow(1).Children(func() {
+		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			switch {
 			case entry.Kind != explorer.KindHTTP:
 				ui.Text(c, "验证版只读展示 gRPC 元数据，不发起调用。").FontSize(11).Muted()
@@ -358,11 +413,12 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					ui.Text(c, "响应体为空").Muted()
 					return
 				}
-				if len(m.tables.json) > 0 {
-					m.jsonBody(c)
+				if m.rawResp || len(m.tables.json) == 0 {
+					// 原始报文同样可选：拖动选中 + Ctrl+C（见 jsonselect.go）。
+					m.rawBody(c)
 					return
 				}
-				ui.Paragraph(c, m.bodyText, 0).Mono().FontSize(11)
+				m.jsonBody(c)
 			}
 		})
 	})
@@ -392,56 +448,7 @@ func (m *Model) copyValue(value string) {
 	m.invalidator.Invalidate()
 }
 
-// jsonBody 画响应 JSON：可折叠行带箭头，折叠后直接跳到收尾行。
-func (m *Model) jsonBody(c ui.C) {
-	hiddenUntil := -1
-	for index, line := range m.tables.json {
-		if index < hiddenUntil {
-			continue
-		}
-		end, foldable := m.tables.jsonFolds[index]
-		folded := foldable && m.tables.jsonFolded[index]
-		lineIndex := index
-		raw := jsonLineText(line)
-		id := ui.ID(c)
-		row := ui.Row(c).FillWidth().Gap(2).Items(ui.Center).
-			Hit(id, "响应行 "+strconv.Itoa(index+1))
-		row.Children(func() {
-			if foldable {
-				arrow := "▾"
-				if folded {
-					arrow = "▸"
-				}
-				if ui.Button(c, arrow).Ghost().XSmall().Clicked() {
-					c.After(func() { m.toggleJSONFold(lineIndex) })
-				}
-			} else {
-				ui.Slot(c).Width(18)
-			}
-			for _, span := range line {
-				ui.Text(c, span.text).Mono().FontSize(11).Color(m.jsonTint(span.kind))
-			}
-			if folded {
-				ui.Text(c, "…").Mono().FontSize(11).Muted()
-			}
-			ui.Spacer(c)
-			if canvas := c.Canvas(); canvas != nil && canvas.Hovered() == id {
-				if ui.Button(c, "复制第 "+strconv.Itoa(index+1)+" 行").
-					Icon(IconCopy).IconOnly().Ghost().XSmall().
-					Tooltip("复制这一行").Clicked() {
-					c.After(func() { m.copyValue(raw) })
-				}
-			} else {
-				ui.Slot(c).Width(22)
-			}
-		})
-		if folded {
-			hiddenUntil = end + 1
-		}
-	}
-}
-
-// responseHeaders 是响应头的两列表格：名称定宽、值占满剩余宽度。
+// responseHeaders 是响应头的两列表格：名称定宽、值占满剩余宽度（整行可点复制）。
 func (m *Model) responseHeaders(c ui.C) {
 	if len(m.tables.respHeaders) == 0 {
 		ui.Text(c, "没有响应头").Muted()
@@ -452,21 +459,17 @@ func (m *Model) responseHeaders(c ui.C) {
 		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
 	})
 	for _, header := range m.tables.respHeaders {
-		value := header.Name + ": " + header.Value
-		id := ui.ID(c)
-		row := ui.Row(c).FillWidth().Gap(12).PadY(2).Hit(id, "响应头 "+header.Name)
+		row := ui.Row(c).FillWidth().Gap(12).PadY(2).Items(ui.Center).
+			Hover(ui.Look{}.Background(m.pal.hover)).
+			Hit(ui.ID(c), "响应头 "+header.Name).
+			Tooltip("点击复制这一条")
 		row.Children(func() {
 			ui.Text(c, header.Name).Mono().FontSize(11).Width(220)
 			ui.Text(c, header.Value).Mono().FontSize(11).Grow(1).Ellipsis()
-			if canvas := c.Canvas(); canvas != nil && canvas.Hovered() == id {
-				if ui.Button(c, "复制 "+header.Name).Icon(IconCopy).
-					IconOnly().Ghost().XSmall().Tooltip("复制这条响应头").Clicked() {
-					c.After(func() { m.copyValue(value) })
-				}
-			} else {
-				ui.Slot(c).Width(22)
-			}
 		})
+		if row.Clicked() {
+			m.copyValue(header.Name + ": " + header.Value)
+		}
 	}
 }
 

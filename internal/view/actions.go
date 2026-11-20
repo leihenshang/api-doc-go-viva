@@ -1,11 +1,14 @@
 package view
 
 import (
+	"encoding/base64"
 	"errors"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/leihenshang/api-doc-go-share/codegen"
 	"github.com/leihenshang/api-doc-go-share/collection"
 	curlc "github.com/leihenshang/api-doc-go-viva/internal/curl"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -445,8 +448,12 @@ func (m *Model) restoreTrash(file string) {
 }
 
 // chooseCollection 打开系统目录选择框；失败（没有可用的对话框后端）就退回手输路径。
+// 用户点「取消」不算失败：直接什么都不做 —— 不要再弹一个「请输入路径」的框。
 func (m *Model) chooseCollection() {
 	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "打开集合目录"})
+	if errors.Is(err, app.ErrCanceled) {
+		return
+	}
 	if err != nil {
 		m.ui.openErr = err.Error()
 		m.ui.pathText = ""
@@ -455,7 +462,7 @@ func (m *Model) chooseCollection() {
 		return
 	}
 	if path == "" {
-		return // 用户取消
+		return // 取消（后端没区分取消/空选时也走这里）
 	}
 	m.openCollection(path)
 }
@@ -505,6 +512,34 @@ func (m *Model) confirmInit() {
 	m.openCollection(dir)
 }
 
+// persistRoots 把「已打开的集合根 + 当前根」写进偏好，下次启动照此恢复。
+func (m *Model) persistRoots() {
+	paths := make([]string, 0, len(m.roots))
+	for _, root := range m.roots {
+		if root.col != nil && root.col.Dir != "" {
+			paths = append(paths, root.col.Dir)
+		}
+	}
+	m.settings.LastCollections = paths
+	if m.col != nil && m.col.Dir != "" {
+		m.settings.LastCollection = m.col.Dir
+		m.settings.ActiveCollection = m.col.Dir
+	}
+	_ = settings.Save(m.settings)
+	// 根增删后同步给 MCP 服务：AI 只该看到「当前打开」的那几个集合。
+	m.refreshMCPRoots()
+}
+
+// ActivateCollection 按目录切到已打开的集合根（启动恢复上次的活动根用）。
+func (m *Model) ActivateCollection(dir string) {
+	for i, root := range m.roots {
+		if root.col != nil && root.col.Dir == dir {
+			m.activateRoot(i)
+			return
+		}
+	}
+}
+
 // syncRoot 把当前界面状态存回活动根（切走前调用，切换回来能接着用）。
 func (m *Model) syncRoot() {
 	if m.active < 0 || m.active >= len(m.roots) {
@@ -549,8 +584,7 @@ func (m *Model) installRoot(root *rootState) {
 	}
 	m.resetCollectionState()
 	m.pendingSelect = root.file
-	m.settings.LastCollection = m.col.Dir
-	_ = settings.Save(m.settings)
+	m.persistRoots()
 	m.refreshEnvs()
 	m.ui.envPick = m.envName
 	m.ui.envErr = ""
@@ -571,6 +605,7 @@ func (m *Model) AddRoot(col *explorer.Collection) {
 	}
 	m.syncRoot()
 	m.roots = append(m.roots, &rootState{col: col, env: m.settings.Envs[col.Dir]})
+	m.persistRoots()
 	m.treeDirty = true
 	m.invalidator.Invalidate()
 }
@@ -592,6 +627,7 @@ func (m *Model) closeRoot(i int) {
 	}
 	closingActive := m.active == i
 	m.roots = append(m.roots[:i], m.roots[i+1:]...)
+	m.persistRoots()
 	switch {
 	case closingActive:
 		if i >= len(m.roots) {
@@ -617,12 +653,14 @@ func (m *Model) adoptCollection(col *explorer.Collection) {
 		m.roots[0] = &rootState{col: col, env: m.settings.Envs[col.Dir]}
 		m.active = 0
 		m.installRoot(m.roots[0])
+		m.persistRoots()
 		return
 	}
 	m.syncRoot()
 	m.roots = append(m.roots, &rootState{col: col, env: m.settings.Envs[col.Dir]})
 	m.active = len(m.roots) - 1
 	m.installRoot(m.roots[m.active])
+	m.persistRoots()
 }
 
 // renameEnv 重命名当前环境（两个文件一起改），随后切到新名字。
@@ -926,6 +964,226 @@ func (m *Model) applySettingsEdits() {
 	}
 }
 
+// applyMCPEdits 把 MCP 弹窗里的输入落到偏好（只在弹窗开着时调用）。
+// 开关或地址变化即重启内嵌服务；地址先做一次规范化，空值回默认。
+func (m *Model) applyMCPEdits() {
+	addr := strings.TrimSpace(m.ui.mcpAddr)
+	if addr == "" {
+		addr = settings.DefaultMCPAddr
+		m.ui.mcpAddr = addr
+	}
+	changed, restart := false, false
+	if m.ui.mcpEnabled != m.settings.MCPEnabled {
+		m.settings.MCPEnabled = m.ui.mcpEnabled
+		changed, restart = true, true
+	}
+	if addr != m.settings.MCPAddr {
+		m.settings.MCPAddr = addr
+		changed, restart = true, true
+	}
+	// 工作区授权：勾选 = 出现在白名单；写权限随行一起存。
+	allow := m.mcpAllowFromRows()
+	if !sameMCPAllow(allow, m.settings.MCPAllow) {
+		m.settings.MCPAllow = allow
+		changed = true
+		m.refreshMCPRoots()
+	}
+	if changed {
+		_ = settings.Save(m.settings)
+	}
+	if restart {
+		m.restartMCP()
+		// 首次启用会生成令牌：弹窗里立刻显示出来。
+		m.ui.mcpToken = m.settings.MCPToken
+	}
+}
+
+// mcpAllowFromRows 把弹窗里的勾选状态收成偏好里的白名单。
+func (m *Model) mcpAllowFromRows() []settings.MCPAllowEntry {
+	allow := make([]settings.MCPAllowEntry, 0, len(m.ui.mcpAllow))
+	for _, row := range m.ui.mcpAllow {
+		if row.Allowed {
+			allow = append(allow, settings.MCPAllowEntry{Dir: row.Dir, Writable: row.Writable})
+		}
+	}
+	return allow
+}
+
+// sameMCPAllow 比较两份白名单（顺序无关的集合比较）。
+func sameMCPAllow(a, b []settings.MCPAllowEntry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	index := make(map[string]bool, len(a))
+	for _, entry := range a {
+		index[entry.Dir+"|"+boolMark(entry.Writable)] = true
+	}
+	for _, entry := range b {
+		if !index[entry.Dir+"|"+boolMark(entry.Writable)] {
+			return false
+		}
+	}
+	return true
+}
+
+// boolMark 是白名单比较用的可写标记。
+func boolMark(writable bool) string {
+	if writable {
+		return "w"
+	}
+	return "r"
+}
+
+// 代码生成弹窗的语言顺序。
+var (
+	codeLangs     = []int{0, 1, 2, 3, 4}
+	codeLangNames = []string{"cURL", "fetch", "axios", "Go", "Python"}
+	codeLangKinds = []codegen.Lang{
+		codegen.LangCurl, codegen.LangFetch, codegen.LangAxios, codegen.LangGo, codegen.LangPython,
+	}
+)
+
+// openCodeDialog 用当前草稿生成代码并打开弹窗。
+func (m *Model) openCodeDialog() {
+	m.codeOpen = true
+	m.codeLang = 0
+	m.refreshCode()
+	m.invalidator.Invalidate()
+}
+
+// refreshCode 按当前语言重算代码片段；只在打开弹窗或切换语言时算。
+func (m *Model) refreshCode() {
+	if m.codeLang < 0 || m.codeLang >= len(codeLangKinds) {
+		m.codeLang = 0
+	}
+	text, err := codegen.Snippet(codeLangKinds[m.codeLang], m.codeRequest())
+	if err != nil {
+		m.codeText = "生成失败：" + err.Error()
+		return
+	}
+	m.codeText = text
+}
+
+// codeRequest 把当前草稿（含未保存改动）整理成 codegen 的中立入参。
+func (m *Model) codeRequest() codegen.Request {
+	file := m.scratchFile()
+	headers := make([]codegen.KV, 0, len(file.HTTP.Headers)+1)
+	for _, header := range file.HTTP.Headers {
+		if header.Enabled && strings.TrimSpace(header.Name) != "" {
+			headers = append(headers, codegen.KV{Name: header.Name, Value: header.Value})
+		}
+	}
+	target := file.HTTP.URL
+	if len(file.HTTP.Params) > 0 {
+		pairs := make([]string, 0, len(file.HTTP.Params))
+		for _, row := range file.HTTP.Params {
+			if row.Enabled && strings.TrimSpace(row.Name) != "" {
+				pairs = append(pairs, row.Name+"="+row.Value)
+			}
+		}
+		if len(pairs) > 0 {
+			sep := "?"
+			if strings.Contains(target, "?") {
+				sep = "&"
+			}
+			target += sep + strings.Join(pairs, "&")
+		}
+	}
+	if auth := file.HTTP.Auth; auth != nil {
+		switch auth.Type {
+		case "basic":
+			token := base64.StdEncoding.EncodeToString([]byte(auth.Username + ":" + auth.Password))
+			headers = append(headers, codegen.KV{Name: "Authorization", Value: "Basic " + token})
+		case "bearer":
+			if auth.Token != "" {
+				headers = append(headers, codegen.KV{Name: "Authorization", Value: "Bearer " + auth.Token})
+			}
+		case "apikey":
+			if auth.Key != "" {
+				if auth.In == "query" {
+					sep := "?"
+					if strings.Contains(target, "?") {
+						sep = "&"
+					}
+					target += sep + url.QueryEscape(auth.Key) + "=" + url.QueryEscape(auth.Value)
+				} else {
+					headers = append(headers, codegen.KV{Name: auth.Key, Value: auth.Value})
+				}
+			}
+		}
+	}
+	body := file.HTTP.Body.Raw
+	if body == "" {
+		body = file.HTTP.Body.Data
+	}
+	if body == "" && len(file.HTTP.Body.Form) > 0 {
+		parts := make([]string, 0, len(file.HTTP.Body.Form))
+		for _, row := range file.HTTP.Body.Form {
+			if row.Enabled {
+				parts = append(parts, row.Name+"="+row.Value)
+			}
+		}
+		body = strings.Join(parts, "&")
+	}
+	return codegen.Request{Method: file.HTTP.Method, URL: target, Headers: headers, Body: body}
+}
+
+// exportCurl 把当前草稿生成 cURL 写进剪贴板。
+func (m *Model) exportCurl() {
+	text, err := codegen.Snippet(codegen.LangCurl, m.codeRequest())
+	if err != nil {
+		m.copyNote = "生成失败：" + err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	if err := app.SetClipboardText(text); err != nil {
+		m.copyNote = "复制失败：" + err.Error()
+	} else {
+		m.copyNote = "已复制 cURL"
+	}
+	m.storeTab()
+	m.invalidator.Invalidate()
+}
+
+// formatURL 只做安全整理：去空白、丢掉空查询段，不重新编码（避免破坏 {{变量}}）。
+func (m *Model) formatURL() {
+	raw := strings.TrimSpace(m.req.url)
+	if raw == "" {
+		return
+	}
+	base, query, hasQuery := strings.Cut(raw, "?")
+	base = strings.TrimSpace(base)
+	if hasQuery {
+		parts := make([]string, 0, 4)
+		for _, part := range strings.Split(query, "&") {
+			if part = strings.TrimSpace(part); part != "" {
+				parts = append(parts, part)
+			}
+		}
+		raw = base
+		if len(parts) > 0 {
+			raw += "?" + strings.Join(parts, "&")
+		}
+	} else {
+		raw = base
+	}
+	m.req.url = raw
+	m.req.dirty = true
+	m.req.err = ""
+	m.invalidator.Invalidate()
+}
+
+// setSplitLayout 切换请求 / 响应分栏方向（工具条按钮与设置面板共用）。
+func (m *Model) setSplitLayout(side bool) {
+	m.settings.SplitSideBySide = side
+	m.ui.splitSide = 0
+	if side {
+		m.ui.splitSide = 1
+	}
+	_ = settings.Save(m.settings)
+	m.invalidator.Invalidate()
+}
+
 // syncSettingsUI 把落盘的偏好装进设置表单（打开面板 / 启动时各一次）。
 func (m *Model) syncSettingsUI() {
 	m.ui.timeoutText = strconv.Itoa(m.settings.TimeoutSec)
@@ -935,11 +1193,16 @@ func (m *Model) syncSettingsUI() {
 	if m.settings.SplitSideBySide {
 		m.ui.splitSide = 1
 	}
+	m.ui.mcpEnabled = m.settings.MCPEnabled
+	m.ui.mcpAddr = m.settings.MCPAddr
+	m.ui.mcpToken = m.settings.MCPToken
 }
 
-// openSettings 打开设置面板，并把每次打开都要重新探测的状态抓一次。
+// openSettings 打开设置面板（软件设置），并把每次打开都要重新探测的状态抓一次。
 func (m *Model) openSettings() {
 	m.ui.settingsOpen = true
+	// 常规入口一律落在第一个分区：上一次可能是从底栏 MCP 直达进来的。
+	m.ui.settingsSection = 0
 	if m.isLight() {
 		m.ui.themePick = 1
 	} else {
@@ -952,4 +1215,15 @@ func (m *Model) openSettings() {
 	m.syncSettingsUI()
 	m.refreshEnvs()
 	m.ui.envPick = m.envName
+}
+
+// openMCPSettings 打开 MCP 服务的独立弹窗（底栏 MCP 入口）。
+// 和软件设置完全分开：没有左侧分区菜单，与 Wails 版的状态栏入口一致。
+func (m *Model) openMCPSettings() {
+	// 每次打开都按落盘的偏好刷新表单，不沿用上一次没保存的编辑。
+	m.ui.mcpEnabled = m.settings.MCPEnabled
+	m.ui.mcpAddr = m.settings.MCPAddr
+	m.ui.mcpToken = m.settings.MCPToken
+	m.refreshMCPAllowRows()
+	m.ui.mcpOpen = true
 }

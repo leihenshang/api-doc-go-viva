@@ -29,7 +29,7 @@ type jsonSpan struct {
 // jsonLine 是格式化后的一行。
 type jsonLine []jsonSpan
 
-// jsonLineText 把一行拼回纯文本（含缩进），复制某一行时用。
+// jsonLineText 把一行的各色片段拼回原始文本（点击复制用）。
 func jsonLineText(line jsonLine) string {
 	var b strings.Builder
 	for _, span := range line {

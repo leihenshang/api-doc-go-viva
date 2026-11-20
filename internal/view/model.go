@@ -96,10 +96,19 @@ type docEditor struct {
 const (
 	splitterThickness = 8
 	detailPadding     = 20
+	// panePadding 是请求栏与响应区两张卡片的内部边距；两边同值才对齐。
+	panePadding = 12
 )
 
 // newDocName 是「新建文档」的默认名，与客户端一样靠 -2 后缀去重。
 const newDocName = "新建文档"
+
+// mcpRuntime 是内嵌 MCP 服务的运行状态（底栏状态点与设置面板共用）。
+type mcpRuntime struct {
+	running bool
+	addr    string
+	err     string
+}
 
 // sendResult 是后台发送交回界面线程的结果，带标签代号与请求代号：
 // 关掉的标签、换掉的请求都直接丢弃，不会把旧响应贴到别处。
@@ -268,6 +277,13 @@ type workspaceUI struct {
 	envs            []string
 	envPick         string
 
+	// MCP 服务的设置（独立弹窗，与软件设置分开）：开关 / 监听地址 / 令牌 / 工作区授权。
+	mcpOpen    bool
+	mcpEnabled bool
+	mcpAddr    string
+	mcpToken   string
+	mcpAllow   []mcpAllowRow
+
 	pendingDir string
 	initOpen   bool
 	pathOpen   bool
@@ -319,6 +335,12 @@ type Model struct {
 	treeDirty bool
 	sideC     ui.C // 只在本帧声明期有效：treeContent 需要上下文
 
+	// reqMenuOpen 是地址栏「更多操作」菜单；codeOpen 是代码生成弹窗。
+	reqMenuOpen bool
+	codeOpen    bool
+	codeLang    int
+	codeText    string
+
 	// 拖拽悬停展开：指针停在折叠分组上超过 dragExpandDelay，就把该分组展开。
 	// 记录的是树行键与起始时间，真正展开在下一帧的 flushHoverExpand 里做。
 	dragHoverKey   string
@@ -353,6 +375,11 @@ type Model struct {
 
 	tables  requestTables
 	respTab int
+	rawResp bool
+	// jsonSel 是响应正文（JSON / 原始）的鼠标选区：Viva 的文字没有原生选区，自绘。
+	jsonSel selView
+	// docsEditing 是请求「文档」分段是否处于编辑态：默认预览，点一下才编辑（按标签记忆）。
+	docsEditing bool
 
 	docs     docState
 	editor   docEditor
@@ -362,6 +389,9 @@ type Model struct {
 	overview bool // 正在看集合概览（固定的「集合」页）
 	settings settings.Settings
 	ui       workspaceUI
+	// mcp 是内嵌 MCP 服务的运行状态（底栏状态点 / 设置面板）；服务器本体在 mcp.go。
+	mcp     mcpRuntime
+	mcpHost mcpHost
 
 	resp     send.Outcome
 	hasResp  bool
@@ -397,6 +427,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 		drafts:   map[string]string{},
 		settings: settings.Load(),
 	}
+	m.mcpHost.errs = make(chan string, 1)
 	m.roots = []*rootState{{col: col}}
 	m.active = 0
 	m.col = col
@@ -431,6 +462,8 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.refreshEnvs()
 	m.ui.envPick = m.envName
 	m.syncSettingsUI()
+	// 上次启用过就随窗口一起起来（未启用时是空操作）。
+	m.startMCP()
 	return m
 }
 
@@ -438,7 +471,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 func (m *Model) config() app.Config {
 	page := ui.NewPage(ui.PageConfig{View: m.Page, Theme: &m.theme, Background: &m.pal.bg})
 	return page.Config(app.Config{
-		Title:       "API-DOC · Viva 验证版",
+		Title:       "API-DOC-GO",
 		Class:       "api-doc-viva",
 		Width:       1180,
 		Height:      760,
@@ -878,7 +911,9 @@ func (m *Model) fillResponse(out send.Outcome) {
 	m.tables.json, m.tables.jsonFolds = parseJSON(out.Body)
 	m.tables.jsonFolded = make(map[int]bool)
 	if len(out.Missing) > 0 {
-		m.missing = "未解析变量：" + strings.Join(out.Missing, ", ")
+		// 说清楚后果：这些占位符在当前环境里没有定义，发送时按原文（{{名字}}）发出。
+		m.missing = "未解析变量：" + strings.Join(out.Missing, ", ") +
+			"（当前环境没有定义，发送时保留了原文）"
 	}
 }
 
@@ -899,6 +934,16 @@ func (m *Model) previewHeight(c ui.C, key, source string, width float32) float32
 // contentWidth 是详情页可用的文字宽度：整窗宽减去侧栏、分隔条与两侧内边距。
 func (m *Model) contentWidth(c ui.C) float32 {
 	return c.Bounds().Width - m.split.Pos - splitterThickness - 2*detailPadding
+}
+
+// paneWidth 是请求栏卡片内部可用的文字宽度（Markdown 预览按它折行）：
+// 左右分栏取左栏宽，上下分栏取整幅，再减去卡片内边距与 1px 描边。
+func (m *Model) paneWidth(c ui.C) float32 {
+	const chrome = 2*panePadding + 2
+	if m.settings.SplitSideBySide {
+		return m.hsplit.Pos - chrome
+	}
+	return m.contentWidth(c) - chrome
 }
 
 // humanBytes 把字节数写成 B / KB / MB，避免响应区出现七位数。

@@ -14,8 +14,10 @@ func (m *Model) dialogs(c ui.C) {
 	m.newRequestDialog(c)
 	m.newFolderDialog(c)
 	m.deleteFolderDialog(c)
+	m.codeDialog(c)
 	m.renameDialog(c)
 	m.settingsDialog(c)
+	m.mcpDialog(c)
 	m.envDialog(c)
 	m.newEnvDialog(c)
 	m.openCollectionDialogs(c)
@@ -65,6 +67,36 @@ func (m *Model) newFolderDialog(c ui.C) {
 			}
 			if ui.Button(c, "创建").Clicked() {
 				c.After(m.createFolder)
+			}
+		})
+	})
+}
+
+// codeDialog 展示当前请求的代码片段：cURL / fetch / axios / Go / Python。
+func (m *Model) codeDialog(c ui.C) {
+	ui.ModalWith(c, &m.codeOpen, "代码生成", ui.ModalSpec{Width: 760, Height: 520}, func() {
+		ui.Column(c).FillWidth().Height(380).Gap(10).Children(func() {
+			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "语言").FontSize(11).Muted()
+				choice := ui.Choice(c, &m.codeLang, codeLangs, func(i int) string { return codeLangNames[i] })
+				if choice.Changed() {
+					m.refreshCode()
+				}
+				ui.Spacer(c)
+				ui.Text(c, "按当前草稿生成，未保存的修改也会带上（变量保持 {{name}} 原样）。").
+					FontSize(11).Muted()
+			})
+			ui.Scroll(c).Grow(1).Children(func() {
+				ui.Paragraph(c, m.codeText, 0).Mono().FontSize(11)
+			})
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "复制代码").Icon(IconCopy).Clicked() {
+				c.After(func() { m.copyValue(m.codeText) })
+			}
+			if ui.Button(c, "完成").Clicked() {
+				m.codeOpen = false
 			}
 		})
 	})
@@ -165,7 +197,7 @@ func (m *Model) settingsDialog(c ui.C) {
 	m.applySettingsEdits()
 }
 
-// settingsSections 是设置左侧的分区顺序。
+// settingsSections 是设置左侧的分区顺序（只列软件设置本身）。
 var settingsSections = []string{"外观", "网络与安全", "本地数据", "关于"}
 
 // settingsAppearance 是外观分区：主题立即生效并落盘。
@@ -213,6 +245,92 @@ func (m *Model) settingsLocal(c ui.C) {
 	if ui.Button(c, "打开回收站").Icon(IconTrash).Secondary().Clicked() {
 		c.After(m.openTrash)
 	}
+}
+
+// mcpDialog 是内嵌 MCP 服务的**独立**设置弹窗：与软件设置分开，没有左侧分区菜单
+// （对齐 Wails 版：MCP 是状态栏入口自带的面板，不属于软件设置）。
+func (m *Model) mcpDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: 680, Height: 560}, func() {
+		ui.Column(c).FillWidth().Gap(10).Children(func() {
+			ui.Text(c, "把当前打开的集合以工具的形式提供给 AI（Claude Desktop / Cursor 等 MCP 客户端）。").
+				FontSize(11).Muted()
+			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "启用服务").FontSize(11).Muted().Width(120)
+				ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
+			})
+			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "监听地址").FontSize(11).Muted().Width(120)
+				ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(200).Changed()
+			})
+			switch {
+			case m.mcp.running:
+				ui.Text(c, "运行中："+m.mcp.addr).FontSize(11).Mono().Color(c.Theme().Success)
+			case m.mcp.err != "":
+				ui.Text(c, "启动失败："+m.mcp.err).FontSize(11).Color(c.Theme().Danger)
+			default:
+				ui.Text(c, "未启用").FontSize(11).Muted()
+			}
+			m.mcpAllowList(c)
+			if token := m.ui.mcpToken; token != "" {
+				ui.Text(c, "访问令牌：").FontSize(11).Muted()
+				ui.Text(c, token).FontSize(11).Mono().Ellipsis()
+			}
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "客户端连接："+mcpURL(m.ui.mcpAddr)).
+					FontSize(11).Muted().Ellipsis()
+				ui.Spacer(c)
+				if ui.Button(c, "复制配置").Icon(IconCopy).Outline().Small().
+					Tooltip("复制 MCP 客户端配置（含监听地址与令牌）").Clicked() {
+					m.copyValue(m.mcpConfigJSON())
+				}
+			})
+			ui.Text(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。").
+				FontSize(11).Muted()
+			ui.Text(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。").
+				FontSize(11).Muted()
+			if m.copyNote != "" {
+				ui.Text(c, m.copyNote).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "完成").Clicked() {
+				m.ui.mcpOpen = false
+			}
+		})
+	})
+	if !m.ui.mcpOpen {
+		return
+	}
+	// 弹窗开着时把改动落到偏好（开关 / 地址变化即重启服务）。
+	m.applyMCPEdits()
+}
+
+// mcpAllowList 是 MCP 弹窗里的「可访问的工作区」：勾选 = 授权 AI 读这个集合，
+// 右侧「可写」决定写类工具能否落盘（当前工具集还没有写工具，先随配置存下来）。
+func (m *Model) mcpAllowList(c ui.C) {
+	ui.Text(c, "可访问的工作区").FontSize(11).Muted()
+	if len(m.ui.mcpAllow) == 0 {
+		ui.Text(c, "（还没有打开的集合：先在侧栏打开一个目录）").FontSize(11).Muted()
+		return
+	}
+	ui.Column(c).FillWidth().Gap(6).Children(func() {
+		for index := range m.ui.mcpAllow {
+			row := &m.ui.mcpAllow[index]
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Checkbox(c, &row.Allowed, row.Name).Changed()
+				ui.Text(c, row.Dir).FontSize(10).Mono().Muted().Ellipsis()
+				ui.Spacer(c)
+				writable := ui.Checkbox(c, &row.Writable, "可写")
+				if !row.Allowed {
+					writable.Disabled(true)
+				}
+				writable.Changed()
+			})
+		}
+	})
+	ui.Text(c, "「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。").
+		FontSize(11).Muted()
 }
 
 // settingsAbout 是「关于」：版本与输入法现状。

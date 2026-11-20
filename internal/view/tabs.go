@@ -22,8 +22,11 @@ type tabState struct {
 	req     requestDraft
 	tables  requestTables
 	respTab int
-	docs    docState
-	editor  docEditor
+	rawResp bool
+	// docsEditing 是「文档」分段处于编辑态（默认预览）；按标签各自记。
+	docsEditing bool
+	docs        docState
+	editor      docEditor
 
 	resp     send.Outcome
 	hasResp  bool
@@ -214,6 +217,8 @@ func (m *Model) captureInto(t *tabState) {
 	t.tables = m.tables
 
 	t.respTab = m.respTab
+	t.rawResp = m.rawResp
+	t.docsEditing = m.docsEditing
 	t.docs = m.docs
 	t.editor = m.editor
 	t.resp = m.resp
@@ -236,6 +241,8 @@ func (m *Model) applyFromTab(t *tabState) {
 	m.tables = t.tables
 
 	m.respTab = t.respTab
+	m.rawResp = t.rawResp
+	m.docsEditing = t.docsEditing
 	m.docs = t.docs
 	m.editor = t.editor
 	m.resp = t.resp
@@ -254,6 +261,8 @@ func (m *Model) clearTabState() {
 	m.req = requestDraft{}
 	m.tables = requestTables{}
 	m.respTab = 0
+	m.rawResp = false
+	m.docsEditing = false
 	m.docs = docState{look: m.docs.look}
 	m.editor = docEditor{}
 	m.resetResponse()
