@@ -142,13 +142,17 @@ func (m *Model) exampleItems(c ui.C, menu *ui.MenuItems) {
 }
 
 // exampleTag 是「正在看示例」的小标签，贴在状态码后面。
+//
+// 它同时是个按钮：点一下回到实时响应。理由很实际——切到示例后，
+// 用户第一反应是「怎么回到刚才那份响应」，不该再去翻菜单。
 func (m *Model) exampleTag(c ui.C) {
 	if m.exSel == "" {
 		return
 	}
-	// 只写「示例」：这一行还要留给状态码与分段控件，名字在菜单里已经能看见。
-	ui.Text(c, "示例").FontSize(10).Mono().Shrink(0).
-		Color(m.theme.MutedForeground)
+	// 只写「示例」两个字：这一行还要留给状态码与分段控件，名字在菜单里能看见。
+	if ui.Button(c, "示例").Ghost().XSmall().Tooltip("正在看已保存的示例，点一下回到实时响应").Clicked() {
+		c.After(m.showLive)
+	}
 }
 
 // exampleHeaders 把响应头转成示例里存的形态（全部按启用写入）。

@@ -67,6 +67,9 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 					c.After(m.saveRequest)
 				}
 				menu.Separator()
+				// 响应示例放在最前面：它是最长的一组，放末尾在小窗口里会被截掉。
+				m.exampleItems(c, menu)
+				menu.Separator()
 				if menu.Item("导入 CURL").Icon(IconImport).Clicked() {
 					c.After(func() { m.openCurlImport(m.newRequestFolder()) })
 				}
@@ -79,9 +82,6 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 				if menu.Item("格式化 URL").Icon(IconGlobe).Clicked() {
 					c.After(m.formatURL)
 				}
-				menu.Separator()
-				// 响应示例整组放在这里：响应工具条太挤，容不下一个常驻按钮。
-				m.exampleItems(c, menu)
 			})
 		}
 		if m.sending {
@@ -505,7 +505,11 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 			case m.sending:
 				ui.Text(c, "请求中…").Muted()
 			case !m.hasResp:
-				ui.Text(c, "尚未发送：点地址栏右侧「发送」运行这条请求。").FontSize(12).Muted()
+				// 顺手把「示例」的位置说一句：这一组在地址栏的「更多操作」里，
+				// 藏在菜单里不好找（实测有用户翻遍界面没找到）。
+				ui.Text(c, "尚未发送：点地址栏右侧「发送」运行这条请求；"+
+					"发送后可在「更多操作 → 响应示例」里存成示例，跑 Mock 与写文档都用它。").
+					FontSize(12).Muted().MaxLines(2)
 			case m.failText != "":
 				ui.Text(c, "请求失败："+m.failText).FontSize(11).Color(theme.Danger)
 			case m.respTab == 1:

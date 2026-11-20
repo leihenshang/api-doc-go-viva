@@ -3500,10 +3500,8 @@ func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
 		t.Fatalf("缺少「正在看示例」的标签：%v", painted(driver))
 	}
 
-	// 切回实时响应。
-	click(t, driver, "更多操作")
-	pump(t, driver)
-	click(t, driver, "实时响应")
+	// 点「示例」小标签直接回实时响应（不用再翻菜单）。
+	click(t, driver, "示例")
 	pump(t, driver)
 	if model.exSel != "" || model.resp.Body != `{"n":2}` {
 		t.Fatalf("切回实时失败：sel=%q body=%q", model.exSel, model.resp.Body)
