@@ -68,6 +68,10 @@ type Outcome struct {
 	Err      string
 	// URL 是真正发出去的地址（变量已替换、查询参数已拼上），历史与错误提示都用它。
 	URL string
+	// ContentType 是响应体的 MIME；Filename 来自 Content-Disposition（没有就是空）。
+	// 两者一起决定「这是不是一份要保存的文件」。
+	ContentType string
+	Filename    string
 	// Truncated 表示正文超过 MaxBody，只读回了前 MaxBody 字节；TotalSize 是
 	// 服务端声明的总长度（没有 Content-Length 时为 0，即未知）。
 	// Body 里**不拼提示文字**：那会破坏 JSON，让格式化视图整段退化成纯文本。
@@ -98,6 +102,8 @@ func Do(ctx context.Context, plan Plan) Outcome {
 	if resp.Request != nil {
 		noteURL(resp.Request.URL)
 	}
+	// 这次请求可能种下 / 更新了 cookie：落盘一次（没开落盘时是空操作）。
+	persist()
 
 	limit := plan.MaxBody
 	if limit <= 0 {
@@ -118,16 +124,18 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		total = 0
 	}
 	return Outcome{
-		Status:    resp.StatusCode,
-		Reason:    http.StatusText(resp.StatusCode),
-		Duration:  time.Since(start),
-		Size:      len(body),
-		Body:      body,
-		Headers:   headerRows(resp.Header),
-		Missing:   missing,
-		URL:       sent,
-		Truncated: truncated,
-		TotalSize: total,
+		Status:      resp.StatusCode,
+		Reason:      http.StatusText(resp.StatusCode),
+		Duration:    time.Since(start),
+		Size:        len(body),
+		Body:        body,
+		Headers:     headerRows(resp.Header),
+		Missing:     missing,
+		URL:         sent,
+		ContentType: resp.Header.Get("Content-Type"),
+		Filename:    filenameFrom(resp.Header),
+		Truncated:   truncated,
+		TotalSize:   total,
 	}
 }
 

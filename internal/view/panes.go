@@ -79,6 +79,9 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 				if menu.Item("格式化 URL").Icon(IconGlobe).Clicked() {
 					c.After(m.formatURL)
 				}
+				menu.Separator()
+				// 响应示例整组放在这里：响应工具条太挤，容不下一个常驻按钮。
+				m.exampleItems(c, menu)
 			})
 		}
 		if m.sending {
@@ -476,6 +479,9 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					ui.Text(c, m.copyNote).FontSize(11).Muted().Shrink(0)
 				}
 			}
+			if m.exSel != "" {
+				m.exampleTag(c)
+			}
 			ui.Spacer(c)
 			if entry.Kind == explorer.KindHTTP {
 				// Grow(0)：Tabs 默认抢满剩余宽度，会把右边的分段控件和复制按钮全挤出这一行。
@@ -490,6 +496,7 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					c.After(m.copyResponse)
 				}
 			}
+
 		})
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			switch {
@@ -516,6 +523,12 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 				}
 				if m.bodyText == "" {
 					ui.Text(c, "响应体为空").Muted()
+					return
+				}
+				// 文件类响应（图片 / PDF / 二进制 / 下载）：不当文本渲染，给保存卡片。
+				// 仍然保留「原始」这一路：想硬看字节的人可以切过去。
+				if m.resp.IsFile() && !m.rawResp {
+					m.fileResponse(c)
 					return
 				}
 				if m.rawResp || len(m.tables.json) == 0 {

@@ -1,10 +1,15 @@
 package send
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	neturl "net/url"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -15,7 +20,23 @@ var (
 	jar    = newJar()
 	hostMu sync.Mutex
 	hosts  = map[string]bool{}
+
+	// storeFile 非空时 jar 会落盘（Open 设置，设成空就不落盘）。
+	storeMu   sync.Mutex
+	storeFile string
 )
+
+// storedCookie 是落盘的一条：jar 只能按 URL 反查，所以存 URL + 名值。
+type storedCookie struct {
+	URL   string `json:"url"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// storedFile 是 cookies.json 的结构。
+type storedFile struct {
+	Cookies []storedCookie `json:"cookies"`
+}
 
 // newJar 造一个标准的、遵循 RFC 6265 的 jar（不会失败）。
 func newJar() *cookiejar.Jar {
@@ -93,6 +114,7 @@ func ClearCookies() {
 	hosts = map[string]bool{}
 	hostMu.Unlock()
 	jar = newJar()
+	persist()
 }
 
 // useJar 把共享 jar 挂到客户端上：没有 jar（理论上不会）就保持无状态。
@@ -101,4 +123,105 @@ func useJar(client *http.Client) *http.Client {
 		client.Jar = jar
 	}
 	return client
+}
+
+// Open 让 Cookie Jar 落盘到 dir/cookies.json，并读回上次的 cookie。
+// dir 为空、或读不出文件都不算错误：Cookie 是附属状态，坏了就当没有。
+func Open(dir string) error {
+	if dir == "" {
+		Close()
+		return nil
+	}
+	storeMu.Lock()
+	storeFile = filepath.Join(dir, "cookies.json")
+	storeMu.Unlock()
+
+	data, err := os.ReadFile(filepath.Join(dir, "cookies.json"))
+	if err != nil {
+		return nil // 第一次运行没有这个文件
+	}
+	var file storedFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return nil // 坏文件当没有，别拖着界面起不来
+	}
+	for _, item := range file.Cookies {
+		parsed, err := neturl.Parse(item.URL)
+		if err != nil || jar == nil {
+			continue
+		}
+		noteURL(parsed)
+		jar.SetCookies(parsed, []*http.Cookie{{
+			Name: item.Name, Value: item.Value, Path: "/",
+		}})
+	}
+	return nil
+}
+
+// Close 停止落盘（设置里关掉「保存 Cookie」时）。
+func Close() {
+	storeMu.Lock()
+	storeFile = ""
+	storeMu.Unlock()
+}
+
+// persist 把 jar 里现在的 cookie 写回磁盘；没开落盘、或写失败都静默。
+// 在每次真实发送之后调用：cookie 只会因为请求而变。
+func persist() {
+	storeMu.Lock()
+	target := storeFile
+	storeMu.Unlock()
+	if target == "" {
+		return
+	}
+	hostMu.Lock()
+	targets := make([]string, 0, len(hosts))
+	for host := range hosts {
+		targets = append(targets, host)
+	}
+	hostMu.Unlock()
+
+	file := storedFile{Cookies: make([]storedCookie, 0, len(targets))}
+	for _, host := range targets {
+		parsed, err := neturl.Parse(host)
+		if err != nil {
+			continue
+		}
+		for _, cookie := range jar.Cookies(parsed) {
+			file.Cookies = append(file.Cookies, storedCookie{URL: host, Name: cookie.Name, Value: cookie.Value})
+		}
+	}
+	sort.Slice(file.Cookies, func(i, j int) bool {
+		if file.Cookies[i].URL != file.Cookies[j].URL {
+			return file.Cookies[i].URL < file.Cookies[j].URL
+		}
+		return file.Cookies[i].Name < file.Cookies[j].Name
+	})
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return
+	}
+	// 先写临时文件再改名：中途崩了不会留下半个 JSON。
+	tmp := target + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, target)
+}
+
+// DeleteCookie 删掉某个域名下的一条 cookie（面板里的「删除」）。
+func DeleteCookie(domain, name string) error {
+	if jar == nil {
+		return fmt.Errorf("Cookie Jar 不可用")
+	}
+	parsed, err := neturl.Parse("http://" + strings.TrimSpace(domain))
+	if err != nil || parsed.Host == "" {
+		return fmt.Errorf("域名无效: %q", domain)
+	}
+	// MaxAge < 0 等于让 jar 立刻丢弃它。
+	jar.SetCookies(parsed, []*http.Cookie{{Name: name, Value: "", Path: "/", MaxAge: -1}})
+	persist()
+	return nil
 }

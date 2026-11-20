@@ -347,6 +347,7 @@ type workspaceUI struct {
 	clientKeyText   string
 	follow          bool
 	insecure        bool
+	persistCookies  bool
 	splitSide       int // 0 = 上下，1 = 左右
 	envs            []string
 	envPick         string
@@ -484,6 +485,13 @@ type Model struct {
 	missing  string
 	failText string
 	statusOK bool
+
+	// 响应示例：当前请求存下来的快照（examples/*.yml），与最近一次真实响应分开存。
+	// exSel 为空表示正在看实时响应；看示例时 live 不被覆盖，切回来用它还原。
+	exRows     []explorer.Example
+	exSel      string
+	exMenuOpen bool
+	live       send.Outcome
 
 	// gen 是「当前选中请求」的代号：换请求后，旧请求在途的响应作废。
 	gen         int
@@ -812,10 +820,11 @@ func (m *Model) ensureEntry(entry *explorer.Entry) {
 	if m.tab == tabEdit || m.tab == tabPreview {
 		m.tab = tabParams
 	}
-	// 换了一条请求：上一次的响应不再属于它，在途结果也作废。
+	// 换了一条请求：上一次的响应与示例都不再属于它，在途结果也作废。
 	m.gen++
 	m.sending = false
 	m.resetResponse()
+	m.loadExamples(entry)
 	m.tables = requestTables{
 		metaLine: entry.File + " · " + orDash(entry.Group),
 		docsKey:  entry.File + "#docs",
@@ -1023,7 +1032,15 @@ func (m *Model) collect() {
 }
 
 // fillResponse 把一次发送结果翻成状态行与正文文案。
+// 同时留一份 live：切到示例再切回来时用它还原（示例不覆盖真实响应）。
 func (m *Model) fillResponse(out send.Outcome) {
+	m.live = out
+	m.exSel = ""
+	m.showOutcome(out)
+}
+
+// showOutcome 把一份结果（实时或示例）铺成界面文案。
+func (m *Model) showOutcome(out send.Outcome) {
 	m.resp = out
 	m.hasResp, m.sending = true, false
 	if out.Err != "" {

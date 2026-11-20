@@ -110,6 +110,35 @@ func TestMockServesSampleFromFields(t *testing.T) {
 	}
 }
 
+// TestMockReplaysSavedExample 有保存的响应示例时回放示例（正文与状态码），
+// 请求文件里显式配的桩正文仍然优先。
+func TestMockReplaysSavedExample(t *testing.T) {
+	dir := writeCollection(t)
+	if _, err := explorer.SaveExample(dir, "用户.yml", explorer.Example{
+		Status: 201, Body: `{"replayed":true}`, Method: "GET", URL: "{{host}}/api/users/1",
+	}); err != nil {
+		t.Fatalf("SaveExample: %v", err)
+	}
+	server, err := Start("127.0.0.1:0", []string{dir}, nil)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = server.Close() }()
+
+	resp, err := http.Get("http://" + server.Addr() + "/api/users/1")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 201 {
+		t.Fatalf("状态码应取示例里的 201，实际 %d", resp.StatusCode)
+	}
+	if string(body) != `{"replayed":true}` {
+		t.Fatalf("正文应回放示例，实际 %q", body)
+	}
+}
+
 // TestMockReportsRoutesAndMismatches 路由表可查；路径对而方法不对给 405，都对不上给 404。
 func TestMockReportsRoutesAndMismatches(t *testing.T) {
 	server, err := Start("127.0.0.1:0", []string{writeCollection(t)}, nil)

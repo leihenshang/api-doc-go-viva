@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -90,5 +92,79 @@ func TestCookiesAreSorted(t *testing.T) {
 	}
 	if cookies[0].Name != "a" || cookies[1].Name != "b" {
 		t.Fatalf("没按名称排序：%+v", cookies)
+	}
+}
+
+// resetJar 模拟「重启进程」：清掉内存里的 jar，但不动磁盘上的 cookies.json。
+func resetJar() {
+	hostMu.Lock()
+	hosts = map[string]bool{}
+	hostMu.Unlock()
+	jar = newJar()
+}
+
+// TestCookiesPersistAcrossRestart 落盘后重启仍在；单条删除只影响那一条。
+func TestCookiesPersistAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	ClearCookies()
+	t.Cleanup(func() { ClearCookies(); Close() })
+	if err := Open(dir); err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "sid", Value: "s-1", Path: "/"})
+		http.SetCookie(w, &http.Cookie{Name: "lang", Value: "zh", Path: "/"})
+	}))
+	defer srv.Close()
+	plan := Plan{File: &collection.RequestFile{
+		Info: collection.FileInfo{Name: "登录", Type: "http"},
+		HTTP: collection.HTTPBlock{Method: "GET", URL: srv.URL + "/login"},
+	}}
+	Do(context.Background(), plan)
+
+	data, err := os.ReadFile(filepath.Join(dir, "cookies.json"))
+	if err != nil {
+		t.Fatalf("cookies.json 没落盘：%v", err)
+	}
+	if !strings.Contains(string(data), `"sid"`) || !strings.Contains(string(data), `"s-1"`) {
+		t.Fatalf("落盘内容不对：%s", data)
+	}
+
+	// 重启：内存清空，只从磁盘读。
+	resetJar()
+	if left := Cookies(); len(left) != 0 {
+		t.Fatalf("重置后内存里不该还有：%+v", left)
+	}
+	if err := Open(dir); err != nil {
+		t.Fatalf("重启后 Open: %v", err)
+	}
+	restored := Cookies()
+	if len(restored) != 2 {
+		t.Fatalf("重启后应读回两条：%+v", restored)
+	}
+
+	// 单条删除：只掉 lang。
+	if err := DeleteCookie(restored[0].Domain, "lang"); err != nil {
+		t.Fatalf("DeleteCookie: %v", err)
+	}
+	after := Cookies()
+	if len(after) != 1 || after[0].Name != "sid" {
+		t.Fatalf("删单条后应只剩 sid：%+v", after)
+	}
+	// 文件也同步了。
+	data, _ = os.ReadFile(filepath.Join(dir, "cookies.json"))
+	if strings.Contains(string(data), `"lang"`) {
+		t.Fatalf("文件里还有被删的那条：%s", data)
+	}
+
+	// 关掉落盘后不再写文件：清空后再发一次，文件仍旧是旧内容。
+	Close()
+	if err := DeleteCookie(after[0].Domain, "sid"); err != nil {
+		t.Fatalf("DeleteCookie: %v", err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir, "cookies.json"))
+	if !strings.Contains(string(data), `"sid"`) {
+		t.Fatalf("关掉落盘后不该再写文件：%s", data)
 	}
 }

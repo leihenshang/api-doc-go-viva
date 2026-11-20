@@ -263,6 +263,11 @@ func (m *Model) settingsNetwork(c ui.C) {
 		ui.Spacer(c)
 	})
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "保存 Cookie")
+		ui.Switch(c, &m.ui.persistCookies, "保存 Cookie").Changed()
+		ui.Spacer(c)
+	})
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "代理地址")
 		ui.TextField(c, &m.ui.proxyText, "代理地址", "http://127.0.0.1:7890").Grow(1).Changed()
 	})
@@ -316,6 +321,10 @@ func (m *Model) cookieDialog(c ui.C) {
 					ui.Text(c, row.Domain).FontSize(11).Mono().Width(200).Ellipsis()
 					ui.Text(c, row.Name).FontSize(11).Mono().Width(140).Ellipsis()
 					ui.Text(c, row.Value).FontSize(11).Mono().Muted().Grow(1).Ellipsis()
+					if ui.Button(c, "删除 "+row.Name).Icon(IconTrash).Ghost().IconOnly().
+						Tooltip("只删这一条（" + row.Name + "）").Clicked() {
+						c.After(func() { m.deleteCookie(row) })
+					}
 				})
 			}
 			if m.ui.cookieNote != "" {

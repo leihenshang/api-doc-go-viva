@@ -247,8 +247,16 @@ func Build(dirs []string) ([]Route, map[string]string, map[string]Rule) {
 			}
 			rule := RuleOf(entry.Payload)
 			body := sampleBody(entry.Payload)
+			// 有存下来的响应示例就回放示例：真实返回比按字段表拼出来的更像。
+			status := 0
+			if list := explorer.Examples(dir, entry.File); len(list) > 0 {
+				body, status = list[0].Body, list[0].Status
+			}
 			if strings.TrimSpace(rule.Body) != "" {
-				body = rule.Body
+				body = rule.Body // 请求里显式配的桩正文优先级最高
+			}
+			if rule.Status == 0 {
+				rule.Status = status
 			}
 			bodies[key] = body
 			if rule.Status != 0 || rule.DelayMS != 0 || rule.Body != "" {

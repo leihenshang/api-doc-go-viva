@@ -30,6 +30,9 @@ type Settings struct {
 	NoFollowRedirects bool `json:"noFollowRedirects"`
 	// InsecureSSL 是全局默认：忽略 HTTPS 证书校验（请求文件的 settings.insecureSsl 显式设置时优先）。
 	InsecureSSL bool `json:"insecureSsl,omitempty"`
+	// NoCookiePersist 为真时 Cookie 只留在内存里（关掉窗口就没了）。
+	// 默认落盘：登录一次，下次打开还在。
+	NoCookiePersist bool `json:"noCookiePersist,omitempty"`
 	// Proxy 是发送用的代理地址（http:// / https:// / socks5://），空表示直连。
 	Proxy string `json:"proxy,omitempty"`
 	// ClientCert / ClientKey 是双向 TLS 的证书与私钥路径（PEM）；两个都填才生效。
@@ -86,6 +89,9 @@ func Default() Settings {
 
 // FollowRedirects 报告是否跟随重定向（默认跟随）。
 func (s Settings) FollowRedirects() bool { return !s.NoFollowRedirects }
+
+// PersistCookies 报告 Cookie Jar 是否落盘（默认落盘）。
+func (s Settings) PersistCookies() bool { return !s.NoCookiePersist }
 
 // Dir 返回配置目录：$XDG_CONFIG_HOME/api-doc-viva，缺省 ~/.config/api-doc-viva。
 func Dir() (string, error) {

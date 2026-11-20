@@ -29,6 +29,9 @@ type tabState struct {
 	editor      docEditor
 
 	resp     send.Outcome
+	live     send.Outcome
+	exSel    string
+	exRows   []explorer.Example
 	hasResp  bool
 	sending  bool
 	statusOK bool
@@ -222,6 +225,7 @@ func (m *Model) captureInto(t *tabState) {
 	t.docs = m.docs
 	t.editor = m.editor
 	t.resp = m.resp
+	t.live, t.exSel, t.exRows = m.live, m.exSel, m.exRows
 	t.hasResp, t.sending, t.statusOK = m.hasResp, m.sending, m.statusOK
 	t.status, t.reason, t.elapsed, t.size = m.status, m.reason, m.elapsed, m.size
 	t.copyNote = m.copyNote
@@ -246,6 +250,8 @@ func (m *Model) applyFromTab(t *tabState) {
 	m.docs = t.docs
 	m.editor = t.editor
 	m.resp = t.resp
+	m.live, m.exSel, m.exRows = t.live, t.exSel, t.exRows
+	m.exMenuOpen = false
 	m.hasResp, m.sending, m.statusOK = t.hasResp, t.sending, t.statusOK
 	m.status, m.reason, m.elapsed, m.size = t.status, t.reason, t.elapsed, t.size
 	m.copyNote = t.copyNote
@@ -266,6 +272,8 @@ func (m *Model) clearTabState() {
 	m.docs = docState{look: m.docs.look}
 	m.editor = docEditor{}
 	m.resetResponse()
+	m.exRows, m.exSel, m.exMenuOpen = nil, "", false
+	m.live = send.Outcome{}
 	m.sending = false
 	m.gen++
 }

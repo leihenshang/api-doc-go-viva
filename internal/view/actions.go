@@ -603,6 +603,17 @@ func (m *Model) reloadCookies() {
 	m.ui.cookieRows = send.Cookies()
 }
 
+// deleteCookie 删单条：同域名下其它 cookie 不受影响。
+func (m *Model) deleteCookie(item send.Cookie) {
+	if err := send.DeleteCookie(item.Domain, item.Name); err != nil {
+		m.ui.cookieNote = "删除失败：" + err.Error()
+	} else {
+		m.ui.cookieNote = "已删除 " + item.Name
+	}
+	m.reloadCookies()
+	m.invalidator.Invalidate()
+}
+
 // clearCookies 清空共享 jar：之后的请求不再自动带 cookie。
 func (m *Model) clearCookies() {
 	send.ClearCookies()
@@ -1297,12 +1308,29 @@ func (m *Model) applySettingsEdits() {
 		m.settings.ClientKey = key
 		changed = true
 	}
+	if m.ui.persistCookies != m.settings.PersistCookies() {
+		m.settings.NoCookiePersist = !m.ui.persistCookies
+		m.applyCookiePersist()
+		changed = true
+	}
 	if side := m.ui.splitSide == 1; side != m.settings.SplitSideBySide {
 		m.settings.SplitSideBySide = side
 		changed = true
 	}
 	if changed {
 		_ = settings.Save(m.settings)
+	}
+}
+
+// applyCookiePersist 按当前偏好打开 / 关掉 Cookie 落盘。
+// 关掉时不动内存里的 jar：本次会话仍共享，只是不再写文件。
+func (m *Model) applyCookiePersist() {
+	if !m.settings.PersistCookies() {
+		send.Close()
+		return
+	}
+	if dir, err := settings.Dir(); err == nil {
+		_ = send.Open(dir)
 	}
 }
 
@@ -1534,6 +1562,7 @@ func (m *Model) syncSettingsUI() {
 	m.ui.clientKeyText = m.settings.ClientKey
 	m.ui.follow = m.settings.FollowRedirects()
 	m.ui.insecure = m.settings.InsecureSSL
+	m.ui.persistCookies = m.settings.PersistCookies()
 	m.ui.splitSide = 0
 	if m.settings.SplitSideBySide {
 		m.ui.splitSide = 1

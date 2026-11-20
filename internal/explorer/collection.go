@@ -34,6 +34,7 @@ const (
 var skipDirs = map[string]bool{
 	"environments": true,
 	"assets":       true,
+	"examples":     true, // 响应示例按请求目录镜像存放，不是分组
 	"trash":        true,
 	"node_modules": true,
 }

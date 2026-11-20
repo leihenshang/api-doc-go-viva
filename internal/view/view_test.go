@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2836,6 +2837,7 @@ func TestCookieJarPanel(t *testing.T) {
 		switch r.URL.Path {
 		case "/login":
 			http.SetCookie(w, &http.Cookie{Name: "sid", Value: "s-9", Path: "/"})
+			http.SetCookie(w, &http.Cookie{Name: "theme", Value: "dark", Path: "/"})
 			_, _ = fmt.Fprint(w, `{"ok":true}`)
 		default:
 			if cookie, err := r.Cookie("sid"); err == nil {
@@ -2888,8 +2890,18 @@ http:
 	if !shows(driver, "sid") || !shows(driver, "s-9") {
 		t.Fatalf("面板没列出 cookie：%v", painted(driver))
 	}
+	if len(model.ui.cookieRows) != 2 {
+		t.Fatalf("缓存里应有两条：%+v", model.ui.cookieRows)
+	}
+
+	// 单条删除：只掉 theme，sid 还在。
+	click(t, driver, "删除 theme")
+	pump(t, driver)
 	if len(model.ui.cookieRows) != 1 || model.ui.cookieRows[0].Name != "sid" {
-		t.Fatalf("缓存里应有一条：%+v", model.ui.cookieRows)
+		t.Fatalf("删单条后应只剩 sid：%+v", model.ui.cookieRows)
+	}
+	if left := send.Cookies(); len(left) != 1 || left[0].Name != "sid" {
+		t.Fatalf("jar 里也该只剩 sid：%+v", left)
 	}
 
 	// 清空后：面板空了，请求也不再带 cookie（服务端回 401）。
@@ -3411,6 +3423,153 @@ func TestResponseTruncationNotice(t *testing.T) {
 	}
 	if model.resp.TotalSize != int64(len(payload)) {
 		t.Fatalf("总长度 = %d，期望 %d", model.resp.TotalSize, len(payload))
+	}
+}
+
+// TestResponseExamplesSaveSwitchDelete 响应示例：存一份当前响应 → 再发一次拿到新响应 →
+// 切回示例看到旧的那份 → 切回实时 → 删掉示例。示例落在 examples/<请求>/ 下。
+func TestResponseExamplesSaveSwitchDelete(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&calls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"n":%d}`, n)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+
+	send := func(want string) {
+		t.Helper()
+		click(t, driver, "发送")
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			pump(t, driver)
+			if model.hasResp && model.resp.Body == want {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("等不到响应 %s，当前 %q", want, model.resp.Body)
+	}
+	send(`{"n":1}`)
+
+	// 第一次保存走「更多操作」菜单。
+	click(t, driver, "更多操作")
+	pump(t, driver)
+	click(t, driver, "存为示例")
+	pump(t, driver)
+	list := explorer.Examples(col.Dir, "健康检查.yml")
+	if len(list) != 1 || list[0].Body != `{"n":1}` || list[0].Status != 200 {
+		t.Fatalf("示例没落盘或内容不对：%+v", list)
+	}
+	if !strings.Contains(model.copyNote, "已存为示例") {
+		t.Fatalf("应提示已保存，实际 %q", model.copyNote)
+	}
+
+	// 再发一次：实时响应换成 n=2，示例仍是 n=1。
+	send(`{"n":2}`)
+	if model.exSel != "" {
+		t.Fatalf("新响应应回到实时视图，实际选中 %q", model.exSel)
+	}
+
+	// 切到示例：入口在「更多操作」里（响应工具条那行已经满了）。
+	click(t, driver, "更多操作")
+	pump(t, driver)
+	click(t, driver, list[0].Name)
+	pump(t, driver)
+	if model.exSel != list[0].File {
+		t.Fatalf("应选中示例 %q，实际 %q", list[0].File, model.exSel)
+	}
+	if model.resp.Body != `{"n":1}` {
+		t.Fatalf("示例正文没铺上去：%q", model.resp.Body)
+	}
+	tagShown := false
+	for _, text := range painted(driver) {
+		if strings.TrimSpace(text) == "示例" {
+			tagShown = true
+		}
+	}
+	if !tagShown {
+		t.Fatalf("缺少「正在看示例」的标签：%v", painted(driver))
+	}
+
+	// 切回实时响应。
+	click(t, driver, "更多操作")
+	pump(t, driver)
+	click(t, driver, "实时响应")
+	pump(t, driver)
+	if model.exSel != "" || model.resp.Body != `{"n":2}` {
+		t.Fatalf("切回实时失败：sel=%q body=%q", model.exSel, model.resp.Body)
+	}
+
+	// 删掉示例：磁盘清空，仍停在实时响应。
+	click(t, driver, "更多操作")
+	pump(t, driver)
+	click(t, driver, list[0].Name)
+	pump(t, driver)
+	click(t, driver, "更多操作")
+	pump(t, driver)
+	click(t, driver, "删除这份示例")
+	pump(t, driver)
+	if left := explorer.Examples(col.Dir, "健康检查.yml"); len(left) != 0 {
+		t.Fatalf("删除后还有示例：%+v", left)
+	}
+	if model.exSel != "" || model.resp.Body != `{"n":2}` {
+		t.Fatalf("删除后应回到实时响应：sel=%q body=%q", model.exSel, model.resp.Body)
+	}
+}
+
+// TestFileResponseShowsCardAndSaves 文件类响应（PDF / 二进制 / 带 filename）不当文本渲染，
+// 而是一张带文件名与保存按钮的卡片；保存出来的字节与响应体一致。
+func TestFileResponseShowsCardAndSaves(t *testing.T) {
+	payload := "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n1 0 obj\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", `attachment; filename="报告.pdf"`)
+		_, _ = io.WriteString(w, payload)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	for deadline := time.Now().Add(3 * time.Second); model.sending && time.Now().Before(deadline); {
+		pump(t, driver)
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !model.resp.IsFile() {
+		t.Fatalf("应判定为文件类响应：%+v", model.resp.ContentType)
+	}
+	if !shows(driver, "报告.pdf") {
+		t.Fatalf("卡片里应有文件名：%v", painted(driver))
+	}
+	if !shows(driver, "保存为文件") {
+		t.Fatalf("卡片里应有保存按钮：%v", painted(driver))
+	}
+
+	target := filepath.Join(t.TempDir(), "saved.pdf")
+	if err := model.writeResponseBody(target); err != nil {
+		t.Fatalf("writeResponseBody: %v", err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("读回文件: %v", err)
+	}
+	if string(got) != payload {
+		t.Fatalf("保存的字节不对：%q", got)
 	}
 }
 
