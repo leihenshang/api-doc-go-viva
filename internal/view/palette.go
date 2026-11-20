@@ -50,6 +50,7 @@ var paletteGroups = []paletteGroup{
 		{name: "设置", hint: primaryName() + " ,", run: func(m *Model) { m.openSettings() }},
 		{name: "请求历史", run: func(m *Model) { m.openHistory() }},
 		{name: "本地 Mock 服务", run: func(m *Model) { m.openMock() }},
+		{name: "运行集合", run: func(m *Model) { m.openRunner() }},
 	}},
 }
 

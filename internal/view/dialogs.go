@@ -22,6 +22,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.historyDialog(c)
 	m.importDialog(c)
 	m.mockDialog(c)
+	m.runnerDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
 	m.envDialog(c)
@@ -453,6 +454,89 @@ func (m *Model) settingsAbout(c ui.C) {
 	ui.Text(c, m.ui.imeDetail).FontSize(11).Muted()
 	ui.Text(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").
 		FontSize(11).Muted()
+}
+
+// runnerDialog 是集合运行器：勾一批请求顺序跑，右边是逐条结果。
+func (m *Model) runnerDialog(c ui.C) {
+	ui.ModalWith(c, &m.ui.runOpen, "运行集合", ui.ModalSpec{Width: 820, Height: 620}, func() {
+		ui.Column(c).FillWidth().Height(520).Gap(8).Children(func() {
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "顺序执行勾选的请求；状态码 ≥ 400 或连不上算失败。").FontSize(11).Muted()
+				ui.Spacer(c)
+				if ui.Button(c, "全选").Ghost().Small().Clicked() {
+					c.After(func() { m.selectAllRuns(true) })
+				}
+				if ui.Button(c, "全不选").Ghost().Small().Clicked() {
+					c.After(func() { m.selectAllRuns(false) })
+				}
+				ui.Switch(c, &m.run.StopOnFail, "遇到失败即停")
+			})
+			ui.Divider(c)
+			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+				ui.Column(c).FillWidth().Gap(2).Children(func() {
+					if len(m.run.Rows) == 0 {
+						ui.Text(c, "当前集合里没有 http 请求。").FontSize(11).Muted()
+					}
+					for index := range m.run.Rows {
+						item := &m.run.Rows[index]
+						ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
+							ui.Checkbox(c, &item.Selected, item.Name)
+							ui.Text(c, runMethodText(item.Method)).FontSize(10).Mono().Bold().Width(52).
+								Color(methodTint(item.Method, m.isLight()))
+							ui.Text(c, item.Name).FontSize(11).Grow(1).Ellipsis()
+							ui.Text(c, item.URL).FontSize(10).Mono().Muted().Grow(1).Ellipsis()
+						})
+					}
+				})
+			})
+			ui.Divider(c)
+			ui.Text(c, "结果").FontSize(11).Muted()
+			if len(m.run.Results) == 0 {
+				ui.Text(c, "还没运行。").FontSize(11).Muted()
+			}
+			for _, result := range m.run.Results {
+				entry := result
+				ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
+					tint := c.Theme().Success
+					status := "错误"
+					if entry.Err != "" {
+						tint = c.Theme().Danger
+					} else {
+						status = strconv.Itoa(entry.Status)
+						if entry.Failed {
+							tint = c.Theme().Danger
+						}
+					}
+					ui.Text(c, status).FontSize(10).Mono().Color(tint).Width(44)
+					ui.Text(c, entry.Name).FontSize(11).Width(180).Ellipsis()
+					ui.Text(c, formatDuration(entry.Duration.Milliseconds())).FontSize(10).Mono().Muted().Width(70)
+					detail := entry.URL
+					if entry.Err != "" {
+						detail = entry.Err
+					}
+					ui.Text(c, detail).FontSize(10).Mono().Muted().Grow(1).Ellipsis()
+				})
+			}
+			if m.run.Note != "" {
+				ui.Text(c, m.run.Note).FontSize(11).Muted()
+			}
+		})
+	}, func() {
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "关闭").Clicked() {
+				m.ui.runOpen = false
+			}
+			if m.run.Running {
+				if ui.Button(c, "停止").Icon(IconX).Outline().Clicked() {
+					c.After(m.stopRun)
+				}
+				return
+			}
+			if ui.Button(c, "运行").Clicked() {
+				c.After(m.startRun)
+			}
+		})
+	})
 }
 
 // mockDialog 是本地 Mock 服务：开关、监听地址与当前注册的路由表。

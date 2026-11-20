@@ -13,6 +13,7 @@ import (
 // 搜索框在 sidebar 里先声明、当帧写入过滤词，随后重建树，避免一帧延迟。
 func (m *Model) Page(c ui.C) {
 	m.drainMCP()
+	m.drainRun()
 	if ui.Shortcut(c, ui.Primary, "k") {
 		c.After(func() {
 			if m.ui.paletteOpen {
@@ -210,6 +211,9 @@ func (m *Model) collectionPicker(c ui.C) {
 		}
 		if menu.Item("导入 OpenCollection 集合…").Icon(IconImport).Clicked() {
 			c.After(func() { m.openImport(1) })
+		}
+		if menu.Item("运行集合…").Icon(IconSend).Clicked() {
+			c.After(m.openRunner)
 		}
 		closeItem := menu.Item("关闭当前集合")
 		if len(m.roots) <= 1 {

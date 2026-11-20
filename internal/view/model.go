@@ -12,10 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/leihenshang/api-doc-go-share/collection"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	appmock "github.com/leihenshang/api-doc-go-viva/internal/mock"
+	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
@@ -248,6 +250,9 @@ type workspaceUI struct {
 	historyRows  []history.Entry
 	historyNote  string
 
+	// 集合运行器弹窗。
+	runOpen bool
+
 	// Mock 弹窗：开关与监听地址。
 	mockOpen     bool
 	mockOn       bool
@@ -427,6 +432,9 @@ type Model struct {
 	mcpHost    mcpHost
 	mock       mockRuntime
 	mockServer *appmock.Server
+	run        runState
+	runCh      chan runner.Result
+	runCancel  context.CancelFunc
 
 	resp     send.Outcome
 	hasResp  bool
@@ -888,19 +896,7 @@ func (m *Model) start(entry *explorer.Entry) {
 	}
 	m.resetResponse()
 	m.sending = true
-	follow := m.settings.FollowRedirects()
-	plan := send.Plan{
-		File:            payload,
-		Vars:            m.vars,
-		Timeout:         time.Duration(m.settings.TimeoutSec) * time.Second,
-		MaxBody:         1 << 20,
-		Proxy:           m.settings.Proxy,
-		ClientCert:      m.settings.ClientCert,
-		ClientKey:       m.settings.ClientKey,
-		Dir:             m.col.Dir,
-		FollowRedirects: &follow,
-		InsecureSSL:     m.settings.InsecureSSL,
-	}
+	plan := m.planFor(payload)
 	tab := m.activeTab()
 	if tab == nil {
 		m.sending = false
@@ -926,6 +922,28 @@ func (m *Model) start(entry *explorer.Entry) {
 		m.results <- sendResult{tab: tabID, gen: gen, out: out}
 		m.invalidator.Invalidate()
 	}()
+}
+
+// planFor 按当前偏好吃一次快照造发送计划：单条发送与集合运行器共用一份，
+// 免得两边对超时 / 重定向 / 代理 / 证书的设置各写一遍。
+func (m *Model) planFor(payload *collection.RequestFile) send.Plan {
+	follow := m.settings.FollowRedirects()
+	dir := ""
+	if m.col != nil {
+		dir = m.col.Dir
+	}
+	return send.Plan{
+		File:            payload,
+		Vars:            m.vars,
+		Timeout:         time.Duration(m.settings.TimeoutSec) * time.Second,
+		MaxBody:         1 << 20,
+		Proxy:           m.settings.Proxy,
+		ClientCert:      m.settings.ClientCert,
+		ClientKey:       m.settings.ClientKey,
+		Dir:             dir,
+		FollowRedirects: &follow,
+		InsecureSSL:     m.settings.InsecureSSL,
+	}
 }
 
 // resetResponse 清掉上一次的结果，避免发送中看到旧状态。

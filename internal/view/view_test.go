@@ -2324,6 +2324,86 @@ func TestRequestHistoryRecordsAndReopens(t *testing.T) {
 	}
 }
 
+// TestRunCollectionFromDialog 运行器：勾两条（一条成功一条 500）跑完，
+// 结果逐条回来，失败计数对得上。
+func TestRunCollectionFromDialog(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "gone") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.openRunner()
+	pump(t, driver)
+	if len(model.run.Rows) != 2 {
+		t.Fatalf("应列出两条 http 请求：%+v", model.run.Rows)
+	}
+	click(t, driver, "运行")
+	// 结果由 Page 每帧搬运，等它跑完。
+	deadline := time.Now().Add(5 * time.Second)
+	for model.run.Running && time.Now().Before(deadline) {
+		pump(t, driver)
+		time.Sleep(10 * time.Millisecond)
+	}
+	if model.run.Running {
+		t.Fatal("等不到运行结束")
+	}
+	if len(model.run.Results) != 2 {
+		t.Fatalf("应跑完两条：%+v", model.run.Results)
+	}
+	failed := 0
+	for _, result := range model.run.Results {
+		if result.Failed {
+			failed++
+		}
+	}
+	if failed != 1 {
+		t.Fatalf("应有一条失败：%+v", model.run.Results)
+	}
+	if !strings.Contains(model.run.Note, "失败 1 条") {
+		t.Fatalf("小结不对：%q", model.run.Note)
+	}
+	if !shows(driver, "500") {
+		t.Fatalf("结果里应看到 500：%v", painted(driver))
+	}
+}
+
+// TestRunStopsOnFirstFailure 勾了「遇到失败即停」就只跑第一条。
+func TestRunStopsOnFirstFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	col, err := explorer.Load(writeCollection(t, srv.URL))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.openRunner()
+	model.run.StopOnFail = true
+	pump(t, driver)
+	click(t, driver, "运行")
+	deadline := time.Now().Add(5 * time.Second)
+	for model.run.Running && time.Now().Before(deadline) {
+		pump(t, driver)
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(model.run.Results) != 1 {
+		t.Fatalf("应当第一条就停：%+v", model.run.Results)
+	}
+}
+
 // TestMockServerFollowsSettings 开了桩服务就按集合里的请求应答，关了就停。
 func TestMockServerFollowsSettings(t *testing.T) {
 	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
