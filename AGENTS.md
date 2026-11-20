@@ -126,7 +126,10 @@ journalctl --since "..." --no-pager | grep -iE "oom|killed process|gpu|drm"
 ## GUI 验证与 xdotool 规则
 
 1. **先无头测试，后 GUI**：逻辑改动先过 `go test`，GUI 只做最终观感确认，减少窗口启停次数。
-2. **每次重启都重新取窗口 ID 与位置**，不要复用上一次的 `/tmp/wid` 或坐标：
+2. **注意 DPI 缩放**：窗口逻辑尺寸 1180×760，本机物理窗口是 1475×950（×1.25）。
+   `xdotool` 用物理像素；坐标要么从截图上的实际像素量，要么按 `窗口宽 / 1180` 换算，
+   不要直接拿界面逻辑坐标去点。
+3. **每次重启都重新取窗口 ID 与位置**，不要复用上一次的 `/tmp/wid` 或坐标：
 
    ```bash
    WID=$(xdotool search --name "API-DOC · Viva" | while read id; do
@@ -136,11 +139,11 @@ journalctl --since "..." --no-pager | grep -iE "oom|killed process|gpu|drm"
    ```
 
    窗口位置会变（例如从 `53,78` 变成 `542,240`），坐标必须加 `X`/`Y` 偏移。
-3. **按下与松开必须在同一条命令里**：`mousedown` 后若命令/终端被中断，`mouseup` 不会执行，
+4. **按下与松开必须在同一条命令里**：`mousedown` 后若命令/终端被中断，`mouseup` 不会执行，
    会留下"鼠标一直按着"的状态。拖拽脚本要把 `xdotool mouseup 1` 放在同一条命令末尾。
-4. 拖拽前先 `import -window $WID` 截图确认行位置；拖拽后先查磁盘（`ls` / `grep seq:`）
+5. 拖拽前先 `import -window $WID` 截图确认行位置；拖拽后先查磁盘（`ls` / `grep seq:`）
    再截图，避免把"没点中"误判成功能失败。
-5. 截完图马上 `bin/dev stop`，并清理 `/tmp` 下的临时集合与截图；临时副本只放 `/tmp`，
+6. 截完图马上 `bin/dev stop`，并清理 `/tmp` 下的临时集合与截图；临时副本只放 `/tmp`，
    不要直接拖仓库里的 `sample-collection`。
 
 ## 集合树改动清单（易错点）

@@ -1,6 +1,8 @@
 package view
 
 import (
+	"path/filepath"
+
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/vivaui/viva/ui"
 )
@@ -46,6 +48,7 @@ func (m *Model) toolbar(c ui.C) {
 			ui.Text(c, appVersion).FontSize(11).Muted().Mono()
 		})
 		ui.Row(c).Grow(1).Height(44).PadLeft(24).PadRight(12).Gap(8).Items(ui.Center).Children(func() {
+			m.collectionPicker(c)
 			m.envPicker(c)
 			ui.Spacer(c)
 			themeLabel, themeIcon := "日间", IconSun
@@ -61,6 +64,63 @@ func (m *Model) toolbar(c ui.C) {
 		})
 	})
 	ui.Divider(c)
+}
+
+// collectionPicker 是集合切换下拉：已打开的集合根、打开另一个集合、关闭当前集合。
+// 重名集合带上目录名尾巴，避免下拉里出现两个一模一样的名字。
+func (m *Model) collectionPicker(c ui.C) {
+	label := "未打开集合"
+	if m.col != nil && m.col.Name != "" {
+		label = m.collectionLabel(m.active)
+	}
+	button := ui.Button(c, label).Icon(IconFolderOpen).Secondary().Tooltip("切换集合")
+	if button.Clicked() {
+		c.After(func() { m.collectionMenuOpen = !m.collectionMenuOpen })
+	}
+	if !m.collectionMenuOpen {
+		return
+	}
+	ui.Menu(c, button, &m.collectionMenuOpen, func(menu *ui.MenuItems) {
+		for index := range m.roots {
+			slot := index
+			item := menu.Item(m.collectionLabel(slot))
+			if slot == m.active {
+				item.Checked(true)
+			}
+			if item.Clicked() {
+				c.After(func() { m.activateRoot(slot) })
+			}
+		}
+		menu.Separator()
+		if menu.Item("打开集合…").Icon(IconFolderOpen).Clicked() {
+			c.After(m.chooseCollection)
+		}
+		closeItem := menu.Item("关闭当前集合")
+		if len(m.roots) <= 1 {
+			closeItem.Disabled(true)
+		}
+		if closeItem.Clicked() {
+			c.After(func() { m.closeRoot(m.active) })
+		}
+	})
+}
+
+// collectionLabel 是下拉里的集合名：同名时补上目录名，便于区分。
+func (m *Model) collectionLabel(index int) string {
+	if index < 0 || index >= len(m.roots) {
+		return "未打开集合"
+	}
+	root := m.roots[index]
+	name := root.col.Name
+	if name == "" {
+		name = filepath.Base(root.col.Dir)
+	}
+	for i, other := range m.roots {
+		if i != index && other.col.Name == root.col.Name {
+			return name + " · " + filepath.Base(root.col.Dir)
+		}
+	}
+	return name
 }
 
 // envPicker 是环境下拉：只有环境列表与「环境设置…」。

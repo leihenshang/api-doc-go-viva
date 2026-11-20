@@ -323,12 +323,13 @@ type Model struct {
 	selectFile    string
 	selectPending bool
 	// selKey 是当前高亮的行（Tree 的选中由应用决定，组件只按 TreeNode.Selected 上色）。
-	selKey      string
-	menuRoot    int
-	menuEntry   string
-	envMenuOpen bool
-	menuOpen    bool
-	tab         detailTab
+	selKey             string
+	menuRoot           int
+	menuEntry          string
+	envMenuOpen        bool
+	collectionMenuOpen bool
+	menuOpen           bool
+	tab                detailTab
 
 	filter    string
 	shown     []*explorer.Entry

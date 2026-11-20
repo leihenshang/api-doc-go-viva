@@ -1527,3 +1527,38 @@ func TestTwoRootsWithSamePathsShareNoTreeKeys(t *testing.T) {
 		t.Fatal("不同集合的同名目录键应不同")
 	}
 }
+
+// TestCollectionPickerSwitchesRoots 工具条的集合下拉能列出已打开的根，并切到选中的那个。
+func TestCollectionPickerSwitchesRoots(t *testing.T) {
+	first := writeCollection(t, "http://example.invalid")
+	second := writeCollection(t, "http://example.invalid")
+	colA, err := explorer.Load(first)
+	if err != nil {
+		t.Fatalf("Load A: %v", err)
+	}
+	colB, err := explorer.Load(second)
+	if err != nil {
+		t.Fatalf("Load B: %v", err)
+	}
+	model := New(colA, "", nil)
+	model.AddRoot(colB)
+	driver := openWindow(t, model)
+	model.syncTree()
+
+	// 下拉按钮显示当前集合名；点开后重名集合带目录名尾巴。
+	current := "验证集合 · " + filepath.Base(colA.Dir)
+	click(t, driver, current)
+	pump(t, driver)
+	target := "验证集合 · " + filepath.Base(colB.Dir)
+	click(t, driver, target)
+	pump(t, driver)
+	if model.active != 1 || model.col.Dir != colB.Dir {
+		t.Fatalf("下拉没切到第二个集合：active=%d col=%s", model.active, model.col.Dir)
+	}
+	// 按钮跟着显示新集合（重名所以带尾巴）。
+	click(t, driver, target)
+	pump(t, driver)
+	if model.active != 1 {
+		t.Fatal("点当前集合不应改变活动根")
+	}
+}
