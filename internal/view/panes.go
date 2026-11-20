@@ -655,23 +655,79 @@ func (m *Model) responseHeaders(c ui.C) {
 	}
 }
 
-// grpcTab 只读展示 gRPC 元数据：调用不在这次框架验证的范围。
+// grpcTab 是 gRPC 请求页：连接信息只读，元数据与请求消息可编辑，右上角「调用」。
 func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 	if entry.Payload.GRPC == nil {
 		ui.Text(c, "缺少 grpc 段").Muted()
 		return
 	}
-	ui.Column(c).FillWidth().Pad(14).Gap(6).Draw(cardDraw).Children(func() {
+	block := entry.Payload.GRPC
+	if ui.Shortcut(c, ui.Primary, "s") && m.grpcDirty {
+		c.After(m.saveGRPC)
+	}
+	if ui.Shortcut(c, ui.Primary, "enter") && !m.grpcSending {
+		c.After(func() { m.sendGRPC(entry) })
+	}
+	ui.Column(c).FillWidth().Gap(8).Children(func() {
 		ui.Text(c, m.tables.grpcEndpoint).Mono().FontSize(12)
 		if m.tables.grpcMeta != "" {
 			ui.Text(c, m.tables.grpcMeta).FontSize(11).Muted()
 		}
-		if m.tables.grpcMessage != "" {
-			ui.Text(c, "请求消息").FontSize(11).Muted()
-			ui.Paragraph(c, m.tables.grpcMessage, 0).Mono().FontSize(11)
+		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Text(c, "元数据").FontSize(11).Muted()
+			ui.Spacer(c)
+			if ui.Button(c, "添加元数据").Icon(IconPlus).Ghost().XSmall().Clicked() {
+				c.After(func() {
+					m.grpcMetaRows = append(m.grpcMetaRows, &kvRow{enabled: true})
+					m.grpcDirty = true
+					m.invalidator.Invalidate()
+				})
+			}
+		})
+		for index, row := range m.grpcMetaRows {
+			slot := index
+			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				if ui.Checkbox(c, &row.enabled, "").Changed() {
+					m.grpcDirty = true
+				}
+				if ui.TextField(c, &row.name, "名称", "x-trace-id").Width(200).Changed() {
+					m.grpcDirty = true
+				}
+				if ui.TextField(c, &row.value, "值", "{{trace}}").Grow(1).Changed() {
+					m.grpcDirty = true
+				}
+				if ui.Button(c, "删除元数据").Icon(IconTrash).Ghost().IconOnly().
+					Tooltip("删除这一条").Clicked() {
+					c.After(func() {
+						m.grpcMetaRows = append(m.grpcMetaRows[:slot], m.grpcMetaRows[slot+1:]...)
+						m.grpcDirty = true
+						m.invalidator.Invalidate()
+					})
+				}
+			})
+		}
+		ui.Text(c, "请求消息（protojson）").FontSize(11).Muted()
+		if ui.TextArea(c, &m.grpcMessage, "请求消息", `{"name":"neo"}`).Height(150).FillWidth().Changed() {
+			m.grpcDirty = true
+		}
+		if line := m.grpcResultLine(); line != "" {
+			tint := c.Theme().Success
+			if m.grpcStatus != "OK" {
+				tint = c.Theme().Danger
+			}
+			ui.Text(c, line).FontSize(11).Mono().Color(tint)
+		}
+		if m.grpcNote != "" {
+			ui.Text(c, m.grpcNote).FontSize(11).Muted()
+		}
+		if strings.TrimSpace(m.grpcBody) != "" {
+			// 外层已经是 Scroll（page.go 的详情区）：这里再套一层会把高度算成 0。
+			ui.Paragraph(c, m.grpcBody, 0).Mono().FontSize(11)
+		}
+		if block.Stream == "client" || block.Stream == "bidi" {
+			ui.Text(c, "客户端流 / 双工暂不支持，调用时会明确报错。").FontSize(11).Muted()
 		}
 	})
-	ui.Text(c, "验证版只读展示 gRPC 元数据；发送能力未接。").FontSize(11).Muted()
 }
 
 // docDetail 是一篇 Markdown 的编辑 / 预览。

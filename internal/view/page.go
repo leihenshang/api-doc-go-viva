@@ -14,6 +14,7 @@ import (
 func (m *Model) Page(c ui.C) {
 	m.drainMCP()
 	m.drainRun()
+	m.drainGRPC()
 	// 上一帧的编辑在这里落成一步撤销（按 400ms 合并连续输入）。
 	m.captureUndo()
 	if ui.Shortcut(c, ui.Primary, "k") {
@@ -517,7 +518,26 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 				methodBadge(c, entry)
 				ui.Text(c, entry.Name).FontSize(17).Bold()
 				ui.Spacer(c)
-				ui.Text(c, "gRPC 只读").FontSize(11).Muted()
+				if m.grpcDirty {
+					ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
+				}
+				save := ui.Button(c, "保存").Outline()
+				save.Disabled(!m.grpcDirty)
+				if save.Clicked() {
+					c.After(m.saveGRPC)
+				}
+				label, tooltip := "调用", "发送这次 gRPC 调用（Ctrl/Cmd+Enter）"
+				if m.grpcSending {
+					label = "调用中…"
+					tooltip = "正在等响应"
+				}
+				call := ui.Button(c, label).Tooltip(tooltip)
+				if m.grpcSending {
+					call.Disabled(true)
+				}
+				if call.Clicked() {
+					c.After(func() { m.sendGRPC(entry) })
+				}
 			})
 			ui.Text(c, m.tables.metaLine).FontSize(11).Muted().Mono()
 			ui.Scroll(c).Grow(1).Children(func() {

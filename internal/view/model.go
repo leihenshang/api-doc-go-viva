@@ -514,6 +514,17 @@ type Model struct {
 	// 集合级公共参数（清单 defaults 段）：默认请求头 + inherit 认证的来源。
 	defaults collection.Defaults
 
+	// gRPC 请求的执行状态（见 grpcrun.go）。
+	grpcMetaRows []*kvRow
+	grpcMessage  string
+	grpcStatus   string
+	grpcBody     string
+	grpcNote     string
+	grpcTime     time.Duration
+	grpcSending  bool
+	grpcDirty    bool
+	grpcResults  chan grpcOutcome
+
 	// 响应正文的查找条状态（见 find.go）。
 	find findState
 
@@ -546,6 +557,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 		settings: settings.Load(),
 	}
 	m.mcpHost.errs = make(chan string, 1)
+	m.grpcResults = make(chan grpcOutcome, 1)
 	if col.Dir != "" {
 		m.defaults = explorer.LoadDefaults(col.Dir)
 	}
@@ -895,6 +907,7 @@ func (m *Model) fillGRPC(entry *explorer.Entry) {
 	}
 	m.tables.grpcMeta = meta
 	m.tables.grpcMessage = clip(grpc.Message, 2000)
+	m.loadGRPCFromEntry(entry)
 }
 
 // ensureEditor 装载一篇文档：有草稿优先用草稿，离开上一篇时把改动留下。

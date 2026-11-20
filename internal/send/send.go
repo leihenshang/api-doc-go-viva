@@ -492,3 +492,11 @@ func sensitiveHeader(name string) bool {
 	}
 	return false
 }
+
+// Resolve 把一段文本里的 {{变量}} 替换掉，返回结果与没解析到的变量名。
+// gRPC 的地址 / 消息 / 元数据复用这一套语义，免得两处各写一份。
+func Resolve(text string, vars map[string]string) (string, []string) {
+	exp := &expander{vars: vars}
+	out := exp.text(text)
+	return out, exp.missing
+}
