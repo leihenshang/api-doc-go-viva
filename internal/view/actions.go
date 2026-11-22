@@ -921,10 +921,17 @@ func (m *Model) syncRoot() {
 		return
 	}
 	root := m.roots[m.active]
+	// 先把当前标签里的编辑态落回标签，再整份存到根上：切回来才是离开时的样子。
+	m.storeTab()
 	root.col = m.col
 	root.env = m.envName
 	root.filter = m.filter
 	root.file = m.entryFile
+	root.tabs = m.tabs
+	root.curTab = m.curTab
+	root.overview = m.overview
+	root.tabSeq = m.tabSeq
+	root.tabScroll = m.tabScrollX
 }
 
 // resetCollectionState 清空所有按「当前集合 / 当前条目」派生的状态。
@@ -961,7 +968,7 @@ func (m *Model) installRoot(root *rootState) {
 			m.vars = vars
 		}
 	}
-	m.resetCollectionState()
+	m.restoreRootTabs(root)
 	m.pendingSelect = root.file
 	m.persistRoots()
 	m.refreshEnvs()
@@ -969,6 +976,42 @@ func (m *Model) installRoot(root *rootState) {
 	m.ui.envErr = ""
 	m.refreshShown()
 	m.invalidator.Invalidate()
+}
+
+// restoreRootTabs 把根上存着的那份标签装回来。
+//
+// 多根并行看的是「一棵树里几个根」，标签也按根各留一份：从甲切到乙再切回甲，
+// 甲的标签、当前标签、页签条滚到哪都还在。之前这里直接 closeAllTabs()，
+// 于是切一次根等于把手上正在编辑的东西全丢了。
+func (m *Model) restoreRootTabs(root *rootState) {
+	// 文档草稿按文件名记，跨根会串：换根时清掉（标签自己的 editor 不受影响）。
+	m.drafts = map[string]string{}
+	m.tabMenuOpen = false
+	// 树要按新根重算：shownOnce 留着旧值的话 refreshShown 会直接早退，
+	// 屏幕上仍是上一个集合的条目。
+	m.shownOnce = false
+	m.treeDirty = true
+	m.tabScrollWant = root.tabScroll
+	m.tabScrollRestore = true
+	m.tabs = root.tabs
+	m.tabSeq = root.tabSeq
+	switch {
+	case len(m.tabs) == 0:
+		m.curTab = -1
+		m.overview = true
+		m.clearTabState()
+	case root.curTab < 0 || root.curTab >= len(m.tabs):
+		m.curTab = 0
+		m.overview = false
+		m.applyFromTab(m.tabs[m.curTab])
+		m.selectInList(m.tabs[m.curTab].file)
+	default:
+		m.curTab = root.curTab
+		m.overview = false
+		m.applyFromTab(m.tabs[m.curTab])
+		m.selectInList(m.tabs[m.curTab].file)
+	}
+	m.gen++
 }
 
 // AddRoot 追加一个已打开的集合根，不切过去：命令行一次开多个集合时用。

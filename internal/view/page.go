@@ -377,11 +377,17 @@ func (m *Model) sidebar(c ui.C) {
 	})
 }
 
-// tabWidth 是标签的固定宽度：标签多了才能算出一屏放几个并滚动。
+// tabWidth 是标签的固定宽度：宽度一致，横向滚动的偏移才好算。
 const tabWidth float32 = 132
 
+// tabPitch 是一个标签占的横向距离（标签 + 行间距）。
+const tabPitch float32 = tabWidth + 2
+
 // tabBar 是详情区顶部的标签条：固定的「集合」页 + 可横向滚动的条目标签。
-// 标签超出可用宽度时出现「‹ ›」按钮，切标签会自动把当前标签滚进可视区。
+//
+// 超出宽度靠横向滚动（Shift + 滚轮、触控板横扫），不再做「一屏 N 个 + 左右箭头」的分页：
+// 分页会让第 N+1 个标签凭空消失，而滚动是连续、可预期的。右侧「⋯」列出全部标签，
+// 给不方便横扫的场景兜底。
 func (m *Model) tabBar(c ui.C) {
 	// 每帧重建「点击身份 → 槽位」的映射：拖拽回调只拿到身份。
 	m.tabSlotIDs = m.tabSlotIDs[:0]
@@ -389,25 +395,16 @@ func (m *Model) tabBar(c ui.C) {
 	ui.Column(c).FillWidth().Background(m.pal.sidebar).Children(func() {
 		ui.Row(c).FillWidth().Height(37).PadX(6).Gap(2).Items(ui.Center).Children(func() {
 			m.pinnedTab(c)
-			capacity := m.tabCapacity(c)
-			m.clampTabStart(capacity)
-			if m.tabStart > 0 {
-				if ui.Button(c, "左移标签").Icon(IconChevronLeft).IconOnly().Ghost().Tooltip("向左滚动标签").Clicked() {
-					c.After(func() { m.tabStart = max(0, m.tabStart-1) })
-				}
-			}
-			end := min(len(m.tabs), m.tabStart+capacity)
-			for index := m.tabStart; index < end; index++ {
-				m.tabItem(c, m.tabs[index], index, !m.overview && index == m.curTab)
-			}
-			if end < len(m.tabs) {
-				if ui.Button(c, "右移标签").Icon(IconChevronRight).IconOnly().Ghost().Tooltip("向右滚动标签").Clicked() {
-					c.After(func() {
-						m.tabStart = min(m.tabStart+1, max(0, len(m.tabs)-capacity))
-					})
-				}
-			}
-			ui.Spacer(c)
+			strip := ui.Scroll(c).Grow(1).Height(37).Sideways()
+			strip.Children(func() {
+				ui.Row(c).Gap(2).Height(37).Items(ui.Center).Children(func() {
+					for index, tab := range m.tabs {
+						m.tabItem(c, tab, index, !m.overview && index == m.curTab)
+					}
+				})
+			})
+			m.followTab(strip)
+			m.tabOverflow(c)
 			if ui.Button(c, "新建临时请求").Icon(IconPlus).IconOnly().Ghost().Tooltip("新建临时请求").Clicked() {
 				c.After(m.openScratch)
 			}
@@ -416,45 +413,70 @@ func (m *Model) tabBar(c ui.C) {
 	})
 }
 
-// tabCapacity 算一屏能放几个标签：预留固定的「集合」页、＋ 与滚动箭头。
-func (m *Model) tabCapacity(c ui.C) int {
-	strip := c.Bounds().Width - m.split.Pos - 8 - 12
-	if strip < 180 {
-		strip = 180
+// followTab 让页签条跟着当前标签走：换根后先恢复上次的位置，再保证当前标签可见。
+func (m *Model) followTab(scroll ui.Box) {
+	state := scroll.ScrollState()
+	if state == nil {
+		return
 	}
-	reserved := float32(64 + 40)
-	capacity := int((strip - reserved) / (tabWidth + 2))
-	if capacity < 1 {
-		capacity = 1
+	if m.tabScrollRestore {
+		m.tabScrollRestore = false
+		state.ScrollToX(m.tabScrollWant)
 	}
-	if len(m.tabs) > capacity {
-		capacity = int((strip - reserved - 68) / (tabWidth + 2))
-		if capacity < 1 {
-			capacity = 1
-		}
-	}
-	return capacity
+	state.ScrollToX(tabScrollTarget(m.curTab, m.overview, state.OffsetX, state.ViewportWidth))
+	m.tabScrollX = state.OffsetX
 }
 
-// clampTabStart 把滚动起点收进合法范围，并保证当前标签可见。
-func (m *Model) clampTabStart(capacity int) {
-	if m.tabStart > len(m.tabs)-capacity {
-		m.tabStart = max(0, len(m.tabs)-capacity)
+// tabScrollTarget 算「让第 cur 个标签可见」需要的横向偏移。
+//
+// 已经可见就原样返回（不把标签硬生生居中）；只在被挡住时挪最小的一步。
+// 独立成函数是为了能直接测这段算术，不必驱动窗口。
+func tabScrollTarget(cur int, overview bool, offset, viewport float32) float32 {
+	if overview || cur < 0 || viewport <= 0 {
+		return offset
 	}
-	if m.curTab != m.tabActive {
-		m.tabActive = m.curTab
-		if m.curTab >= 0 && !m.overview {
-			if m.curTab < m.tabStart {
-				m.tabStart = m.curTab
-			}
-			if m.curTab >= m.tabStart+capacity {
-				m.tabStart = m.curTab - capacity + 1
-			}
-			if m.tabStart < 0 {
-				m.tabStart = 0
+	left := float32(cur) * tabPitch
+	right := left + tabWidth
+	switch {
+	case left < offset:
+		return left
+	case right > offset+viewport:
+		return right - viewport
+	}
+	return offset
+}
+
+// tabOverflow 是右侧「⋯」：列出全部标签（当前项打勾），再给两个批量关闭。
+// 拖不动、又不想按 Shift 横扫时，从这里挑。
+func (m *Model) tabOverflow(c ui.C) {
+	if len(m.tabs) == 0 {
+		return
+	}
+	button := ui.Button(c, "全部标签").Icon(IconEllipsis).IconOnly().Ghost()
+	if button.Clicked() {
+		c.After(func() {
+			m.tabMenuOpen = !m.tabMenuOpen
+		})
+	}
+	if !m.tabMenuOpen {
+		return
+	}
+	ui.Menu(c, button, &m.tabMenuOpen, func(menu *ui.MenuItems) {
+		for index, tab := range m.tabs {
+			slot := index
+			name := tabTitle(tab)
+			if menu.Item(name).Checked(!m.overview && index == m.curTab).Clicked() {
+				c.After(func() { m.activateTab(slot) })
 			}
 		}
-	}
+		menu.Separator()
+		if menu.Item("关闭其他").Disabled(len(m.tabs) <= 1).Clicked() {
+			c.After(m.closeOtherTabs)
+		}
+		if menu.Item("关闭全部").Clicked() {
+			c.After(m.closeAllTabs)
+		}
+	})
 }
 
 // pinnedTab 是固定在最左的「集合」页：点它回到概览。

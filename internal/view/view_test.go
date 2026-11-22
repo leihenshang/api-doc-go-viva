@@ -1268,25 +1268,33 @@ func TestEnvSecretRoundTrip(t *testing.T) {
 	}
 }
 
-// TestTabStripScrollsToActive 标签多了以后，滚动窗口必须让当前标签可见。
-func TestTabStripScrollsToActive(t *testing.T) {
-	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "sample"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+// TestTabScrollTarget 页签条横向滚动的算术：只在被挡住时挪最小的一步。
+func TestTabScrollTarget(t *testing.T) {
+	const viewport = 400
+	cases := []struct {
+		name   string
+		cur    int
+		offset float32
+		want   float32
+	}{
+		{name: "第一个标签从头开始", cur: 0, offset: 0, want: 0},
+		{name: "已经可见就不动", cur: 1, offset: 100, want: 100},
+		{name: "右边被挡：挪到刚好看得见", cur: 4, offset: 0, want: float32(4)*tabPitch + tabWidth - viewport},
+		{name: "左边被挡：挪到标签左缘", cur: 1, offset: 500, want: float32(1) * tabPitch},
 	}
-	model := New(col, "", nil)
-	model.tabs = make([]*tabState, 10)
-	model.overview = false
-
-	model.curTab = 9
-	model.clampTabStart(3)
-	if model.tabStart != 7 {
-		t.Fatalf("最后一个标签应滚到可见：start=%d", model.tabStart)
+	for _, item := range cases {
+		got := tabScrollTarget(item.cur, false, item.offset, viewport)
+		if got != item.want {
+			t.Fatalf("%s：got %v want %v", item.name, got, item.want)
+		}
 	}
-	model.curTab = 0
-	model.clampTabStart(3)
-	if model.tabStart != 0 {
-		t.Fatalf("回到第一个标签应滚回开头：start=%d", model.tabStart)
+	// 概览页（没有当前标签）不动。
+	if got := tabScrollTarget(-1, true, 120, viewport); got != 120 {
+		t.Fatalf("概览页不该滚动：%v", got)
+	}
+	// 视口还没量出来（0）时也不能乱跳。
+	if got := tabScrollTarget(3, false, 80, 0); got != 80 {
+		t.Fatalf("视口为 0 时不该改偏移：%v", got)
 	}
 }
 

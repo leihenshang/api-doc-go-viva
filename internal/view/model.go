@@ -191,6 +191,15 @@ type rootState struct {
 	env    string
 	filter string
 	file   string
+
+	// 标签按集合根各存一份：切到别的根再切回来，标签与当前标签都还在
+	// （m.tabs 永远只是「活动根的那一份」，切换就是整份换掉）。
+	tabs     []*tabState
+	curTab   int
+	overview bool
+	tabSeq   int
+	// tabScroll 是页签条的横向偏移，换根回来时接着上次的位置。
+	tabScroll float32
 }
 
 // kvRow 是一行可编辑的键值（查询参数 / 请求头 / 环境变量）：指针存进切片，
@@ -425,8 +434,14 @@ type Model struct {
 	tabs      []*tabState
 	curTab    int
 	tabSeq    int
-	tabStart  int
 	tabActive int
+	// 页签条横向滚动的两个位置：tabScrollX 是每帧从 ScrollState 抄回来的当前值，
+	// tabScrollRestore 时用 tabScrollWant 再滚回去（换根或换集合后）。
+	tabScrollX       float32
+	tabScrollWant    float32
+	tabScrollRestore bool
+	// tabMenuOpen 是右侧「⋯」的展开状态。
+	tabMenuOpen bool
 
 	theme  ui.Theme
 	pal    palette

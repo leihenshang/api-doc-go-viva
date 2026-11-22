@@ -1,6 +1,7 @@
 package view
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -197,6 +198,32 @@ func (m *Model) setTabSlotID(slot int, id gfx.ID) {
 		m.tabSlots = map[gfx.ID]int{}
 	}
 	m.tabSlots[id] = slot
+}
+
+// tabTitle 是标签上显示的名字（也是「全部标签」菜单里的那一行）。
+func tabTitle(tab *tabState) string {
+	if tab == nil {
+		return ""
+	}
+	if tab.scratch {
+		return tab.entry.Name
+	}
+	if tab.entry != nil {
+		return tab.entry.Name
+	}
+	return filepath.Base(tab.file)
+}
+
+// closeOtherTabs 关掉除当前标签之外的其余标签。
+func (m *Model) closeOtherTabs() {
+	if m.curTab < 0 || m.curTab >= len(m.tabs) {
+		return
+	}
+	keep := m.tabs[m.curTab]
+	m.tabs = []*tabState{keep}
+	m.curTab = 0
+	m.overview = false
+	m.invalidator.Invalidate()
 }
 
 // tabSlotOf 按点击身份反查槽位；找不到（这帧没画它）返回 -1。
