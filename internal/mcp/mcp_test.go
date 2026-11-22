@@ -109,6 +109,10 @@ func TestRegistersTheFiveTools(t *testing.T) {
 			t.Fatalf("缺少工具 %s（实际 %v）", want, got)
 		}
 	}
+	// 补齐后共 25 个：少一个说明注册漏了，多一个说明起了重名。
+	if len(got) != 25 {
+		t.Fatalf("应有 25 个工具，实际 %d 个：%v", len(got), got)
+	}
 }
 
 // TestListAndReadTools 走一遍读取链路：工作区 → 列表 → 请求定义 → 文档。
@@ -174,12 +178,17 @@ func TestReadOnlyHidesWriteTools(t *testing.T) {
 		t.Fatalf("NewServer: %v", err)
 	}
 	names := toolNames(t, server)
-	for _, hidden := range []string{"save_request", "create_request", "set_env_var", "send_request"} {
+	for _, hidden := range []string{
+		"save_request", "create_request", "set_env_var", "send_request",
+		"delete_request", "delete_requests", "create_group", "rename_group", "delete_group",
+		"create_doc", "update_doc", "delete_doc", "save_example", "delete_example",
+		"create_env", "rename_env", "delete_env",
+	} {
 		if names[hidden] {
 			t.Fatalf("只读模式下不该有 %s：%v", hidden, names)
 		}
 	}
-	if !names["list_requests"] || !names["list_envs"] {
+	if !names["list_requests"] || !names["list_envs"] || !names["search_requests"] || !names["list_docs"] {
 		t.Fatalf("读工具应仍在：%v", names)
 	}
 }

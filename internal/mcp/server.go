@@ -147,6 +147,76 @@ func registerTools(server *sdk.Server, svc *Service, opts ToolOptions) {
 		Name:        "set_env_var",
 		Description: "写入或删除一个环境变量（secret=true 落 *.secrets.yml，delete=true 删除）。",
 	}, GroupEnv, true, svc.SetEnvVar)
+
+	// 读：检索与文档清单
+	register(server, opts, &sdk.Tool{
+		Name:        "search_requests",
+		Description: "按关键词在名称 / 路径 / 方法 / 地址里检索请求与文档，返回可用的 path。",
+	}, GroupCollection, false, svc.SearchRequests)
+	register(server, opts, &sdk.Tool{
+		Name:        "list_docs",
+		Description: "列出集合里的文档（名称与相对路径），可按分组过滤。",
+	}, GroupDocs, false, svc.ListDocs)
+
+	// 写：删除与分组维护（都是软删除，进回收站）
+	register(server, opts, &sdk.Tool{
+		Name:        "delete_request",
+		Description: "把一条请求移入回收站（不永久删除）。",
+	}, GroupCollection, true, svc.DeleteRequest)
+	register(server, opts, &sdk.Tool{
+		Name:        "delete_requests",
+		Description: "批量把请求移入回收站，返回成功与没处理的清单。",
+	}, GroupCollection, true, svc.DeleteRequests)
+	register(server, opts, &sdk.Tool{
+		Name:        "create_group",
+		Description: "新建一个分组（可指定父分组），返回分组相对路径。",
+	}, GroupCollection, true, svc.CreateGroup)
+	register(server, opts, &sdk.Tool{
+		Name:        "rename_group",
+		Description: "改分组的显示名（存在 folder.yml 里，目录名不变）。",
+	}, GroupCollection, true, svc.RenameGroup)
+	register(server, opts, &sdk.Tool{
+		Name:        "delete_group",
+		Description: "把分组连同里面的请求一起移入回收站。",
+	}, GroupCollection, true, svc.DeleteGroup)
+
+	// 写：文档增删改
+	register(server, opts, &sdk.Tool{
+		Name:        "create_doc",
+		Description: "新建一篇 Markdown 文档（落 docs/），可同时写正文。",
+	}, GroupDocs, true, svc.CreateDoc)
+	register(server, opts, &sdk.Tool{
+		Name:        "update_doc",
+		Description: "改文档正文：整篇替换或追加，frontmatter 保持不变。",
+	}, GroupDocs, true, svc.UpdateDoc)
+	register(server, opts, &sdk.Tool{
+		Name:        "delete_doc",
+		Description: "把文档移入回收站。",
+	}, GroupDocs, true, svc.DeleteDoc)
+
+	// 写：响应示例
+	register(server, opts, &sdk.Tool{
+		Name:        "save_example",
+		Description: "给一条请求存一份响应示例（可先 send_request 再把结果存下来）。",
+	}, GroupExample, true, svc.SaveExample)
+	register(server, opts, &sdk.Tool{
+		Name:        "delete_example",
+		Description: "删除某条请求下的一份响应示例。",
+	}, GroupExample, true, svc.DeleteExample)
+
+	// 写：环境增删改名
+	register(server, opts, &sdk.Tool{
+		Name:        "create_env",
+		Description: "新建环境，可带初始变量（普通变量，敏感值请用 set_env_var）。",
+	}, GroupEnv, true, svc.CreateEnv)
+	register(server, opts, &sdk.Tool{
+		Name:        "rename_env",
+		Description: "给环境改名（文件名随之更新）。",
+	}, GroupEnv, true, svc.RenameEnv)
+	register(server, opts, &sdk.Tool{
+		Name:        "delete_env",
+		Description: "删除一个环境（含其敏感值文件）。",
+	}, GroupEnv, true, svc.DeleteEnv)
 }
 
 // register 把「入参 → 文本」的函数包成 SDK 要求的处理函数，并套上分组过滤与审计。
