@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/leihenshang/api-doc-go-viva/internal/brand"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/vivaui/viva/app"
 )
@@ -159,81 +160,15 @@ func (m *Model) trayHint() string {
 	return "当前桌面没有托盘区，这一项不可用。"
 }
 
-// trayIcon 画出托盘图标：圆角方块 + 三条横线（像一列请求），避免额外资源文件。
+// trayIcon 取应用图标并转成状态区要的形态。
 //
-// 先按 4 倍尺寸画再降采样：状态区把它缩到 22px 左右，直接画小图会很脏。
+// 画法在 internal/brand 里（打包时生成 .ico 也用同一份），
+// 这里只负责包成 viva 的类型。
 func trayIcon(size int) app.StatusIcon {
-	const scale = 4
-	big := size * scale
-	rgba := make([]byte, big*big*4)
-	radius := float64(big) * 0.24
-	for y := 0; y < big; y++ {
-		for x := 0; x < big; x++ {
-			i := (y*big + x) * 4
-			if !insideRoundRect(float64(x)+0.5, float64(y)+0.5, float64(big), radius) {
-				continue
-			}
-			r, g, b := uint8(59), uint8(130), uint8(246) // 与界面强调色一致
-			// 三条白色横线：覆盖 y 在 26% / 50% / 74% 处的窄带。
-			for _, center := range []float64{0.28, 0.5, 0.72} {
-				cy := center * float64(big)
-				if float64(y)+0.5 > cy-float64(big)*0.05 && float64(y)+0.5 < cy+float64(big)*0.05 &&
-					float64(x)+0.5 > float64(big)*0.28 && float64(x)+0.5 < float64(big)*0.72 {
-					r, g, b = 255, 255, 255
-				}
-			}
-			rgba[i], rgba[i+1], rgba[i+2], rgba[i+3] = r, g, b, 255
-		}
-	}
-	return app.StatusIcon{Size: size, RGBA: downsample(rgba, big, size)}
-}
-
-// insideRoundRect 判断点是否落在圆角矩形内（四角各挖一个圆）。
-func insideRoundRect(x, y, side, radius float64) bool {
-	if x < radius && y < radius {
-		return (radius-x)*(radius-x)+(radius-y)*(radius-y) <= radius*radius
-	}
-	if x > side-radius && y < radius {
-		return (x-(side-radius))*(x-(side-radius))+(radius-y)*(radius-y) <= radius*radius
-	}
-	if x < radius && y > side-radius {
-		return (radius-x)*(radius-x)+(y-(side-radius))*(y-(side-radius)) <= radius*radius
-	}
-	if x > side-radius && y > side-radius {
-		return (x-(side-radius))*(x-(side-radius))+(y-(side-radius))*(y-(side-radius)) <= radius*radius
-	}
-	return true
-}
-
-// downsample 把 big 见方的 RGBA 盒式降采样成 size 见方（取平均，边缘不出锯齿）。
-func downsample(rgba []byte, big, size int) []byte {
-	factor := big / size
-	out := make([]byte, size*size*4)
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			var r, g, b, a, n int
-			for dy := 0; dy < factor; dy++ {
-				for dx := 0; dx < factor; dx++ {
-					i := ((y*factor+dy)*big + (x*factor + dx)) * 4
-					r += int(rgba[i])
-					g += int(rgba[i+1])
-					b += int(rgba[i+2])
-					a += int(rgba[i+3])
-					n++
-				}
-			}
-			o := (y*size + x) * 4
-			if n == 0 {
-				continue
-			}
-			out[o], out[o+1], out[o+2], out[o+3] = uint8(r/n), uint8(g/n), uint8(b/n), uint8(a/n)
-		}
-	}
-	return out
+	return app.StatusIcon{Size: size, RGBA: brand.RGBA(size)}
 }
 
 // appIcon 是窗口图标（任务栏 / Alt+Tab）：同一张画，大尺寸。
 func appIcon(size int) app.WindowIcon {
-	icon := trayIcon(size)
-	return app.WindowIcon{Size: icon.Size, RGBA: icon.RGBA}
+	return app.WindowIcon{Size: size, RGBA: brand.RGBA(size)}
 }

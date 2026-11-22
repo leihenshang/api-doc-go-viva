@@ -249,6 +249,41 @@ bash scripts/build-windows.sh --out /tmp/win  # 自定义输出目录
 
 产物：`dist/api-doc-viva-windows-amd64.exe`（或 `…-arm64.exe`）。
 
+### 出安装包（NSIS）
+
+`--installer` 会在 exe 之后接着打 NSIS 安装包；`--installer-only` 复用已有 exe 只重打安装包。
+参考 Wails 版 `scripts/build-win.ps1` 的口径，但那边要复用 wails 生成的宏与 WebView2 引导器，
+本产品是纯 Go 原生渲染，所以 `packaging/windows/installer.nsi` 完全自包含。
+
+```bash
+bash scripts/build-windows.sh --installer                     # Program Files，需管理员
+bash scripts/build-windows.sh --installer --scope user        # %LOCALAPPDATA%\Programs，免提权
+bash scripts/build-windows.sh --installer --dev               # 开发版：可与正式版并存安装
+bash scripts/build-windows.sh --installer --version 1.2.3     # 不写则取 updater.Version
+bash scripts/build-windows.sh --installer-only                # 只重打安装包
+```
+
+产物：`dist/api-doc-viva_<版本>_<arch>-setup.exe`（`--dev` 时是 `api-doc-viva-dev_…`）。
+
+安装包做的事：
+
+- 图标从 `internal/brand` 的画法现场生成（`go run ./cmd/makeicon` → `build/windows/icon.ico`，7 档 16–256），
+  所以程序、托盘、快捷方式、「应用和功能」里的图标永远是同一张画；
+- 装前先查进程：客户端在跑就交互式问一句，`/S` 静默安装直接 `taskkill`；
+- 检测到旧版走「静默卸载旧版 → 全新安装」，并把 `InstallLocation` 写回注册表——用户改过安装目录也能沿用，
+  不会装出第二份；
+- 开始菜单（含卸载快捷方式）+ 完成页可选建桌面快捷方式；「应用和功能」条目带版本、发布者、体积、
+  `QuietUninstallString`、`NoModify`/`NoRepair`；
+- 卸载**不碰**用户配置目录（Cookie、偏好、加密密钥）；正式版与 `--dev` 版产品名 / 目录 / 卸载键各不相同，
+  可以并存。
+
+`--scope user` 与 `--scope machine` 是两个独立安装（不同目录、不同注册表 hive），升级时请固定用同一个 scope。
+静默安装 `setup.exe /S`，静默卸载 `uninstall.exe /S`。
+
+跨平台：`makensis` 是原生程序，Linux 上也能直接产出 Windows 安装器；没有 root 时按脚本头部注释把 deb 解出来
+（`NSISDIR` + `NSIS_BIN`）即可。Windows 上装了 NSIS（`choco install nsis`）后，同一个脚本在 Git Bash 里
+直接可用——它只要求 `makensis` 在 `PATH` 或 `NSIS_BIN` 里。
+
 从 Git Bash 启动时，Windows 路径的反斜杠会被 shell 吃掉（`D:\project\...` 变成 `D:project...`）。
 用单引号或正斜杠：
 
