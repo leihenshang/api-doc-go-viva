@@ -220,7 +220,10 @@ func (m *Model) collectionPicker(c ui.C) {
 			c.After(func() { m.openImport(1) })
 		}
 		if menu.Item("导入集合包…").Icon(IconImport).Clicked() {
-			c.After(func() { m.openImport(2) })
+			c.After(func() { m.openImport(3) })
+		}
+		if menu.Item("导入 Bruno 集合…").Icon(IconImport).Clicked() {
+			c.After(func() { m.openImport(4) })
 		}
 		if menu.Item("运行集合…").Icon(IconSend).Clicked() {
 			c.After(m.openRunner)

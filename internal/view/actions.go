@@ -569,6 +569,27 @@ func (m *Model) runImport() {
 		}
 		summary, err = importers.Write(m.col.Dir, folder, items)
 		summary.Notes = append(parsed.Notes, summary.Notes...)
+	} else if m.ui.importMode == 4 {
+		dir := strings.TrimSpace(m.ui.importDir)
+		if dir == "" {
+			m.ui.importErr = "先选一个 Bruno 集合目录"
+			m.invalidator.Invalidate()
+			return
+		}
+		items, parsed, parseErr := importers.Bruno(dir, folder)
+		if parseErr != nil {
+			m.ui.importErr = parseErr.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+		written, writeErr := importers.Write(m.col.Dir, folder, items)
+		if writeErr != nil {
+			m.ui.importErr = writeErr.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+		written.Notes = append(parsed.Notes, written.Notes...)
+		summary = written
 	} else if m.ui.importMode == 1 {
 		dir := strings.TrimSpace(m.ui.importDir)
 		if dir == "" {

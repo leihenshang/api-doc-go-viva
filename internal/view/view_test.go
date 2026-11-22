@@ -3852,3 +3852,58 @@ http:
 		t.Fatal("详情里不该出现明文 token")
 	}
 }
+
+// TestBrunoImportThroughDialog 导入 Bruno 集合：菜单入口 → 选目录 → 落成请求。
+func TestBrunoImportThroughDialog(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "bruno.json"), `{"version":"1","name":"Bruno 示例"}`)
+	writeFile(t, filepath.Join(src, "用户", "列表.bru"), `meta {
+  name: 用户列表
+}
+
+get {
+  url: {{host}}/api/users
+}
+
+params:query {
+  page: 1
+}
+
+body:json {
+  {"q":"neo"}
+}
+`)
+
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+
+	model.openImport(4)
+	model.ui.importDir = src
+	model.runImport()
+
+	if model.ui.importErr != "" {
+		t.Fatalf("导入报错：%s", model.ui.importErr)
+	}
+	reloaded, err := explorer.Load(col.Dir)
+	if err != nil {
+		t.Fatalf("重扫: %v", err)
+	}
+	found := false
+	for _, entry := range reloaded.Entries {
+		if entry.Kind == explorer.KindHTTP && strings.Contains(entry.Payload.HTTP.URL, "/api/users") {
+			found = true
+			if entry.Group != "用户" {
+				t.Fatalf("应落在「用户」分组，实际 %q", entry.Group)
+			}
+			if entry.Payload.HTTP.Body.Type != "json" {
+				t.Fatalf("正文类型没转过来：%q", entry.Payload.HTTP.Body.Type)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("没导入出请求：%+v", model.ui.importNote)
+	}
+}

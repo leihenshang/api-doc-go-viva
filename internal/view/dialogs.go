@@ -964,6 +964,16 @@ func (m *Model) importDialog(c ui.C) {
 				})
 				ui.TextArea(c, &m.ui.importText, "OpenAPI JSON", `{"openapi":"3.0.0","paths":{...}}`).
 					FillWidth().Height(200)
+			} else if m.ui.importMode == 4 {
+				ui.Text(c, "原生 Bruno 集合（含 .bru 文件）：方法 / 地址 / 查询参数 / 请求头 / "+
+					"body:json·text·form·multipart / bearer·basic·apikey 会转过来；脚本与断言忽略。").
+					FontSize(11).Muted()
+				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					ui.TextField(c, &m.ui.importDir, "Bruno 目录", "/path/to/bruno/collection").Grow(1)
+					if ui.Button(c, "选择目录…").Icon(IconFolderOpen).Outline().Clicked() {
+						c.After(m.pickImportDir)
+					}
+				})
 			} else if m.ui.importMode == 1 {
 				ui.Text(c, "另一个 OpenCollection 集合：分组照层级复制，请求换成新 uid，文档进 docs/。").FontSize(11).Muted()
 				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
@@ -1014,8 +1024,9 @@ func (m *Model) importDialog(c ui.C) {
 
 // importModes / importModeNames 是导入来源的两个选项。
 var (
-	importModes     = []int{0, 1, 2, 3}
-	importModeNames = []string{"Postman 集合", "OpenCollection 集合", "OpenAPI 3（JSON）", "集合包（.apidocgo.json）"}
+	importModes     = []int{0, 1, 2, 3, 4}
+	importModeNames = []string{"Postman 集合", "OpenCollection 集合", "OpenAPI 3（JSON）",
+		"集合包（.apidocgo.json）", "Bruno 集合"}
 )
 
 // curlImportDialog 是「导入 cURL」：粘贴命令，解析成一条新请求（参考 19）。
