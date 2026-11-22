@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-share/collection"
+	secretsx "github.com/leihenshang/api-doc-go-viva/internal/secrets"
 )
 
 // ErrNeedsInit 表示目录里没有 opencollection.yml。
@@ -333,6 +334,8 @@ func LoadEnv(dir, name string) (map[string]string, error) {
 		if decodeErr != nil {
 			return nil, fmt.Errorf("解析环境密文 %s: %w", name, decodeErr)
 		}
+		// 密文在这里还原成明文：发送前替换变量的人只该看到真正的值。
+		values = secretsx.OpenMap(values)
 		for key, value := range values {
 			vars[key] = value
 		}

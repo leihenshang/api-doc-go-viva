@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-share/collection"
+	secretsx "github.com/leihenshang/api-doc-go-viva/internal/secrets"
 )
 
 // envDir 是环境文件所在目录（与客户端一致）。
@@ -111,7 +112,8 @@ func LoadEnvVars(collectionDir, name string) ([]collection.EnvVar, error) {
 	_, secretPath := envPaths(collectionDir, name)
 	if data, readErr := os.ReadFile(secretPath); readErr == nil {
 		if file, decodeErr := collection.DecodeSecretsFile(data); decodeErr == nil {
-			secrets = file.Secrets
+			// 磁盘上可能是密文（默认），解不开的保留原样，避免把值抹成空。
+			secrets = secretsx.OpenMap(file.Secrets)
 		}
 	} else if !errors.Is(readErr, fs.ErrNotExist) {
 		return nil, fmt.Errorf("读取环境密钥 %s: %w", name, readErr)
@@ -140,7 +142,9 @@ func SaveEnvAll(collectionDir, name string, vars []collection.EnvVar) error {
 	secretsFile := &collection.SecretsFile{Secrets: map[string]string{}}
 	if data, readErr := os.ReadFile(secretPath); readErr == nil {
 		if file, decodeErr := collection.DecodeSecretsFile(data); decodeErr == nil {
+			// 先在明文域里改，写完再整体加密：否则会把「已加密的值」再套一层。
 			secretsFile = file
+			secretsFile.Secrets = secretsx.OpenMap(file.Secrets)
 		}
 	}
 	uidOf := make(map[string]string, len(old.Vars))
@@ -199,7 +203,9 @@ func SaveEnvAll(collectionDir, name string, vars []collection.EnvVar) error {
 			return nil
 		}
 	}
-	secretData, err := (&collection.SecretsFile{Secrets: secrets, Extra: secretsFile.Extra}).Encode()
+	secretData, err := (&collection.SecretsFile{
+		Secrets: secretsx.SealMap(secrets), Extra: secretsFile.Extra,
+	}).Encode()
 	if err != nil {
 		return fmt.Errorf("编码环境密钥 %s: %w", name, err)
 	}

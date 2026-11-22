@@ -368,9 +368,16 @@ type workspaceUI struct {
 	follow          bool
 	insecure        bool
 	persistCookies  bool
-	splitSide       int // 0 = 上下，1 = 左右
-	envs            []string
-	envPick         string
+	closeToTray     bool
+	sealSecrets     bool
+	// 检查更新：结果文本与（有新版本时的）发布页地址。
+	updateNote string
+	updateURL  string
+	updateBusy bool
+	updateRepo string
+	splitSide  int // 0 = 上下，1 = 左右
+	envs       []string
+	envPick    string
 
 	// MCP 服务的设置（独立弹窗，与软件设置分开）：开关 / 监听地址 / 令牌 / 工作区授权。
 	mcpOpen     bool
@@ -486,7 +493,14 @@ type Model struct {
 	scratch  bool // 当前标签是不是未落盘的临时请求
 	overview bool // 正在看集合概览（固定的「集合」页）
 	settings settings.Settings
-	ui       workspaceUI
+	// 托盘与窗口：托盘挂上之后才有 window/app 的用法，未挂上也各自有 nil 判断。
+	app         *app.Application
+	window      trayWindow
+	trayItem    statusItem
+	trayEnabled bool
+	trayNote    string
+
+	ui workspaceUI
 	// mcp 是内嵌 MCP 服务的运行状态（底栏状态点 / 设置面板）；服务器本体在 mcp.go。
 	mcp        mcpRuntime
 	mcpHost    mcpHost
@@ -626,6 +640,16 @@ func (m *Model) config() app.Config {
 		WindowControls: m.windowControls,
 		Invalidator:    &m.invalidator,
 		OnWake:         m.collect,
+		// 任务栏 / Alt+Tab 的图标：与托盘同一张画，画在代码里，少一份资源文件。
+		Icon: appIcon(256),
+		// 关到托盘：不调 allow 就等于「窗口不关」；托盘没挂上时照常关。
+		OnCloseRequest: func(allow func()) {
+			if m.shouldHideOnClose() {
+				m.hideWindow()
+				return
+			}
+			allow()
+		},
 	})
 }
 
@@ -645,9 +669,21 @@ func (m *Model) windowControls() app.WindowControlsStyle {
 }
 
 // Run 打开窗口并阻塞到关闭；后台发送完成后由 Invalidator 唤醒重绘。
+//
+// 用 RunApplication 而不是 RunCanvas 是为了拿到 *app.Application：
+// 托盘（AddStatusItem）只挂在应用对象上。
 func (m *Model) Run() error {
 	var canvas gfx.Canvas
-	return app.RunCanvas(m.config(), &canvas)
+	return app.RunApplication(func(application *app.Application) error {
+		m.app = application
+		window, err := application.OpenWindow(m.config(), &canvas)
+		if err != nil {
+			return err
+		}
+		m.window = window
+		m.installTray(application)
+		return nil
+	})
 }
 
 // dragExpandDelay 是拖拽时停在折叠分组上多久后自动展开。

@@ -30,6 +30,12 @@ type Settings struct {
 	NoFollowRedirects bool `json:"noFollowRedirects"`
 	// InsecureSSL 是全局默认：忽略 HTTPS 证书校验（请求文件的 settings.insecureSsl 显式设置时优先）。
 	InsecureSSL bool `json:"insecureSsl,omitempty"`
+	// UpdateRepo 是检查更新用的 GitHub 仓库（owner/repo）；空 = 用内置默认。
+	UpdateRepo string `json:"updateRepo,omitempty"`
+	// CloseToTray 为真时关闭窗口不退出，收到托盘（托盘区不可用时自动退回退出）。
+	CloseToTray bool `json:"closeToTray,omitempty"`
+	// NoSealSecrets 为真时敏感值明文落盘；默认加密（密钥在配置目录）。
+	NoSealSecrets bool `json:"noSealSecrets,omitempty"`
 	// NoCookiePersist 为真时 Cookie 只留在内存里（关掉窗口就没了）。
 	// 默认落盘：登录一次，下次打开还在。
 	NoCookiePersist bool `json:"noCookiePersist,omitempty"`
@@ -93,6 +99,9 @@ func Default() Settings {
 
 // FollowRedirects 报告是否跟随重定向（默认跟随）。
 func (s Settings) FollowRedirects() bool { return !s.NoFollowRedirects }
+
+// SealSecrets 报告敏感值是否加密落盘（默认加密）。
+func (s Settings) SealSecrets() bool { return !s.NoSealSecrets }
 
 // PersistCookies 报告 Cookie Jar 是否落盘（默认落盘）。
 func (s Settings) PersistCookies() bool { return !s.NoCookiePersist }

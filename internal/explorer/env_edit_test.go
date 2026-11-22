@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/leihenshang/api-doc-go-share/collection"
+	secretsx "github.com/leihenshang/api-doc-go-viva/internal/secrets"
 )
 
 func TestListEnvsSkipsSecretsFiles(t *testing.T) {
@@ -125,5 +126,68 @@ x-custom: keep-me
 	text := string(data)
 	if !strings.Contains(text, "x-custom: keep-me") || !strings.Contains(text, "url: http://new") || !strings.Contains(text, "method: POST") {
 		t.Fatalf("写回内容 = %s", text)
+	}
+}
+
+// TestSecretsAreEncryptedAtRest 敏感值落盘是密文；读回来是明文；换密钥读不出。
+func TestSecretsAreEncryptedAtRest(t *testing.T) {
+	keyDir := t.TempDir()
+	secretsx.Configure(keyDir, true)
+	t.Cleanup(func() { secretsx.Configure("", false) })
+
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "opencollection.yml"), "opencollection: 1.0.0\n")
+	write(t, filepath.Join(dir, "environments", "dev.yml"), "info:\n  name: dev\nvars: []\n")
+
+	vars := []collection.EnvVar{
+		{Name: "host", Value: "https://api.example", Enabled: true},
+		{Name: "token", Value: "sk-live-abcdef", Enabled: true, Secret: true},
+	}
+	if err := SaveEnvAll(dir, "dev", vars); err != nil {
+		t.Fatalf("SaveEnvAll: %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "environments", "dev.secrets.yml"))
+	if err != nil {
+		t.Fatalf("读密钥文件: %v", err)
+	}
+	if strings.Contains(string(raw), "sk-live-abcdef") {
+		t.Fatalf("密钥文件里还是明文：%s", raw)
+	}
+	if !strings.Contains(string(raw), secretsx.Prefix) {
+		t.Fatalf("没有密文前缀：%s", raw)
+	}
+
+	loaded, err := LoadEnvVars(dir, "dev")
+	if err != nil {
+		t.Fatalf("LoadEnvVars: %v", err)
+	}
+	for _, v := range loaded {
+		if v.Name == "token" && v.Value != "sk-live-abcdef" {
+			t.Fatalf("读回来的敏感值不对：%q", v.Value)
+		}
+	}
+
+	// 发送用的变量袋同样要拿到明文。
+	bag, err := LoadEnv(dir, "dev")
+	if err != nil {
+		t.Fatalf("LoadEnv: %v", err)
+	}
+	if bag["token"] != "sk-live-abcdef" || bag["host"] != "https://api.example" {
+		t.Fatalf("变量袋不对：%+v", bag)
+	}
+
+	// 再存一次不能把密文当明文再套一层。
+	if err := SaveEnvAll(dir, "dev", loaded); err != nil {
+		t.Fatalf("二次保存: %v", err)
+	}
+	again, err := LoadEnvVars(dir, "dev")
+	if err != nil {
+		t.Fatalf("二次读取: %v", err)
+	}
+	for _, v := range again {
+		if v.Name == "token" && v.Value != "sk-live-abcdef" {
+			t.Fatalf("二次保存后值坏了：%q", v.Value)
+		}
 	}
 }

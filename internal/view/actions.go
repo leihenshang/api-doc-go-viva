@@ -1,6 +1,7 @@
 package view
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -19,8 +20,10 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
 	"github.com/leihenshang/api-doc-go-viva/internal/importers"
+	"github.com/leihenshang/api-doc-go-viva/internal/secrets"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
+	"github.com/leihenshang/api-doc-go-viva/internal/updater"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
@@ -992,6 +995,8 @@ func (m *Model) activateRoot(i int) {
 	m.syncRoot()
 	m.active = i
 	m.installRoot(m.roots[i])
+	// 托盘提示里写着集合名与规模：换集合后要跟着变。
+	m.refreshTray()
 }
 
 // closeRoot 关掉第 i 个集合（至少留一个）；关的是活动的就切到邻位。
@@ -1324,6 +1329,46 @@ func (m *Model) createEnv() {
 	m.invalidator.Invalidate()
 }
 
+// checkUpdate 查一次发布（只在用户点按钮时联网，不在启动时偷偷发请求）。
+func (m *Model) checkUpdate() {
+	if m.ui.updateBusy {
+		return
+	}
+	repo := strings.TrimSpace(m.settings.UpdateRepo)
+	if repo == "" {
+		repo = updater.Repo
+	}
+	m.ui.updateBusy = true
+	m.ui.updateNote = "正在检查 " + repo + "…"
+	m.ui.updateURL = ""
+	m.invalidator.Invalidate()
+	go func() {
+		release, err := updater.Check(context.Background(), nil, repo, updater.Version)
+		switch {
+		case errors.Is(err, updater.ErrUpToDate):
+			m.ui.updateNote = "已是最新版本（当前 v" + updater.Version + "）"
+		case err != nil:
+			m.ui.updateNote = "检查失败：" + err.Error()
+		default:
+			m.ui.updateNote = "有新版本 " + release.Version + "（当前 v" + updater.Version + "）"
+			m.ui.updateURL = release.URL
+		}
+		m.ui.updateBusy = false
+		m.invalidator.Invalidate()
+	}()
+}
+
+// openUpdatePage 在系统浏览器里打开发布页。
+func (m *Model) openUpdatePage() {
+	if m.ui.updateURL == "" {
+		return
+	}
+	if err := app.OpenURL(m.ui.updateURL); err != nil {
+		m.ui.updateNote = "打不开浏览器：" + err.Error()
+	}
+	m.invalidator.Invalidate()
+}
+
 // applySettingsEdits 把设置面板里的输入落到偏好（只在面板开着时调用）。
 func (m *Model) applySettingsEdits() {
 	changed := false
@@ -1357,6 +1402,22 @@ func (m *Model) applySettingsEdits() {
 	if m.ui.persistCookies != m.settings.PersistCookies() {
 		m.settings.NoCookiePersist = !m.ui.persistCookies
 		m.applyCookiePersist()
+		changed = true
+	}
+	if m.ui.closeToTray != m.settings.CloseToTray {
+		m.settings.CloseToTray = m.ui.closeToTray
+		changed = true
+	}
+	if repo := strings.TrimSpace(m.ui.updateRepo); repo != m.settings.UpdateRepo {
+		m.settings.UpdateRepo = repo
+		changed = true
+	}
+	if m.ui.sealSecrets != m.settings.SealSecrets() {
+		m.settings.NoSealSecrets = !m.ui.sealSecrets
+		// 只影响之后的写入：已经加密的值仍然按密文读，改回明文要重新保存环境。
+		if dir, err := settings.Dir(); err == nil {
+			secrets.Configure(dir, m.settings.SealSecrets())
+		}
 		changed = true
 	}
 	if side := m.ui.splitSide == 1; side != m.settings.SplitSideBySide {
@@ -1617,6 +1678,9 @@ func (m *Model) syncSettingsUI() {
 	m.ui.follow = m.settings.FollowRedirects()
 	m.ui.insecure = m.settings.InsecureSSL
 	m.ui.persistCookies = m.settings.PersistCookies()
+	m.ui.closeToTray = m.settings.CloseToTray
+	m.ui.sealSecrets = m.settings.SealSecrets()
+	m.ui.updateRepo = m.settings.UpdateRepo
 	m.ui.splitSide = 0
 	if m.settings.SplitSideBySide {
 		m.ui.splitSide = 1

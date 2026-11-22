@@ -10,6 +10,7 @@ import (
 
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
+	"github.com/leihenshang/api-doc-go-viva/internal/updater"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
 )
@@ -247,6 +248,12 @@ func (m *Model) settingsAppearance(c ui.C) {
 	})
 	ui.Text(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。").
 		FontSize(11).Muted()
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "关闭窗口")
+		ui.Switch(c, &m.ui.closeToTray, "关闭窗口时收到托盘").Changed()
+		ui.Spacer(c)
+	})
+	ui.Text(c, m.trayHint()).FontSize(11).Muted()
 }
 
 // settingsNetwork 是网络与安全分区：默认超时与重定向策略。
@@ -267,6 +274,14 @@ func (m *Model) settingsNetwork(c ui.C) {
 		ui.Switch(c, &m.ui.insecure, "忽略证书校验").Changed()
 		ui.Spacer(c)
 	})
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "加密敏感值")
+		ui.Switch(c, &m.ui.sealSecrets, "加密保存敏感值").Changed()
+		ui.Spacer(c)
+	})
+	ui.Text(c, "敏感值（环境里的 secret 变量）落盘时用 AES-256-GCM 加密，密钥在配置目录（0600），"+
+		"与集合分开：集合进 git 也只留密文。关掉后新保存的值变回明文，已有的密文仍可读。").
+		FontSize(11).Muted()
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "保存 Cookie")
 		ui.Switch(c, &m.ui.persistCookies, "保存 Cookie").Changed()
@@ -301,6 +316,28 @@ func (m *Model) settingsLocal(c ui.C) {
 		FontSize(11).Muted()
 	if ui.Button(c, "打开回收站").Icon(IconTrash).Secondary().Clicked() {
 		c.After(m.openTrash)
+	}
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "发布仓库")
+		ui.TextField(c, &m.ui.updateRepo, "发布仓库", "owner/repo（留空用内置默认）").Grow(1).Changed()
+	})
+	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		label := "检查更新"
+		if m.ui.updateBusy {
+			label = "检查中…"
+		}
+		if ui.Button(c, label).Icon(IconImport).Outline().Disabled(m.ui.updateBusy).Clicked() {
+			c.After(m.checkUpdate)
+		}
+		if m.ui.updateURL != "" {
+			if ui.Button(c, "打开发布页").Icon(IconGlobe).Outline().Clicked() {
+				c.After(m.openUpdatePage)
+			}
+		}
+		ui.Text(c, "当前版本 v"+updater.Version).FontSize(11).Muted()
+	})
+	if m.ui.updateNote != "" {
+		ui.Text(c, m.ui.updateNote).FontSize(11).Muted()
 	}
 }
 

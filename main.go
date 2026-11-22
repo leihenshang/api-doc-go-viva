@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/secrets"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/leihenshang/api-doc-go-viva/internal/view"
@@ -54,8 +55,13 @@ func main() {
 		}
 		log.Printf("已载入「%s」：%d 条内容，环境 %q", col.Name, len(col.Entries), *env)
 	}
+	cfg := settings.Load()
+	// 敏感值加密：密钥在配置目录，与集合分开（集合常整个进 git）。
+	if cfgDir, cfgErr := settings.Dir(); cfgErr == nil {
+		secrets.Configure(cfgDir, cfg.SealSecrets())
+	}
 	// Cookie 默认落盘（设置里可关）：登录一次，下次打开还在。
-	if cfg := settings.Load(); cfg.PersistCookies() {
+	if cfg.PersistCookies() {
 		if cfgDir, cfgErr := settings.Dir(); cfgErr == nil {
 			if err := send.Open(cfgDir); err != nil {
 				log.Printf("读取 Cookie 失败：%v", err)
