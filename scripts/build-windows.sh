@@ -179,9 +179,14 @@ find_makensis() {
 		command -v makensis
 		return 0
 	fi
-	if [[ -n "${NSISDIR:-}" && -x "${NSISDIR}/usr/bin/makensis" ]]; then
-		echo "${NSISDIR}/usr/bin/makensis"
-		return 0
+	# 解 deb 的场景：NSISDIR=/tmp/nsisroot/usr/share/nsis，二进制在同级的 ../../bin。
+	if [[ -n "${NSISDIR:-}" ]]; then
+		local prefix
+		prefix="$(cd "${NSISDIR}/../.." 2>/dev/null && pwd || true)"
+		if [[ -n "$prefix" && -x "$prefix/bin/makensis" ]]; then
+			echo "$prefix/bin/makensis"
+			return 0
+		fi
 	fi
 	return 1
 }

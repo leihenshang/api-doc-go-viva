@@ -86,8 +86,9 @@ OutFile "${OUT_FILE}"
 !define MUI_UNICON "${ICON_FILE}"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_NOAUTOCLOSE
-!define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "立即启动 ${PRODUCT_NAME}"
+; 不在这里「立即启动」：machine 范围的安装器是提权进程，从它启动的子进程也带管理员令牌，
+; 程序会把配置写进管理员的用户目录，之后正常启动时看起来像「设置丢了」。
+; 让用户从开始菜单启动（普通权限），这是 Windows 的常规做法。
 ; 最后一页勾「创建桌面快捷方式」：用一个函数代替「读我」，勾了才建（默认不勾）。
 ; 静默安装（/S）不会走这一页，所以脚本安装不带桌面图标——这是有意的。
 !define MUI_FINISHPAGE_SHOWREADME ""
