@@ -9,6 +9,7 @@ import (
 	appmcp "github.com/leihenshang/api-doc-go-viva/internal/mcp"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
+	"github.com/leihenshang/api-doc-go-viva/internal/secrets"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/leihenshang/api-doc-go-viva/internal/updater"
 	"github.com/vivaui/viva/app"
@@ -1219,8 +1220,13 @@ func (m *Model) envDialog(c ui.C) {
 					ui.Text(c, "环境名").FontSize(11).Muted().Width(52)
 					ui.TextField(c, &m.ui.envNameEdit, "环境名", "dev").Width(220)
 				})
-				ui.Text(c, "敏感值的明文保存在 environments/<环境>.secrets.yml（已加入 .gitignore）").
-					FontSize(11).Muted()
+				hint := "敏感值单独存 environments/<环境>.secrets.yml，落盘时加密（密钥在本机配置目录）；" +
+					"没有密钥的机器上只能看到密文，集合进 git 也只留密文。"
+				if !secrets.Enabled() {
+					hint = "注意：设置里关掉了「加密敏感值」，新保存的敏感值会以明文写进 " +
+						"environments/<环境>.secrets.yml（记得别提交）。"
+				}
+				ui.Text(c, hint).FontSize(11).Muted()
 				ui.Column(c).FillWidth().Pad(8).Gap(6).Radius(theme.Metrics.RadiusControl).
 					Border(1, m.pal.border).Children(func() {
 					ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
