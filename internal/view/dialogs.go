@@ -835,6 +835,12 @@ func (m *Model) runnerDialog(c ui.C) {
 				}
 				return
 			}
+			if len(m.run.Results) > 0 {
+				if ui.Button(c, "导出 JUnit").Icon(IconImport).Outline().
+					Tooltip("把这次结果写成 JUnit XML（CI 直接能读）").Clicked() {
+					c.After(m.exportRunReport)
+				}
+			}
 			if ui.Button(c, "运行").Clicked() {
 				c.After(m.startRun)
 			}

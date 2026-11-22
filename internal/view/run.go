@@ -2,11 +2,15 @@ package view
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
+	"github.com/vivaui/viva/app"
 )
 
 // runRow 是运行器列表里的一行：请求的身份与勾选状态（勾选存在 map 里，随弹窗走）。
@@ -209,4 +213,33 @@ func runMethodText(method string) string {
 		return "GET"
 	}
 	return upper
+}
+
+// exportRunReport 把这次运行结果写成 JUnit XML（CI 用）。
+func (m *Model) exportRunReport() {
+	if len(m.run.Results) == 0 {
+		m.run.Note = "还没有结果可导出"
+		m.invalidator.Invalidate()
+		return
+	}
+	target, err := app.SaveFile(app.SaveFileOptions{
+		Title:            "导出运行报告",
+		SuggestedName:    m.col.Name + "-junit.xml",
+		DefaultExtension: "xml",
+		Filters:          []app.FileFilter{{Name: "JUnit 报告", Pattern: "*.xml"}},
+	})
+	if err != nil {
+		if !errors.Is(err, app.ErrCanceled) {
+			m.run.Note = "保存失败：" + err.Error()
+			m.invalidator.Invalidate()
+		}
+		return
+	}
+	if err := os.WriteFile(target, []byte(runner.JUnit(m.col.Name, m.run.Results)), 0o644); err != nil {
+		m.run.Note = "写入失败：" + err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	m.run.Note = "已导出 " + filepath.Base(target)
+	m.invalidator.Invalidate()
 }
