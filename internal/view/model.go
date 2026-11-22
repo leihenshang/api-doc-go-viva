@@ -493,6 +493,17 @@ type Model struct {
 	scratch  bool // 当前标签是不是未落盘的临时请求
 	overview bool // 正在看集合概览（固定的「集合」页）
 	settings settings.Settings
+	// 树的排序与收藏：排序是全局偏好，收藏按集合根分开记（fav 存当前集合那份）。
+	sortMode     string
+	fav          map[string]bool
+	sortMenuOpen bool
+
+	// 页签拖拽重排：tabDrag 是这一次手势，tabSlotIDs 记录本帧每个槽位的点击身份
+	// （拖拽回调只给身份，要靠它反查槽位）。
+	tabDrag    ui.DragState
+	tabSlotIDs []gfx.ID       // 槽位 → 主点击身份（测试与调试用）
+	tabSlots   map[gfx.ID]int // 任何声明过的点击身份 → 槽位（标题、背景各一份）
+
 	// 托盘与窗口：托盘挂上之后才有 window/app 的用法，未挂上也各自有 nil 判断。
 	app         *app.Application
 	window      trayWindow
@@ -584,6 +595,9 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.roots = []*rootState{{col: col}}
 	m.active = 0
 	m.col = col
+	// 树的排序与收藏都跟着偏好走：收藏按集合根分，排序是全局的。
+	m.sortMode = m.settings.SortMode
+	m.reloadFavorites()
 	m.curTab = -1
 	m.tabActive = -1
 	m.ui.newMethod = "GET"
@@ -746,6 +760,11 @@ func (m *Model) flushHoverExpand() {
 // 同一集合根里可以换上级、排序；跨集合根只接「放进分组 / 集合根」，
 // 因为另一棵树里的序号与父目录都不在当前集合里，排序没有意义。
 func (m *Model) dropAllowed(from, to int, where ui.TreeDrop) bool {
+	// 名称排序下禁用拖拽：拖完顺序还是按名字排，用户会以为「拖不动」，
+	// 那不如一开始就不接——要排序就先切回磁盘顺序。
+	if m.sortMode != "" {
+		return false
+	}
 	if from < 0 || to < 0 || from >= len(m.rows) || to >= len(m.rows) || from == to {
 		return false
 	}

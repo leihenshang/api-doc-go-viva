@@ -287,10 +287,21 @@ func (m *Model) fieldEditor(c ui.C) {
 			}
 		})
 	}
-	ui.Row(c).FillWidth().Children(func() {
+	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 		if ui.Button(c, "添加字段").Icon(IconPlus).Ghost().Clicked() {
 			m.req.fields = append(m.req.fields, &fieldRow{typ: "string"})
 			m.markEdited()
+		}
+		// 字段表可以照着一次真实返回自动生成：省得手敲路径与类型。
+		if ui.Button(c, "从当前响应生成").Icon(IconImport).Outline().
+			Tooltip("按当前响应推字段名与类型；同名字段的说明、示例、必填保持不变").
+			Disabled(!m.hasResp).Clicked() {
+			c.After(m.generateFields)
+		}
+		if len(m.req.fields) > 0 {
+			if ui.Button(c, "清空字段").Icon(IconTrash).Outline().Clicked() {
+				c.After(m.clearFields)
+			}
 		}
 	})
 }
@@ -514,6 +525,14 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					}
 				}
 			})
+		}
+		// 连接信息单独一行：塞进上面那行会和「保存 / 原始 / 复制」抢宽度
+		// （实测 434 宽时按钮的包围盒直接落到窗口外），而这一行只放它自己，
+		// 窄栏用省略号截断即可。
+		if entry.Kind == explorer.KindHTTP && m.hasResp {
+			if info := m.connInfo(false); info != "" {
+				ui.Text(c, info).FontSize(10).Mono().Muted().FillWidth().Ellipsis()
+			}
 		}
 		if m.find.open && entry.Kind == explorer.KindHTTP {
 			m.findBar(c)

@@ -52,6 +52,11 @@ type Settings struct {
 	LastCollection string `json:"lastCollection,omitempty"`
 	// LastCollections 是上次同时打开的全部集合根（按打开顺序）；启动时逐个恢复。
 	LastCollections []string `json:"lastCollections,omitempty"`
+	// Favorites 按集合根目录记收藏的条目路径（相对集合根）。
+	// 键是集合目录而不是全局列表：两个集合里同名请求不会互相点亮。
+	Favorites map[string][]string `json:"favorites,omitempty"`
+	// SortMode 是树的排序：空 = 磁盘顺序（seq），"name-asc" / "name-desc"。
+	SortMode string `json:"sortMode,omitempty"`
 	// ActiveCollection 是上次停留的集合根目录，恢复时切回它。
 	ActiveCollection string `json:"activeCollection,omitempty"`
 	// MCPEnabled 打开内嵌 MCP 服务（把当前打开的集合暴露给 AI 工具）。

@@ -5,6 +5,7 @@ import (
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
+	"github.com/vivaui/viva/gfx"
 )
 
 // tabState 是一条已打开内容（请求或文档）的全部界面状态。
@@ -184,6 +185,67 @@ func (m *Model) closeRight(i int) {
 	m.invalidator.Invalidate()
 }
 
+// setTabSlotID 记下某个槽位的点击身份（拖拽回调要靠它反查槽位）。
+// 一个标签里有两处可以按下：背景（行本身）与标题文字，各自是一个身份，
+// 都映射到同一个槽位——否则用户按在字上就拖不动。
+func (m *Model) setTabSlotID(slot int, id gfx.ID) {
+	for len(m.tabSlotIDs) <= slot {
+		m.tabSlotIDs = append(m.tabSlotIDs, gfx.ID{})
+	}
+	m.tabSlotIDs[slot] = id
+	if m.tabSlots == nil {
+		m.tabSlots = map[gfx.ID]int{}
+	}
+	m.tabSlots[id] = slot
+}
+
+// tabSlotOf 按点击身份反查槽位；找不到（这帧没画它）返回 -1。
+func (m *Model) tabSlotOf(id gfx.ID) int {
+	if slot, ok := m.tabSlots[id]; ok {
+		return slot
+	}
+	return -1
+}
+
+// moveTab 把第 from 个标签挪到第 to 个位置，当前标签跟着走。
+func (m *Model) moveTab(from, to int) {
+	if from == to || from < 0 || to < 0 || from >= len(m.tabs) || to >= len(m.tabs) {
+		return
+	}
+	current := m.tabs[m.curTab]
+	moving := m.tabs[from]
+	next := make([]*tabState, 0, len(m.tabs))
+	for index, tab := range m.tabs {
+		if index == from {
+			continue
+		}
+		next = append(next, tab)
+	}
+	// 语义：挪过去的标签占住目标原来的位置（右移一格就是真的往右一格）。
+	if to > len(next) {
+		to = len(next)
+	}
+	next = append(next, nil)
+	copy(next[to+1:], next[to:])
+	next[to] = moving
+	m.tabs = next
+	for index, tab := range m.tabs {
+		if tab == current {
+			m.curTab = index
+		}
+	}
+	m.invalidator.Invalidate()
+}
+
+// dropTab 是拖拽松手：把源标签放到目标标签的位置上。
+func (m *Model) dropTab(source, target gfx.ID) {
+	from, to := m.tabSlotOf(source), m.tabSlotOf(target)
+	if from < 0 || to < 0 {
+		return
+	}
+	m.moveTab(from, to)
+}
+
 // closeTabOf 关掉某条内容的标签（删除到回收站时用）。
 func (m *Model) closeTabOf(file string) {
 	if i := m.findTab(file); i >= 0 {
@@ -339,3 +401,13 @@ func (m *Model) reloadActive() {
 
 // selectInList 让集合树选中某个条目；条目被过滤掉就清掉选择。
 func (m *Model) selectInList(file string) { m.selectEntryRow(file) }
+
+// closeAll 关掉所有标签并回到集合概览（菜单里的「关闭全部」）。
+func (m *Model) closeAll() {
+	if len(m.tabs) == 0 {
+		return
+	}
+	m.closeAllTabs()
+	m.overview = true
+	m.invalidator.Invalidate()
+}

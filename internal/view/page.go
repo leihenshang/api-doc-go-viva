@@ -324,6 +324,32 @@ func (m *Model) sidebar(c ui.C) {
 			if ui.Button(c, "导入 cURL").Icon(IconImport).Outline().IconOnly().Tooltip("导入 cURL").Clicked() {
 				m.openCurlImport("")
 			}
+			sortBtn := ui.Button(c, "排序").Icon(IconSliders).Outline().IconOnly().
+				Tooltip("排序与收藏：" + sortLabel(m.sortMode))
+			if sortBtn.Clicked() {
+				m.sortMenuOpen = !m.sortMenuOpen
+			}
+			if m.sortMenuOpen {
+				ui.Menu(c, sortBtn, &m.sortMenuOpen, func(menu *ui.MenuItems) {
+					menu.Label("排序")
+					for _, item := range []struct{ mode, label string }{
+						{"", "磁盘顺序"},
+						{"name-asc", "名称 A→Z"},
+						{"name-desc", "名称 Z→A"},
+					} {
+						mode := item.mode
+						if menu.Item(item.label).Checked(m.sortMode == mode).Clicked() {
+							c.After(func() { m.setSortMode(mode) })
+						}
+					}
+					menu.Separator()
+					menu.Label("收藏")
+					if menu.Item("清空收藏").Disabled(len(m.fav) == 0).Destructive().Clicked() {
+						c.After(m.clearFavorites)
+					}
+					menu.Item("收藏的条目排在最前，右键条目可收藏").Disabled(true)
+				})
+			}
 		})
 		if ui.TextField(c, &m.filter, "搜索请求", "搜索请求…").Icon(IconSearch).FillWidth().Changed() {
 			m.shownOnce = false
@@ -357,6 +383,9 @@ const tabWidth float32 = 132
 // tabBar 是详情区顶部的标签条：固定的「集合」页 + 可横向滚动的条目标签。
 // 标签超出可用宽度时出现「‹ ›」按钮，切标签会自动把当前标签滚进可视区。
 func (m *Model) tabBar(c ui.C) {
+	// 每帧重建「点击身份 → 槽位」的映射：拖拽回调只拿到身份。
+	m.tabSlotIDs = m.tabSlotIDs[:0]
+	m.tabSlots = make(map[gfx.ID]int, len(m.tabs)*2)
 	ui.Column(c).FillWidth().Background(m.pal.sidebar).Children(func() {
 		ui.Row(c).FillWidth().Height(37).PadX(6).Gap(2).Items(ui.Center).Children(func() {
 			m.pinnedTab(c)
@@ -457,11 +486,20 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 	theme := c.Theme()
 	title := m.tabTitle(tab)
 	ui.Column(c).Gap(0).Children(func() {
+		id := ui.ID(c)
+		m.setTabSlotID(slot, id)
+		// 标签既是拖拽源也是目标：拖着换位置（排序是用户自己排的，与树的排序无关）。
 		row := ui.Row(c).Height(35).PadX(8).Gap(6).Items(ui.Center).
 			Hover(ui.Look{}.Background(theme.Hover)).
-			Hit(ui.ID(c), "标签 "+title)
+			Hit(id, "标签 "+title).
+			DragSource(&m.tabDrag).
+			DropTarget(&m.tabDrag, nil, m.dropTab)
+		dropping := m.tabDrag.Dragging() && m.tabDrag.Target() == id
 		if active {
 			row.Background(theme.Card)
+		}
+		if dropping {
+			row.Background(theme.Hover)
 		}
 		row.Children(func() {
 			if tab.entry != nil && tab.entry.Kind == explorer.KindHTTP {
@@ -469,6 +507,8 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 			} else if tab.scratch {
 				ui.Text(c, tab.req.method).FontSize(9).Mono().Muted()
 			}
+			// 备注：文字上按下不会启动拖拽（viva 把文字当无障碍标签，press 归它），
+			// 所以拖拽要按在标签的空白处；菜单里另有「左移 / 右移」兜底。
 			ui.Text(c, title).FontSize(12.5).Ellipsis()
 			if ui.Button(c, "关闭 "+title).Icon(IconX).IconOnly().Ghost().Tooltip("关闭标签").Clicked() {
 				c.After(func() { m.closeTab(slot) })
@@ -484,6 +524,16 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 			if menu.Item("关闭右侧").Clicked() {
 				c.After(func() { m.closeRight(slot) })
 			}
+			if menu.Item("关闭全部").Clicked() {
+				c.After(m.closeAll)
+			}
+			menu.Separator()
+			if menu.Item("左移一位").Disabled(slot == 0).Clicked() {
+				c.After(func() { m.moveTab(slot, slot-1) })
+			}
+			if menu.Item("右移一位").Disabled(slot == len(m.tabs)-1).Clicked() {
+				c.After(func() { m.moveTab(slot, slot+1) })
+			}
 			if !tab.scratch && tab.file != "" {
 				if menu.Item("复制请求路径").Clicked() {
 					file := tab.file
@@ -496,6 +546,10 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 		}
 		line := ui.RGBA(0, 0, 0, 0)
 		if active {
+			line = theme.Primary
+		}
+		if dropping {
+			// 拖到哪个标签上，就把那个标签的底边点亮：松手后它会落在这一位。
 			line = theme.Primary
 		}
 		ui.Slot(c).FillWidth().Height(2).Background(line)

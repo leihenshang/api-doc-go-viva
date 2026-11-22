@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=API-DOC-GO
+Name[zh_CN]=API-DOC-GO
+GenericName=API Collection Client
+GenericName[zh_CN]=接口集合客户端
+Comment=Browse, send and document HTTP/gRPC requests from opencollection collections
+Comment[zh_CN]=读写 opencollection 集合：浏览接口、真实发送请求、写接口文档
+Exec=api-doc-viva
+Icon=api-doc-viva
+Terminal=false
+Categories=Development;
+Keywords=api;http;rest;grpc;openapi;collection;
+Keywords[zh_CN]=接口;文档;调试;集合;
+# 与 app.Config.Class 一致：否则任务栏会把窗口当成另一个程序，图标与分组都不对。
+StartupWMClass=api-doc-viva
+StartupNotify=true

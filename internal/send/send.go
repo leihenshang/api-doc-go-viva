@@ -74,6 +74,12 @@ type Outcome struct {
 	// 两者一起决定「这是不是一份要保存的文件」。
 	ContentType string
 	Filename    string
+	// Proto 是实际用的协议（HTTP/1.1、HTTP/2.0），TLS 是协商到的 TLS 版本（明文为空）。
+	// Proto / TLS / Redirects / Remote 四个一起构成响应区那行「连接信息」。
+	Proto     string
+	TLS       string
+	Redirects int
+	Remote    string
 	// ReqHeaders / ReqParams / ReqBody 是**真正发出去**的请求快照（变量已替换），
 	// 给历史详情用。请求体超过 reqBodyLimit 会截断并在 ReqBodyTruncated 标出来。
 	ReqHeaders       []Header
@@ -98,7 +104,7 @@ func Do(ctx context.Context, plan Plan) Outcome {
 	snapshot := snapshotRequest(req)
 	// 记下 host：Cookie Jar 只能按 URL 反查，列全部 cookie 时要用。
 	noteURL(req.URL)
-	client, err := newClient(plan)
+	client, redirectsPtr, err := newClient(plan)
 	if err != nil {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start), URL: sent}
 	}
@@ -107,6 +113,11 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		return Outcome{Err: err.Error(), Missing: missing, Duration: time.Since(start), URL: sent}
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// 客户端在 CheckRedirect 里累加跳数，这里取快照（读响应时不再变化）。
+	redirects := 0
+	if redirectsPtr != nil {
+		redirects = *redirectsPtr
+	}
 	// 重定向后的最终地址也要记：cookie 可能落在链尾那个域名上。
 	if resp.Request != nil {
 		noteURL(resp.Request.URL)
@@ -143,6 +154,10 @@ func Do(ctx context.Context, plan Plan) Outcome {
 		URL:              sent,
 		ContentType:      resp.Header.Get("Content-Type"),
 		Filename:         filenameFrom(resp.Header),
+		Proto:            resp.Proto,
+		TLS:              tlsLabel(resp),
+		Redirects:        redirects,
+		Remote:           remoteHost(resp),
 		ReqHeaders:       snapshot.headers,
 		ReqParams:        snapshot.params,
 		ReqBody:          snapshot.body,
@@ -153,7 +168,7 @@ func Do(ctx context.Context, plan Plan) Outcome {
 }
 
 // newClient 按请求的超时与证书设置建客户端。
-func newClient(plan Plan) (*http.Client, error) {
+func newClient(plan Plan) (*http.Client, *int, error) {
 	timeout := plan.Timeout
 	if timeout <= 0 && plan.File != nil && plan.File.Settings != nil {
 		timeout = time.Duration(plan.File.Settings.TimeoutSec) * time.Second
@@ -168,19 +183,30 @@ func newClient(plan Plan) (*http.Client, error) {
 	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.FollowRedirects != nil {
 		follow = *plan.File.Settings.FollowRedirects
 	}
-	client, err := newClientWith(plan, timeout, follow)
+	redirects := 0
+	client, err := newClientWith(plan, timeout, follow, &redirects)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return client, nil
+	return client, &redirects, nil
 }
 
 // newClientWith 组装客户端：超时、重定向、TLS、代理与客户端证书。
-func newClientWith(plan Plan, timeout time.Duration, follow bool) (*http.Client, error) {
+func newClientWith(plan Plan, timeout time.Duration, follow bool, redirects *int) (*http.Client, error) {
 	// 共享 Cookie Jar：同一个进程里发出去的请求共用一个会话（登录一次，后面自动带上）。
 	client := useJar(&http.Client{Timeout: timeout})
-	if !follow {
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// 记下跳了几次：响应区那行「连接信息」要显示它，用户才知道自己看到的是第几跳的页面。
+	client.CheckRedirect = func(_ *http.Request, via []*http.Request) error {
+		if redirects != nil {
+			*redirects = len(via)
+		}
+		if !follow {
+			return http.ErrUseLastResponse
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("重定向超过 10 次，停止")
+		}
+		return nil
 	}
 	insecure := plan.InsecureSSL
 	if plan.File != nil && plan.File.Settings != nil && plan.File.Settings.InsecureSSL != nil {
@@ -499,4 +525,30 @@ func Resolve(text string, vars map[string]string) (string, []string) {
 	exp := &expander{vars: vars}
 	out := exp.text(text)
 	return out, exp.missing
+}
+
+// tlsLabel 把协商到的 TLS 版本翻成人看的字；明文响应返回空串。
+func tlsLabel(resp *http.Response) string {
+	if resp == nil || resp.TLS == nil {
+		return ""
+	}
+	switch resp.TLS.Version {
+	case tls.VersionTLS10:
+		return "TLS 1.0"
+	case tls.VersionTLS11:
+		return "TLS 1.1"
+	case tls.VersionTLS12:
+		return "TLS 1.2"
+	case tls.VersionTLS13:
+		return "TLS 1.3"
+	}
+	return "TLS"
+}
+
+// remoteHost 是最终落到的地址（重定向后是链尾那个）。
+func remoteHost(resp *http.Response) string {
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
+		return ""
+	}
+	return resp.Request.URL.Host
 }

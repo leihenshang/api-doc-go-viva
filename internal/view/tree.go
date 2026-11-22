@@ -22,7 +22,9 @@ const (
 
 // treeRow 是集合树的一行。
 type treeRow struct {
-	kind     treeKind
+	kind treeKind
+	// fav 报告这一行是否被收藏（只有条目行会为真）。
+	fav      bool
 	depth    int
 	key      string // 展开状态的键：root:<dir> / dir:<相对路径> / entry:<文件>
 	label    string // 无障碍与测试钩子
@@ -53,8 +55,11 @@ func parentDir(rel string) string {
 // requestDir 是请求文件所在的分组目录（根目录用空串）。
 func requestDir(file string) string { return parentDir(file) }
 
-// newTreeChildren 按父目录归类并排序：目录在前、条目在后，各自按 seq 再按名称。
-func newTreeChildren(col *explorer.Collection) *treeChildren {
+// newTreeChildren 按父目录归类并排序：目录在前、条目在后。
+//
+// 排序口径：目录永远按 seq（拖拽出来的顺序就是用户的意思，不该被名称排序打乱）；
+// 条目在「磁盘顺序」下按 seq，在名称模式下按名称；收藏的条目在任何模式下都排在最前。
+func newTreeChildren(col *explorer.Collection, sortMode string, fav func(file string) bool) *treeChildren {
 	kids := &treeChildren{
 		folders: make(map[string][]*explorer.Folder, len(col.Folders)),
 		entries: make(map[string][]*explorer.Entry, len(col.Entries)),
@@ -78,10 +83,21 @@ func newTreeChildren(col *explorer.Collection) *treeChildren {
 	}
 	for _, entries := range kids.entries {
 		sort.SliceStable(entries, func(i, j int) bool {
-			if entries[i].Seq != entries[j].Seq {
-				return entries[i].Seq < entries[j].Seq
+			left, right := entries[i], entries[j]
+			leftFav, rightFav := fav(left.File), fav(right.File)
+			if leftFav != rightFav {
+				return leftFav
 			}
-			return entries[i].Name < entries[j].Name
+			switch sortMode {
+			case "name-asc":
+				return strings.ToLower(left.Name) < strings.ToLower(right.Name)
+			case "name-desc":
+				return strings.ToLower(left.Name) > strings.ToLower(right.Name)
+			}
+			if left.Seq != right.Seq {
+				return left.Seq < right.Seq
+			}
+			return left.Name < right.Name
 		})
 	}
 	return kids
@@ -114,7 +130,7 @@ func (m *Model) rebuildTree() {
 
 	for index, root := range m.roots {
 		col := root.col
-		kids := newTreeChildren(col)
+		kids := newTreeChildren(col, m.sortMode, m.isFav)
 		m.countMatches(kids, "", needle)
 		if force && kids.counts[""] == 0 {
 			continue
@@ -167,6 +183,7 @@ func (m *Model) appendChildren(root int, dir string, depth int, needle string, f
 		}
 		m.rows = append(m.rows, treeRow{
 			kind:  nodeEntry,
+			fav:   m.isFav(entry.File),
 			depth: depth,
 			key:   entryKey(m.roots[root].col.Dir, entry.File),
 			label: entry.Title(),
@@ -343,6 +360,18 @@ func (m *Model) selectedRow() *treeRow {
 	return &m.rows[index]
 }
 
+// favoriteMenuItem 是条目菜单里的「收藏 / 取消收藏」。
+func (m *Model) favoriteMenuItem(c ui.C, menu *ui.MenuItems, entry *explorer.Entry) {
+	fav := m.isFav(entry.File)
+	label := "收藏"
+	if fav {
+		label = "取消收藏"
+	}
+	if menu.Item(label).Icon(IconStar).Checked(fav).Clicked() {
+		c.After(func() { m.toggleFavorite(entry) })
+	}
+}
+
 // treeContent 画一行：集合根带「更多」菜单，分组只有名字，条目是方法 + 名称。
 func (m *Model) treeContent(i int) {
 	if i < 0 || i >= len(m.rows) {
@@ -480,6 +509,10 @@ func entryMenuVisible(rowHovered, buttonHovered, menuOpen bool) bool {
 // entryRow 是请求 / gRPC / 文档：方法色块 + 名称，右键菜单沿用集合树的操作。
 func (m *Model) entryRow(c ui.C, row *treeRow, i int) {
 	entry := row.entry
+	// 收藏标记放在最左边：扫一眼就知道哪些是常看的。
+	if row.fav {
+		ui.Icon(c, IconStar).Size(12, 12).Shrink(0).Color(m.theme.Primary)
+	}
 	ui.Text(c, methodText(entry)).FontSize(11).Mono().Bold().Width(46).
 		Color(entryTint(&m.theme, entry, m.isLight()))
 	name := ui.Text(c, entry.Name).FontSize(13).Ellipsis().LabelFor(m.tree.RowID(i))
@@ -509,6 +542,8 @@ func (m *Model) entryRow(c ui.C, row *treeRow, i int) {
 	}
 	if m.menuEntry == entry.File {
 		ui.Menu(c, more, &m.menuOpen, func(menu *ui.MenuItems) {
+			m.favoriteMenuItem(c, menu, entry)
+			menu.Separator()
 			if menu.Item("新建请求").Icon(IconPlus).Clicked() {
 				m.selectEntryRow(entry.File)
 				m.openNewRequest()
@@ -523,6 +558,8 @@ func (m *Model) entryRow(c ui.C, row *treeRow, i int) {
 		})
 	}
 	ui.ContextMenu(c, name, func(menu *ui.MenuItems) {
+		m.favoriteMenuItem(c, menu, entry)
+		menu.Separator()
 		if menu.Item("新建请求").Icon(IconPlus).Clicked() {
 			m.selectEntryRow(entry.File)
 			m.openNewRequest()
@@ -952,4 +989,15 @@ func (m *Model) createDocIn(root int) {
 		m.activateRoot(root)
 	}
 	m.createDoc()
+}
+
+// sortLabel 是排序按钮的提示文字（按钮本身只有图标）。
+func sortLabel(mode string) string {
+	switch mode {
+	case "name-asc":
+		return "名称 A→Z"
+	case "name-desc":
+		return "名称 Z→A"
+	}
+	return "磁盘顺序"
 }

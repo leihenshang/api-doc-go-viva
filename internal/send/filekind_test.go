@@ -1,8 +1,14 @@
 package send
 
 import (
+	"context"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/leihenshang/api-doc-go-share/collection"
 )
 
 // TestIsFileResponse 只有「明确要下载」或「不是文本」才算文件；JSON / 文本照常渲染。
@@ -61,5 +67,65 @@ func TestSuggestedFileName(t *testing.T) {
 	}
 	if got := (Outcome{Filename: "导出.csv"}).SuggestedFileName(); got != "导出.csv" {
 		t.Errorf("有文件名时应直接用：%q", got)
+	}
+}
+
+// TestOutcomeCarriesConnectionInfo 协议 / 跳数 / 最终地址都要带回来。
+func TestOutcomeCarriesConnectionInfo(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/mid", http.StatusFound)
+	})
+	mux.HandleFunc("/mid", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/end", http.StatusFound)
+	})
+	mux.HandleFunc("/end", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	plan := Plan{File: &collection.RequestFile{
+		Info: collection.FileInfo{Name: "跳转", Type: "http"},
+		HTTP: collection.HTTPBlock{Method: "GET", URL: server.URL + "/start"},
+	}}
+	out := Do(context.Background(), plan)
+	if out.Err != "" {
+		t.Fatalf("Do: %s", out.Err)
+	}
+	if out.Redirects != 2 {
+		t.Fatalf("应记到 2 次跳转，实际 %d", out.Redirects)
+	}
+	if !strings.HasSuffix(out.Remote, strings.TrimPrefix(server.URL, "http://")) {
+		t.Fatalf("最终地址不对：%q", out.Remote)
+	}
+	if !strings.HasPrefix(out.Proto, "HTTP/") {
+		t.Fatalf("协议不对：%q", out.Proto)
+	}
+	if out.TLS != "" {
+		t.Fatalf("明文响应不该有 TLS 版本：%q", out.TLS)
+	}
+}
+
+// TestOutcomeTLSVersionTLS1x HTTPS 响应要报出 TLS 版本。
+func TestOutcomeTLSVersionTLS1x(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+
+	plan := Plan{
+		File: &collection.RequestFile{
+			Info: collection.FileInfo{Name: "TLS", Type: "http"},
+			HTTP: collection.HTTPBlock{Method: "GET", URL: server.URL + "/"},
+		},
+		InsecureSSL: true, // 自签证书
+	}
+	out := Do(context.Background(), plan)
+	if out.Err != "" {
+		t.Fatalf("Do: %s", out.Err)
+	}
+	if !strings.HasPrefix(out.TLS, "TLS 1.") {
+		t.Fatalf("TLS 版本不对：%q", out.TLS)
 	}
 }

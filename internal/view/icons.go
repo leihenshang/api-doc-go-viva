@@ -498,3 +498,24 @@ var IconX = gfx.Icon{
 		gfx.LineTo(18.0, 18.0),
 	},
 }
+
+// icon-star is a compiled vector icon（收藏标记：五角星）。
+var IconStar = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  1.8,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(12.0, 3.2),
+		gfx.LineTo(14.8, 9.0),
+		gfx.LineTo(21.2, 9.9),
+		gfx.LineTo(16.6, 14.4),
+		gfx.LineTo(17.7, 20.7),
+		gfx.LineTo(12.0, 17.7),
+		gfx.LineTo(6.3, 20.7),
+		gfx.LineTo(7.4, 14.4),
+		gfx.LineTo(2.8, 9.9),
+		gfx.LineTo(9.2, 9.0),
+		gfx.ClosePath(),
+	},
+}

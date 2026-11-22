@@ -23,8 +23,12 @@ import (
 // 48/64 给资源管理器，128/256 给高 DPI 与「大图标」视图。
 var icoSizes = []int{16, 24, 32, 48, 64, 128, 256}
 
+// pngSizes 是给 Linux 桌面用的尺寸：hicolor 主题按 16/24/32/48/64/128/256/512 分目录。
+var pngSizes = []int{16, 24, 32, 48, 64, 128, 256, 512}
+
 func main() {
 	out := flag.String("out", "build/windows", "输出目录（会写入 icon.ico 与 icon.png）")
+	pngDir := flag.String("png-dir", "", "额外输出多档 PNG（Linux 图标的 hicolor 尺寸），留空不输出")
 	flag.Parse()
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {
@@ -54,6 +58,28 @@ func main() {
 		size = info.Size()
 	}
 	fmt.Printf("图标已生成：%s（%d 档，%d 字节）、%s\n", icoPath, len(icoSizes), size, pngPath)
+
+	// Linux 桌面按 hicolor 的尺寸目录找图标：每种尺寸一个文件，名字必须一一对应。
+	if *pngDir != "" {
+		if err := os.MkdirAll(*pngDir, 0o755); err != nil {
+			log.Fatalf("建目录 %s: %v", *pngDir, err)
+		}
+		for _, px := range pngSizes {
+			target := filepath.Join(*pngDir, fmt.Sprintf("icon-%d.png", px))
+			file, err := os.Create(target)
+			if err != nil {
+				log.Fatalf("建 %s: %v", target, err)
+			}
+			if err := png.Encode(file, brand.Image(px)); err != nil {
+				_ = file.Close()
+				log.Fatalf("写 %s: %v", target, err)
+			}
+			if err := file.Close(); err != nil {
+				log.Fatalf("关 %s: %v", target, err)
+			}
+		}
+		fmt.Printf("多档 PNG 已生成：%s（%v）\n", *pngDir, pngSizes)
+	}
 }
 
 // writeICO 写一份 32 位 BMP 条目的 .ico。

@@ -2,6 +2,7 @@ package view
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,4 +75,27 @@ func (m *Model) saveResponseBody() {
 // writeResponseBody 是保存的实体部分（拆出来便于用例直接调用，绕开文件对话框）。
 func (m *Model) writeResponseBody(path string) error {
 	return os.WriteFile(path, []byte(m.resp.Body), 0o644)
+}
+
+// connInfo 是响应区那行「连接信息」：协议 · TLS · 跳数 · 地址。
+// narrow 时只留前两项（地址最长，先舍它）。
+func (m *Model) connInfo(narrow bool) string {
+	parts := make([]string, 0, 4)
+	if m.resp.Proto != "" {
+		parts = append(parts, m.resp.Proto)
+	}
+	if m.resp.TLS != "" {
+		parts = append(parts, m.resp.TLS)
+	} else if m.resp.Proto != "" {
+		parts = append(parts, "明文")
+	}
+	if !narrow {
+		if m.resp.Redirects > 0 {
+			parts = append(parts, fmt.Sprintf("%d 跳", m.resp.Redirects))
+		}
+		if m.resp.Remote != "" {
+			parts = append(parts, m.resp.Remote)
+		}
+	}
+	return strings.Join(parts, " · ")
 }
