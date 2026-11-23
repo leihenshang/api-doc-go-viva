@@ -227,6 +227,10 @@ const formLabelWidth = 90
 // formRowWidth 是设置表单行的宽度：每行同宽，标签列才会在同一条竖线上。
 const formRowWidth = 360
 
+// settingsBodyWidth 是设置右侧内容区的宽度：对话框 780 − 左右内边距 − 左侧导航 160 − 间距。
+// 换行文本必须拿到一个确定宽度才会真的换行（Percent 在这里按对话框算，不按内容区）。
+const settingsBodyWidth = 556
+
 // formLabel 是设置表单左侧的标签：固定 90px 的列，文字靠右，右缘贴着控件。
 // 用一个定宽的 Row 兜住（而不是给 Text 设 Width + TextEnd：那样 TextEnd 会把
 // 文本矩形整体挪位，不同长度的标签反而对不齐）。
@@ -236,36 +240,53 @@ func formLabel(c ui.C, text string) {
 	})
 }
 
+// hintTip 在设置行尾放一个感叹号：这一行的说明收进悬停气泡。
+//
+// 表单内容区只有五百来像素宽，原来的整段说明是一行不换行的 Text，长句直接被
+// 右边缘切掉（「集合进 git 也只留密文」之后全看不见）。气泡由 viva 画在最上层，
+// 按 MaxWidth 自动换行，放在控件右侧，既不挡输入也不再撑破表单。
+func hintTip(c ui.C, text string) {
+	id := ui.ID(c)
+	ui.Icon(c, IconInfo).Size(14, 14).Shrink(0).
+		Color(c.Theme().MutedForeground).
+		Hit(id, text).
+		Tooltip(text).
+		TooltipOn(ui.TooltipRight)
+}
+
 // settingsAppearance 是外观分区：主题立即生效并落盘。
 func (m *Model) settingsAppearance(c ui.C) {
 	ui.Text(c, "外观").FontSize(12).Bold().Muted()
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "主题")
 		ui.Choice(c, &m.ui.themePick, themeOptions, func(i int) string { return themeNames[i] })
+		ui.Spacer(c)
+		hintTip(c, "切换后立即生效，并写入本地偏好；Markdown 预览的配色一起切换。")
 	})
-	ui.Text(c, "切换后立即生效，并写入本地偏好；Markdown 预览的配色一起切换。").
-		FontSize(11).Muted()
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "请求 / 响应分栏")
 		ui.Choice(c, &m.ui.splitSide, splitOptions, func(i int) string { return splitNames[i] })
+		ui.Spacer(c)
+		hintTip(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。")
 	})
-	ui.Text(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。").
-		FontSize(11).Muted()
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "自动保存")
-		ui.Switch(c, &m.ui.autoSave, "编辑停顿后自动保存").Changed()
+		ui.Switch(c, &m.ui.autoSave, "自动保存").Changed()
 		ui.Text(c, "停顿").FontSize(11).Muted()
 		ui.TextField(c, &m.ui.autoSaveSec, "间隔", "2").Width(56)
 		ui.Text(c, "秒").FontSize(11).Muted()
+		ui.Spacer(c)
+		hintTip(c, "开着：最后一次编辑停这么久就写回集合（与 Ctrl+S 等价）。"+
+			"关掉：改动只存成草稿，重开还能捡回来，但集合文件不动。")
 	})
-	ui.Text(c, "开着：最后一次编辑停这么久就写回集合（与 Ctrl+S 等价）。关掉：改动只存成草稿，"+
-		"重开还能捡回来，但集合文件不动。").FontSize(11).Muted()
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "关闭窗口")
 		ui.Switch(c, &m.ui.closeToTray, "关闭窗口时收到托盘").Changed()
 		ui.Spacer(c)
+		hintTip(c, "开着时点关闭只把窗口收到托盘，进程继续跑；托盘不可用的桌面会自动退回「关窗即退出」。")
 	})
-	ui.Text(c, m.trayHint()).FontSize(11).Muted()
+	// 托盘状态是「结果」不是「说明」：它得一直看得见，所以留在表单里，但要换行。
+	ui.Wrap(c, m.trayHint()).Width(settingsBodyWidth).FontSize(11).Muted()
 }
 
 // settingsNetwork 是网络与安全分区：默认超时与重定向策略。
@@ -275,33 +296,37 @@ func (m *Model) settingsNetwork(c ui.C) {
 		formLabel(c, "默认超时（秒）")
 		ui.TextField(c, &m.ui.timeoutText, "默认超时", "20").Width(90).Changed()
 		ui.Spacer(c)
+		hintTip(c, "请求文件里的 settings.timeout 显式设置时优先于这里。")
 	})
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "跟随重定向")
 		ui.Switch(c, &m.ui.follow, "跟随重定向").Changed()
 		ui.Spacer(c)
+		hintTip(c, "请求文件里的 settings.followRedirects 显式设置时优先于这里。")
 	})
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "忽略证书校验")
 		ui.Switch(c, &m.ui.insecure, "忽略证书校验").Changed()
 		ui.Spacer(c)
+		hintTip(c, "只用于自签 / 内网证书调试；请求文件里的 settings.insecureSsl 显式设置时优先于这里。")
 	})
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "加密敏感值")
 		ui.Switch(c, &m.ui.sealSecrets, "加密保存敏感值").Changed()
 		ui.Spacer(c)
+		hintTip(c, "敏感值（环境里的 secret 变量）落盘时用 AES-256-GCM 加密，密钥在配置目录（0600），"+
+			"与集合分开：集合进 git 也只留密文。关掉后新保存的值变回明文，已有的密文仍可读。")
 	})
-	ui.Text(c, "敏感值（环境里的 secret 变量）落盘时用 AES-256-GCM 加密，密钥在配置目录（0600），"+
-		"与集合分开：集合进 git 也只留密文。关掉后新保存的值变回明文，已有的密文仍可读。").
-		FontSize(11).Muted()
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "保存 Cookie")
 		ui.Switch(c, &m.ui.persistCookies, "保存 Cookie").Changed()
 		ui.Spacer(c)
+		hintTip(c, "开着时响应的 Cookie 会存本机，下次发同一域名的请求自动带上；不写进集合。")
 	})
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "代理地址")
 		ui.TextField(c, &m.ui.proxyText, "代理地址", "http://127.0.0.1:7890").Grow(1).Changed()
+		hintTip(c, "留空即直连；支持 http / https / socks5。")
 	})
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "客户端证书")
@@ -310,22 +335,20 @@ func (m *Model) settingsNetwork(c ui.C) {
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "客户端私钥")
 		ui.TextField(c, &m.ui.clientKeyText, "客户端私钥", "client.key（PEM）").Grow(1).Changed()
+		hintTip(c, "证书与私钥都填才启用双向 TLS。")
 	})
-	ui.Text(c, "「忽略证书校验」只用于自签 / 内网证书调试；请求文件里的 "+
-		"settings.timeout / followRedirects / insecureSsl 显式设置时优先于这里。"+
-		"代理留空即直连（支持 http / https / socks5）；证书与私钥都填才启用双向 TLS。").FontSize(11).Muted()
 }
 
 // settingsLocal 是本地数据分区：集合路径、配置文件与当前环境。
 func (m *Model) settingsLocal(c ui.C) {
 	ui.Text(c, "本地数据").FontSize(12).Bold().Muted()
-	ui.Text(c, m.ui.dirLine).FontSize(11).Muted().Mono()
+	ui.Wrap(c, m.ui.dirLine).Width(settingsBodyWidth).FontSize(11).Muted().Mono()
 	if dir, err := settings.Dir(); err == nil {
-		ui.Text(c, "偏好文件："+dir).FontSize(11).Muted().Mono()
+		ui.Wrap(c, "偏好文件："+dir).Width(settingsBodyWidth).FontSize(11).Muted().Mono()
 	}
-	ui.Text(c, m.ui.envLine).FontSize(11).Muted()
-	ui.Text(c, "集合是纯文本真相源，本机偏好（主题 / 超时 / 上次环境）不写进集合。").
-		FontSize(11).Muted()
+	ui.Wrap(c, m.ui.envLine).Width(settingsBodyWidth).FontSize(11).Muted()
+	ui.Wrap(c, "集合是纯文本真相源，本机偏好（主题 / 超时 / 上次环境）不写进集合。").
+		Width(settingsBodyWidth).FontSize(11).Muted()
 	if ui.Button(c, "打开回收站").Icon(IconTrash).Secondary().Clicked() {
 		c.After(m.openTrash)
 	}
@@ -620,9 +643,9 @@ func (m *Model) settingsAbout(c ui.C) {
 	ui.Text(c, "api-doc-go "+appVersion).FontSize(13)
 	ui.Divider(c)
 	ui.Text(c, "输入法").FontSize(12).Bold().Muted()
-	ui.Text(c, m.ui.imeDetail).FontSize(11).Muted()
-	ui.Text(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").
-		FontSize(11).Muted()
+	ui.Wrap(c, m.ui.imeDetail).Width(settingsBodyWidth).FontSize(11).Muted()
+	ui.Wrap(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").
+		Width(settingsBodyWidth).FontSize(11).Muted()
 }
 
 // mockRuleDialog 编辑一条请求的桩规则：状态码、延迟与整段响应体覆盖。

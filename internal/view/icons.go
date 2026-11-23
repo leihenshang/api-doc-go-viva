@@ -499,4 +499,23 @@ var IconX = gfx.Icon{
 	},
 }
 
-// icon-star is a compiled vector icon（收藏标记：五角星）。
+// IconInfo is a compiled vector icon：圆圈里一个感叹号（lucide "info"）。
+// 用在设置行尾：这条设置有额外说明，悬停看详情。
+var IconInfo = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.4,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(22.0, 12.0),
+		gfx.CubicTo(22.0, 17.5228, 17.5228, 22.0, 12.0, 22.0),
+		gfx.CubicTo(6.47715, 22.0, 2.0, 17.5228, 2.0, 12.0),
+		gfx.CubicTo(2.0, 6.47715, 6.47715, 2.0, 12.0, 2.0),
+		gfx.CubicTo(17.5228, 2.0, 22.0, 6.47715, 22.0, 12.0),
+		gfx.ClosePath(),
+		gfx.MoveTo(12.0, 7.4),
+		gfx.LineTo(12.0, 12.6),
+		gfx.MoveTo(12.0, 16.2),
+		gfx.LineTo(12.0, 16.21),
+	},
+}
