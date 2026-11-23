@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/mcp"
 	"github.com/leihenshang/api-doc-go-viva/internal/mock"
@@ -44,6 +45,10 @@ type Settings struct {
 	// ClientCert / ClientKey 是双向 TLS 的证书与私钥路径（PEM）；两个都填才生效。
 	ClientCert string `json:"clientCert,omitempty"`
 	ClientKey  string `json:"clientKey,omitempty"`
+	// NoAutoSave 为真时不做自动保存（改动只留在内存与草稿里）。
+	NoAutoSave bool `json:"noAutoSave,omitempty"`
+	// AutoSaveSec 是自动保存的静默时间（秒），0 用默认值。
+	AutoSaveSec int `json:"autoSaveSec,omitempty"`
 	// SplitSideBySide 为真时请求 / 响应左右分栏，否则上下分栏。
 	SplitSideBySide bool `json:"splitSideBySide,omitempty"`
 	// Envs 记住每个集合根上次选中的环境名（键是集合目录的绝对路径）。
@@ -100,6 +105,24 @@ func Default() Settings {
 		Theme: ThemeLight, TimeoutSec: DefaultTimeoutSec,
 		MCPAddr: DefaultMCPAddr, MockAddr: DefaultMockAddr, Envs: map[string]string{},
 	}
+}
+
+// AutoSave 报告是否自动保存（默认开）。
+func (s Settings) AutoSave() bool { return !s.NoAutoSave }
+
+// AutoSaveInterval 是「最后一次编辑之后静默多久落盘」，夹在 1..30 秒。
+func (s Settings) AutoSaveInterval() time.Duration {
+	seconds := s.AutoSaveSec
+	if seconds <= 0 {
+		seconds = 2
+	}
+	if seconds < 1 {
+		seconds = 1
+	}
+	if seconds > 30 {
+		seconds = 30
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // FollowRedirects 报告是否跟随重定向（默认跟随）。

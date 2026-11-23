@@ -17,6 +17,8 @@ func (m *Model) Page(c ui.C) {
 	m.drainGRPC()
 	// 上一帧的编辑在这里落成一步撤销（按 400ms 合并连续输入）。
 	m.captureUndo()
+	// 自动保存：定时器只叫醒窗口，真正落盘在帧首做（与绘制串行）。
+	m.pumpAutoSave()
 	if ui.Shortcut(c, ui.Primary, "k") {
 		c.After(func() {
 			if m.ui.paletteOpen {

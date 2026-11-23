@@ -29,6 +29,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.defaultsDialog(c)
 	m.historyDialog(c)
 	m.cookieDialog(c)
+	m.reqSettingsDialog(c)
 	m.importDialog(c)
 	m.mockDialog(c)
 	m.runnerDialog(c)
@@ -249,6 +250,15 @@ func (m *Model) settingsAppearance(c ui.C) {
 	})
 	ui.Text(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。").
 		FontSize(11).Muted()
+	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+		formLabel(c, "自动保存")
+		ui.Switch(c, &m.ui.autoSave, "编辑停顿后自动保存").Changed()
+		ui.Text(c, "停顿").FontSize(11).Muted()
+		ui.TextField(c, &m.ui.autoSaveSec, "间隔", "2").Width(56)
+		ui.Text(c, "秒").FontSize(11).Muted()
+	})
+	ui.Text(c, "开着：最后一次编辑停这么久就写回集合（与 Ctrl+S 等价）。关掉：改动只存成草稿，"+
+		"重开还能捡回来，但集合文件不动。").FontSize(11).Muted()
 	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
 		formLabel(c, "关闭窗口")
 		ui.Switch(c, &m.ui.closeToTray, "关闭窗口时收到托盘").Changed()

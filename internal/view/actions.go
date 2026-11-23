@@ -16,6 +16,7 @@ import (
 	"github.com/leihenshang/api-doc-go-share/collection"
 	"github.com/leihenshang/api-doc-go-viva/internal/bundle"
 	curlc "github.com/leihenshang/api-doc-go-viva/internal/curl"
+	"github.com/leihenshang/api-doc-go-viva/internal/drafts"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
@@ -1208,18 +1209,11 @@ func (m *Model) authFromDraft() *collection.Auth {
 }
 
 // saveRequest 把草稿写回请求文件：Meta/Settings/未知字段原样保留，只改用户能编辑的部分。
-func (m *Model) saveRequest() {
-	if m.scratch {
-		m.saveScratch()
-		return
-	}
-	entry := m.entryByFile(m.req.file)
-	if entry == nil || entry.Payload == nil {
-		m.req.err = "请求已不存在，请重试"
-		m.invalidator.Invalidate()
-		return
-	}
-	file := entry.Payload
+// applyDraftToFile 把编辑器里的内容写进请求文件（不落盘）。
+//
+// 手动保存与自动保存共用它：两条路写出来的文件必须一字不差，
+// 否则「自动保存过、再按 Ctrl+S」会莫名其妙地又改一遍。
+func (m *Model) applyDraftToFile(file *collection.RequestFile) {
 	file.HTTP.Method = strings.ToUpper(strings.TrimSpace(m.req.method))
 	if file.HTTP.Method == "" {
 		file.HTTP.Method = "GET"
@@ -1238,6 +1232,21 @@ func (m *Model) saveRequest() {
 	file.HTTP.Auth = m.authFromDraft()
 	file.Summary = strings.TrimSpace(m.req.summary)
 	file.Docs = m.req.docs
+}
+
+func (m *Model) saveRequest() {
+	if m.scratch {
+		m.saveScratch()
+		return
+	}
+	entry := m.entryByFile(m.req.file)
+	if entry == nil || entry.Payload == nil {
+		m.req.err = "请求已不存在，请重试"
+		m.invalidator.Invalidate()
+		return
+	}
+	file := entry.Payload
+	m.applyDraftToFile(file)
 	if err := explorer.SaveRequest(m.col.Dir, entry.File, file); err != nil {
 		m.req.err = err.Error()
 		m.invalidator.Invalidate()
@@ -1245,6 +1254,8 @@ func (m *Model) saveRequest() {
 	}
 	m.req.err = ""
 	m.req.dirty = false
+	// 真保存成功：这份草稿没用了，删掉免得下次打开又"恢复"出旧内容。
+	drafts.Delete(m.draftDir(), drafts.Request, m.col.Dir, entry.File)
 	if m.reloadCollection() {
 		m.reloadActive()
 	}
@@ -1448,6 +1459,22 @@ func (m *Model) applySettingsEdits() {
 		m.settings.NoCookiePersist = !m.ui.persistCookies
 		m.applyCookiePersist()
 		changed = true
+	}
+	if m.ui.autoSave != m.settings.AutoSave() {
+		m.settings.NoAutoSave = !m.ui.autoSave
+		changed = true
+	}
+	if seconds, err := strconv.Atoi(strings.TrimSpace(m.ui.autoSaveSec)); err == nil {
+		if seconds < 1 {
+			seconds = 1
+		}
+		if seconds > 30 {
+			seconds = 30
+		}
+		if seconds != m.settings.AutoSaveSec {
+			m.settings.AutoSaveSec = seconds
+			changed = true
+		}
 	}
 	if m.ui.closeToTray != m.settings.CloseToTray {
 		m.settings.CloseToTray = m.ui.closeToTray
@@ -1725,6 +1752,8 @@ func (m *Model) syncSettingsUI() {
 	m.ui.persistCookies = m.settings.PersistCookies()
 	m.ui.closeToTray = m.settings.CloseToTray
 	m.ui.sealSecrets = m.settings.SealSecrets()
+	m.ui.autoSave = m.settings.AutoSave()
+	m.ui.autoSaveSec = strconv.Itoa(int(m.settings.AutoSaveInterval().Seconds()))
 	m.ui.updateRepo = m.settings.UpdateRepo
 	m.ui.splitSide = 0
 	if m.settings.SplitSideBySide {

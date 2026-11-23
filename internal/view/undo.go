@@ -21,6 +21,7 @@ const (
 func (m *Model) markEdited() {
 	m.req.dirty = true
 	m.editSeq++
+	m.noteEdit()
 }
 
 // captureUndo 在帧末调用：这一帧有过编辑就按「400ms 合并」的规则压栈。

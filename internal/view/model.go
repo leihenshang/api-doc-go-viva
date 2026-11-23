@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/leihenshang/api-doc-go-share/collection"
+	"github.com/leihenshang/api-doc-go-viva/internal/drafts"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/history"
 	"github.com/leihenshang/api-doc-go-viva/internal/ime"
@@ -380,6 +381,20 @@ type workspaceUI struct {
 	closeToTray     bool
 	sealSecrets     bool
 	// 检查更新：结果文本与（有新版本时的）发布页地址。
+	// 请求级设置弹窗的表单值（三态项 0=默认 1=开 2=关）。
+	reqSetOpen        bool
+	reqSetTimeout     string
+	reqSetMaxRedirect string
+	reqSetFollow      int
+	reqSetInsecure    int
+	reqSetEncode      int
+	reqSetErr         string
+	reqSetNote        string
+
+	// 自动保存（外观分区）：开关与停顿秒数。
+	autoSave    bool
+	autoSaveSec string
+
 	updateNote string
 	updateURL  string
 	updateBusy bool
@@ -442,6 +457,10 @@ type Model struct {
 	tabScrollRestore bool
 	// tabMenuOpen 是右侧「⋯」的展开状态。
 	tabMenuOpen bool
+	// 自动保存：autoSaveAt 是「停手后第几秒落盘」，pending 表示还欠一次写。
+	autoSaveAt      time.Time
+	autoSavePending bool
+	autoSaveDocAt   time.Time
 
 	theme  ui.Theme
 	pal    palette
@@ -953,6 +972,10 @@ func (m *Model) ensureEntry(entry *explorer.Entry) {
 		docsKey:  entry.File + "#docs",
 	}
 	m.loadRequestDraft(entry)
+	if entry.Kind == explorer.KindHTTP {
+		// 上次没保存的改动优先：先装磁盘内容，再用草稿盖回去。
+		m.restoreRequestDraft(entry)
+	}
 	if entry.Kind != explorer.KindHTTP {
 		m.tab = tabRequest
 		m.fillGRPC(entry)
@@ -995,8 +1018,14 @@ func (m *Model) ensureEditor(entry *explorer.Entry) {
 		m.drafts[m.editor.file] = m.editor.text
 	}
 	text := entry.Content
+	status := ""
 	if draft, ok := m.drafts[entry.File]; ok {
 		text = draft
+	} else if m.col != nil {
+		// 跨进程恢复：内存里没有，就看配置目录里的草稿。
+		if m.restoreDocDraft(entry) {
+			text, status = m.editor.text, "已恢复上次未保存的改动（Ctrl+S 保存）"
+		}
 	}
 	m.editor = docEditor{
 		file:       entry.File,
@@ -1005,6 +1034,7 @@ func (m *Model) ensureEditor(entry *explorer.Entry) {
 		front:      entry.Front,
 		metaLine:   entry.File + " · " + orDash(entry.Group),
 		previewKey: entry.File + "#preview",
+		status:     status,
 	}
 }
 
@@ -1048,6 +1078,8 @@ func (m *Model) saveDoc() {
 	m.editor.saved = m.editor.text
 	m.editor.status = "已保存"
 	delete(m.drafts, m.editor.file)
+	// 存进集合了，这份草稿可以扔了。
+	drafts.Delete(m.draftDir(), drafts.Doc, m.col.Dir, m.editor.file)
 	if entry := m.entryByFile(m.editor.file); entry != nil {
 		entry.Content = m.editor.text
 	}

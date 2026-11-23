@@ -79,6 +79,12 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 				if menu.Item("格式化 URL").Icon(IconGlobe).Clicked() {
 					c.After(m.formatURL)
 				}
+				menu.Separator()
+				// 请求级设置：超时 / 重定向 / TLS / 编码。临时请求没有文件可写，置灰。
+				reqSet := menu.Item("请求设置…").Icon(IconSliders).Disabled(m.scratch)
+				if reqSet.Clicked() {
+					c.After(m.openReqSettings)
+				}
 			})
 		}
 		if m.sending {
