@@ -2,6 +2,7 @@ package view
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -212,6 +213,31 @@ func tabTitle(tab *tabState) string {
 		return tab.entry.Name
 	}
 	return filepath.Base(tab.file)
+}
+
+// tabTitleAt 是标签条上的显示名：同名的按出现顺序加序号。
+//
+// 开 6 个「临时请求」时，标签条与「全部标签」菜单里原来全是同一个名字，
+// 分不清哪个是哪个。加序号只影响重复的那几个，唯一的标签保持原样。
+func (m *Model) tabTitleAt(slot int) string {
+	if slot < 0 || slot >= len(m.tabs) {
+		return ""
+	}
+	base := m.tabTitle(m.tabs[slot])
+	order, total := 0, 0
+	for index, tab := range m.tabs {
+		if m.tabTitle(tab) != base {
+			continue
+		}
+		total++
+		if index <= slot {
+			order++
+		}
+	}
+	if total <= 1 {
+		return base
+	}
+	return base + " · " + strconv.Itoa(order)
 }
 
 // closeOtherTabs 关掉除当前标签之外的其余标签。

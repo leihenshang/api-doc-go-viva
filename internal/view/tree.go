@@ -681,7 +681,7 @@ func (m *Model) dropEntry(srcRoot, to int, entry *explorer.Entry, folder string)
 		m.invalidator.Invalidate()
 		return
 	}
-	m.afterCrossMove(srcRoot, dstRoot, folder, moved, false)
+	m.afterCrossMove(srcRoot, dstRoot, folder, moved, false, entry.File)
 }
 
 // dropFolder 是分组版的跨集合落点。
@@ -697,12 +697,12 @@ func (m *Model) dropFolder(srcRoot, to int, folder *explorer.Folder, parent stri
 		m.invalidator.Invalidate()
 		return
 	}
-	m.afterCrossMove(srcRoot, dstRoot, parent, moved, true)
+	m.afterCrossMove(srcRoot, dstRoot, parent, moved, true, "")
 }
 
 // afterCrossMove 重扫源 / 目标两个根；活动根是目标就选中移过去的那一项，
 // 是源就把已经离开的选中项清掉。源根的标签由 refreshTabs 自动丢弃。
-func (m *Model) afterCrossMove(srcRoot, dstRoot int, parent, moved string, folder bool) {
+func (m *Model) afterCrossMove(srcRoot, dstRoot int, parent, moved string, folder bool, oldRel string) {
 	m.reloadRoot(srcRoot)
 	m.reloadRoot(dstRoot)
 	if dstRoot == m.active {
@@ -717,6 +717,9 @@ func (m *Model) afterCrossMove(srcRoot, dstRoot int, parent, moved string, folde
 		m.selKey = ""
 		m.pendingKey = ""
 		m.pendingSelect = ""
+	}
+	if !folder && oldRel != "" {
+		m.followMovedTab(srcRoot, dstRoot, oldRel, moved)
 	}
 	m.invalidator.Invalidate()
 }
@@ -1000,4 +1003,51 @@ func sortLabel(mode string) string {
 		return "名称 Z→A"
 	}
 	return "磁盘顺序"
+}
+
+// followMovedTab 让「被移走的那条请求」的标签跟着走。
+//
+// 之前：内容移走了，源集合里的标签在重扫时被丢弃，等于编辑到一半的东西消失。
+// 现在：从源根的标签里摘掉它，切到目标根并打开新位置——用户看到的是「标签跟着搬过去了」。
+func (m *Model) followMovedTab(srcRoot, dstRoot int, oldRel, newRel string) {
+	if srcRoot < 0 || srcRoot >= len(m.roots) || dstRoot < 0 || dstRoot >= len(m.roots) {
+		return
+	}
+	root := m.roots[srcRoot]
+	// 活动根的标签在 m.tabs 里（root.tabs 只是切走时的快照），别拿旧快照判断。
+	tabs := root.tabs
+	if srcRoot == m.active {
+		tabs = m.tabs
+	}
+	kept := make([]*tabState, 0, len(tabs))
+	found := -1
+	for index, tab := range tabs {
+		if tab.file == oldRel {
+			found = index
+			continue
+		}
+		kept = append(kept, tab)
+	}
+	if found < 0 {
+		return // 源根没开着它，不用管
+	}
+	root.tabs = kept
+	if root.curTab >= len(kept) {
+		root.curTab = len(kept) - 1
+	}
+	if srcRoot == m.active {
+		m.tabs = kept
+		m.curTab = root.curTab
+		if m.curTab < 0 {
+			m.overview = true
+			m.clearTabState()
+		}
+	}
+	// 切到目标根再打开：新位置在另一棵树里，不切过去用户看不到。
+	m.activateRoot(dstRoot)
+	// 目标根的集合是移动之前扫的，里面还没有这条；重扫一次再找。
+	m.reloadRoot(dstRoot)
+	if entry := m.entryByFile(newRel); entry != nil {
+		m.openEntry(entry)
+	}
 }

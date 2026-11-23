@@ -35,6 +35,9 @@ func (m *Model) Page(c ui.C) {
 	if ui.Shortcut(c, ui.Primary, "w") {
 		c.After(func() { m.closeTab(m.curTab) })
 	}
+	if ui.Shortcut(c, ui.Primary, "/") {
+		c.After(m.openShortcuts)
+	}
 	if ui.Shortcut(c, ui.Primary, ",") {
 		c.After(m.openSettings)
 	}
@@ -464,9 +467,9 @@ func (m *Model) tabOverflow(c ui.C) {
 		return
 	}
 	ui.Menu(c, button, &m.tabMenuOpen, func(menu *ui.MenuItems) {
-		for index, tab := range m.tabs {
+		for index := range m.tabs {
 			slot := index
-			name := tabTitle(tab)
+			name := m.tabTitleAt(index)
 			if menu.Item(name).Checked(!m.overview && index == m.curTab).Clicked() {
 				c.After(func() { m.activateTab(slot) })
 			}
@@ -508,7 +511,7 @@ func (m *Model) pinnedTab(c ui.C) {
 // tabItem 是一个条目标签：方法 + 名称 + 关闭按钮，选中时白底 + 绿色下划线。
 func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 	theme := c.Theme()
-	title := m.tabTitle(tab)
+	title := m.tabTitleAt(slot)
 	ui.Column(c).Gap(0).Children(func() {
 		id := ui.ID(c)
 		m.setTabSlotID(slot, id)
@@ -686,6 +689,17 @@ func (m *Model) requestPane(c ui.C) {
 				}
 				if m.req.err != "" {
 					ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
+				}
+				// 外部改动冲突：给两个明确的出路，别让用户猜「保存为什么失败」。
+				if m.req.conflict {
+					ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+						if ui.Button(c, "重新加载磁盘版本").Outline().Clicked() {
+							c.After(m.reloadRequestFromDisk)
+						}
+						if ui.Button(c, "用我的覆盖").Destructive().Clicked() {
+							c.After(m.forceSaveRequest)
+						}
+					})
 				}
 			})
 		})

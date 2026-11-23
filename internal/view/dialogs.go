@@ -30,6 +30,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.historyDialog(c)
 	m.cookieDialog(c)
 	m.reqSettingsDialog(c)
+	m.shortcutsDialog(c)
 	m.importDialog(c)
 	m.mockDialog(c)
 	m.runnerDialog(c)

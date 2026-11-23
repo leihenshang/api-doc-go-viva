@@ -2,6 +2,7 @@ package explorer
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -1002,4 +1003,43 @@ func newUID() string {
 	b[8] = b[8]&0x3f | 0x80
 	h := hex.EncodeToString(b[:])
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
+}
+
+// ErrConflict 表示磁盘上的文件在打开之后被别人改过。
+var ErrConflict = errors.New("文件已被其它程序修改")
+
+// HashRequest 算一条请求文件的内容散列（用来发现外部改动）。
+// 文件不存在时返回空串与 nil：新建的请求没有基线。
+func HashRequest(collectionDir, rel string) (string, error) {
+	full, err := safeJoin(collectionDir, rel)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(full)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// SaveRequestChecked 与 SaveRequest 一样写回，但先核对基线散列。
+//
+// baseline 为空表示没有基线（新建 / 首次保存），直接写。不一致时返回 ErrConflict，
+// 由界面决定是「重新加载丢掉本地改动」还是「强行覆盖」——这里不替用户做决定，
+// 也不偷偷覆盖别人刚写进去的内容。
+func SaveRequestChecked(collectionDir, rel string, file *collection.RequestFile, baseline string) error {
+	if baseline != "" {
+		current, err := HashRequest(collectionDir, rel)
+		if err != nil {
+			return err
+		}
+		if current != "" && current != baseline {
+			return ErrConflict
+		}
+	}
+	return SaveRequest(collectionDir, rel, file)
 }

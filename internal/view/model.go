@@ -249,6 +249,11 @@ type requestDraft struct {
 	summary string
 	docs    string
 
+	// base 是打开时磁盘内容的散列：保存前用它发现「别人也改了这个文件」。
+	base string
+	// conflict 为真表示上次保存撞上了外部改动，界面要给出「重新加载 / 覆盖」。
+	conflict bool
+
 	dirty bool
 	err   string
 	note  string
@@ -394,6 +399,8 @@ type workspaceUI struct {
 	// 自动保存（外观分区）：开关与停顿秒数。
 	autoSave    bool
 	autoSaveSec string
+	// shortcutsOpen 是 Ctrl+/ 的快捷键卡。
+	shortcutsOpen bool
 
 	updateNote string
 	updateURL  string

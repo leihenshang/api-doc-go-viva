@@ -1168,6 +1168,12 @@ func (m *Model) loadRequestDraft(entry *explorer.Entry) {
 		draft.authIn = "header"
 	}
 	m.req = draft
+	// 记下磁盘基线：保存前靠它发现「文件被别人改过」。
+	if m.col != nil {
+		if hash, err := explorer.HashRequest(m.col.Dir, entry.File); err == nil {
+			m.req.base = hash
+		}
+	}
 	m.resetUndo()
 }
 
@@ -1247,13 +1253,22 @@ func (m *Model) saveRequest() {
 	}
 	file := entry.Payload
 	m.applyDraftToFile(file)
-	if err := explorer.SaveRequest(m.col.Dir, entry.File, file); err != nil {
-		m.req.err = err.Error()
+	if err := explorer.SaveRequestChecked(m.col.Dir, entry.File, file, m.req.base); err != nil {
+		if errors.Is(err, explorer.ErrConflict) {
+			m.req.conflict = true
+			m.req.err = "这个文件已被其它程序修改，先决定怎么处理再保存"
+		} else {
+			m.req.err = err.Error()
+		}
 		m.invalidator.Invalidate()
 		return
 	}
+	m.req.conflict = false
 	m.req.err = ""
 	m.req.dirty = false
+	if hash, hashErr := explorer.HashRequest(m.col.Dir, entry.File); hashErr == nil {
+		m.req.base = hash
+	}
 	// 真保存成功：这份草稿没用了，删掉免得下次打开又"恢复"出旧内容。
 	drafts.Delete(m.draftDir(), drafts.Request, m.col.Dir, entry.File)
 	if m.reloadCollection() {
@@ -1881,5 +1896,28 @@ func (m *Model) setSortMode(mode string) {
 		_ = settings.Save(m.settings)
 	}
 	m.treeDirty = true
+	m.invalidator.Invalidate()
+}
+
+// forceSaveRequest 无视外部改动直接覆盖（冲突提示里的「覆盖」）。
+func (m *Model) forceSaveRequest() {
+	m.req.base = "" // 没有基线 = 不检查
+	m.req.conflict = false
+	m.saveRequest()
+	m.req.note = "已覆盖磁盘上的版本"
+	m.invalidator.Invalidate()
+}
+
+// reloadRequestFromDisk 丢掉本地改动，重新从磁盘装载（冲突提示里的「重新加载」）。
+func (m *Model) reloadRequestFromDisk() {
+	m.req.conflict = false
+	m.req.err = ""
+	if m.reloadCollection() {
+		m.reloadActive()
+	}
+	if entry := m.entryByFile(m.req.file); entry != nil {
+		m.loadRequestDraft(entry)
+		m.req.note = "已重新加载磁盘上的版本"
+	}
 	m.invalidator.Invalidate()
 }

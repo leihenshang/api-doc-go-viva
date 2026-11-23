@@ -1,9 +1,11 @@
 package view
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 
+	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -48,6 +50,7 @@ var paletteGroups = []paletteGroup{
 	{"视图", []paletteCommand{
 		{name: "切换主题", run: func(m *Model) { m.setTheme(!m.isLight()) }},
 		{name: "设置", hint: primaryName() + " ,", run: func(m *Model) { m.openSettings() }},
+		{name: "快捷键", hint: primaryName() + " /", run: func(m *Model) { m.openShortcuts() }},
 		{name: "请求历史", run: func(m *Model) { m.openHistory() }},
 		{name: "Cookie Jar", run: func(m *Model) { m.openCookies() }},
 		{name: "本地 Mock 服务", run: func(m *Model) { m.openMock() }},
@@ -110,7 +113,49 @@ func (m *Model) commandPalette(c ui.C) {
 					}
 				}
 			}
-			if shown == 0 {
+			// 输入了词才搜条目：空查询列整个集合会淹掉命令本身。
+			if needle != "" && m.col != nil {
+				hits := 0
+				for _, entry := range m.col.Entries {
+					name := strings.ToLower(entry.Name + " " + entry.File)
+					if !strings.Contains(name, needle) {
+						continue
+					}
+					if hits == 0 {
+						ui.Text(c, "打开").FontSize(10).Muted().PadX(10).PadY(2)
+					}
+					hits++
+					if hits > 8 {
+						continue
+					}
+					entryCopy := entry
+					label := entry.Name
+					if entry.Kind == explorer.KindHTTP {
+						label = entry.Method + "  " + entry.Name
+					}
+					row := ui.Row(c).FillWidth().PadX(10).PadY(6).Gap(8).Items(ui.Center).
+						Radius(c.Theme().Metrics.RadiusControl).
+						Hover(ui.Look{}.Background(c.Theme().Hover)).
+						Hit(ui.ID(c), "打开 "+entry.Name)
+					row.Children(func() {
+						ui.Text(c, label).FontSize(13).Ellipsis()
+						ui.Spacer(c)
+						ui.Text(c, entryCopy.Group).FontSize(10).Mono().Muted()
+					})
+					if row.Clicked() {
+						c.After(func() {
+							m.ui.paletteOpen = false
+							m.openEntry(entryCopy)
+							m.invalidator.Invalidate()
+						})
+					}
+				}
+				if hits > 8 {
+					ui.Text(c, fmt.Sprintf("……还有 %d 条，收窄关键词或去左侧树过滤", hits-8)).
+						FontSize(10).Muted().PadX(10)
+				}
+			}
+			if shown == 0 && needle != "" && m.col == nil {
 				ui.Text(c, "没有匹配的命令").FontSize(11).Muted()
 			}
 		})
