@@ -330,7 +330,7 @@ func (m *Model) sidebar(c ui.C) {
 				m.openCurlImport("")
 			}
 			sortBtn := ui.Button(c, "排序").Icon(IconSliders).Outline().IconOnly().
-				Tooltip("排序与收藏：" + sortLabel(m.sortMode))
+				Tooltip("排序：" + sortLabel(m.sortMode))
 			if sortBtn.Clicked() {
 				m.sortMenuOpen = !m.sortMenuOpen
 			}
@@ -347,12 +347,6 @@ func (m *Model) sidebar(c ui.C) {
 							c.After(func() { m.setSortMode(mode) })
 						}
 					}
-					menu.Separator()
-					menu.Label("收藏")
-					if menu.Item("清空收藏").Disabled(len(m.fav) == 0).Destructive().Clicked() {
-						c.After(m.clearFavorites)
-					}
-					menu.Item("收藏的条目排在最前，右键条目可收藏").Disabled(true)
 				})
 			}
 		})

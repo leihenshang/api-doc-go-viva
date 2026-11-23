@@ -534,9 +534,8 @@ type Model struct {
 	scratch  bool // 当前标签是不是未落盘的临时请求
 	overview bool // 正在看集合概览（固定的「集合」页）
 	settings settings.Settings
-	// 树的排序与收藏：排序是全局偏好，收藏按集合根分开记（fav 存当前集合那份）。
+	// 树的排序（磁盘顺序 / 名称升降），跟着偏好走。
 	sortMode     string
-	fav          map[string]bool
 	sortMenuOpen bool
 
 	// 页签拖拽重排：tabDrag 是这一次手势，tabSlotIDs 记录本帧每个槽位的点击身份
@@ -636,9 +635,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.roots = []*rootState{{col: col}}
 	m.active = 0
 	m.col = col
-	// 树的排序与收藏都跟着偏好走：收藏按集合根分，排序是全局的。
 	m.sortMode = m.settings.SortMode
-	m.reloadFavorites()
 	m.curTab = -1
 	m.tabActive = -1
 	m.ui.newMethod = "GET"

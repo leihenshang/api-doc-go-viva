@@ -957,8 +957,6 @@ func (m *Model) installRoot(root *rootState) {
 	m.col = root.col
 	// 公共参数跟着集合走：切换集合根时一起换掉，否则会拿上一个集合的默认头。
 	m.defaults = explorer.LoadDefaults(root.col.Dir)
-	// 收藏是「每个集合一份」：切根就换成这一份。
-	m.reloadFavorites()
 	m.menuOpen = false
 	m.expanded["root:"+root.col.Dir] = true
 	m.filter = root.filter
@@ -1811,76 +1809,6 @@ func (m *Model) openMCPSettings() {
 	m.ui.mcpToken = m.settings.MCPToken
 	m.refreshMCPAllowRows()
 	m.ui.mcpOpen = true
-}
-
-// isFav 报告某个条目在当前集合里是否被收藏。
-func (m *Model) isFav(file string) bool {
-	if m.fav == nil || file == "" {
-		return false
-	}
-	return m.fav[file]
-}
-
-// reloadFavorites 把当前集合的收藏读进内存：切集合、收藏变化后都要调。
-func (m *Model) reloadFavorites() {
-	m.fav = map[string]bool{}
-	if m.col == nil {
-		return
-	}
-	for _, file := range m.settings.Favorites[m.col.Dir] {
-		m.fav[file] = true
-	}
-}
-
-// toggleFavorite 收藏 / 取消收藏一条，落盘后重建树（收藏会改变行序）。
-func (m *Model) toggleFavorite(entry *explorer.Entry) {
-	if m.col == nil || entry == nil || entry.File == "" {
-		return
-	}
-	if m.settings.Favorites == nil {
-		m.settings.Favorites = map[string][]string{}
-	}
-	dir := m.col.Dir
-	list := m.settings.Favorites[dir]
-	next := make([]string, 0, len(list)+1)
-	removed := false
-	for _, file := range list {
-		if file == entry.File {
-			removed = true
-			continue
-		}
-		next = append(next, file)
-	}
-	if !removed {
-		next = append(next, entry.File)
-	}
-	if len(next) == 0 {
-		delete(m.settings.Favorites, dir)
-	} else {
-		m.settings.Favorites[dir] = next
-	}
-	_ = settings.Save(m.settings)
-	m.reloadFavorites()
-	m.treeDirty = true
-	verb := "已收藏「" + entry.Name + "」"
-	if removed {
-		verb = "已取消收藏「" + entry.Name + "」"
-	}
-	m.copyNote = verb
-	m.invalidator.Invalidate()
-}
-
-// clearFavorites 清掉当前集合的全部收藏。
-func (m *Model) clearFavorites() {
-	if m.col == nil {
-		return
-	}
-	delete(m.settings.Favorites, m.col.Dir)
-	_ = settings.Save(m.settings)
-	m.reloadFavorites()
-	m.treeDirty = true
-	m.copyNote = "已清空收藏"
-	m.invalidator.Invalidate()
 }
 
 // setSortMode 换树的排序（磁盘顺序 / 名称升降），落盘并重建。
