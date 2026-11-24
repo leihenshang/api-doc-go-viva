@@ -133,6 +133,11 @@ func registerTools(server *sdk.Server, svc *Service, opts ToolOptions) {
 		Name:        "send_request",
 		Description: "发送一条请求（真实网络调用），返回状态码、耗时、响应头与响应正文（超长会截断）。",
 	}, GroupNetwork, true, svc.SendRequest)
+	register(server, opts, &sdk.Tool{
+		Name: "run_collection",
+		Description: "按集合顺序跑一批 HTTP 请求（带 extract / assert 规则），返回逐条结果与汇总；" +
+			"可用 folder 只跑某个分组、stopOnFailure 遇错即停。顺序执行：前一条提取的变量供后一条使用。",
+	}, GroupNetwork, true, svc.RunCollection)
 
 	// 写：改请求 / 新建请求 / 写环境变量
 	register(server, opts, &sdk.Tool{

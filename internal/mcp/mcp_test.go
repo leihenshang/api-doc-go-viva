@@ -110,8 +110,8 @@ func TestRegistersTheFiveTools(t *testing.T) {
 		}
 	}
 	// 补齐后共 25 个：少一个说明注册漏了，多一个说明起了重名。
-	if len(got) != 25 {
-		t.Fatalf("应有 25 个工具，实际 %d 个：%v", len(got), got)
+	if len(got) != 26 {
+		t.Fatalf("应有 26 个工具，实际 %d 个：%v", len(got), got)
 	}
 }
 
@@ -179,7 +179,7 @@ func TestReadOnlyHidesWriteTools(t *testing.T) {
 	}
 	names := toolNames(t, server)
 	for _, hidden := range []string{
-		"save_request", "create_request", "set_env_var", "send_request",
+		"save_request", "create_request", "set_env_var", "send_request", "run_collection",
 		"delete_request", "delete_requests", "create_group", "rename_group", "delete_group",
 		"create_doc", "update_doc", "delete_doc", "save_example", "delete_example",
 		"create_env", "rename_env", "delete_env",
