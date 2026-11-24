@@ -772,7 +772,7 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 			case m.editor.status != "":
 				ui.Text(c, m.editor.status).FontSize(fs(11)).Muted()
 			}
-			viewLabel := "双屏"
+			viewLabel := "编辑"
 			if m.ui.docSplit {
 				viewLabel = "预览"
 			}

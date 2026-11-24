@@ -3958,7 +3958,7 @@ body:json {
 	}
 }
 
-// TestDocOpensAsPreviewAndCanSplit 文档默认全宽预览（没有编辑框），切双屏才出现编辑器。
+// TestDocOpensAsPreviewAndCanSplit 文档默认全宽预览（没有编辑框），切到编辑才出现编辑器。
 func TestDocOpensAsPreviewAndCanSplit(t *testing.T) {
 	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "docs"))
 	if err != nil {
@@ -3985,14 +3985,14 @@ func TestDocOpensAsPreviewAndCanSplit(t *testing.T) {
 	if hasControl(driver, "文档内容") {
 		t.Fatalf("默认应是全宽预览，不该出现编辑框：%v", painted(driver))
 	}
-	if !hasControl(driver, "双屏") {
-		t.Fatalf("头部应有切到双屏的按钮：%v", painted(driver))
+	if !hasControl(driver, "编辑") {
+		t.Fatalf("头部应有切到编辑的按钮：%v", painted(driver))
 	}
 
 	model.setDocSplit(true)
 	pump(t, driver)
 	if !hasControl(driver, "文档内容") {
-		t.Fatalf("双屏应出现编辑框：%v", painted(driver))
+		t.Fatalf("编辑态应出现编辑框：%v", painted(driver))
 	}
 }
 

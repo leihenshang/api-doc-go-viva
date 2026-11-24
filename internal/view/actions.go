@@ -47,7 +47,7 @@ var (
 	splitOptions = []int{0, 1}
 	splitNames   = []string{"上下", "左右"}
 	docOptions   = []int{0, 1}
-	docNames     = []string{"预览", "双屏"}
+	docNames     = []string{"预览", "编辑"}
 	// 界面缩放：百分数，100 是设计稿大小。
 	scaleOptions = []int{80, 90, 100, 110, 125}
 	scaleNames   = []string{"80%", "90%", "100%", "110%", "125%"}
@@ -1833,7 +1833,7 @@ func (m *Model) formatURL() {
 	m.invalidator.Invalidate()
 }
 
-// setDocSplit 记住文档页的默认视图（false = 全宽预览，true = 双屏）。
+// setDocSplit 记住文档页的默认视图（false = 全宽预览，true = 编辑（左写右看））。
 func (m *Model) setDocSplit(split bool) {
 	m.settings.DocSplit = split
 	m.ui.docSplit = split

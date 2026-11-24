@@ -53,7 +53,7 @@ type Settings struct {
 	SplitSideBySide bool `json:"splitSideBySide,omitempty"`
 	// RecentCollections 是最近打开过的集合目录（最新在前，最多 8 条），下拉里可清。
 	RecentCollections []string `json:"recentCollections,omitempty"`
-	// DocSplit 为真时文档页默认左右双屏；默认（假）是全宽预览。
+	// DocSplit 为真时文档页默认左右分屏（编辑态）；默认（假）是全宽预览。
 	DocSplit bool `json:"docSplit,omitempty"`
 	// UIScale 是界面缩放百分比（80 / 90 / 100 / 110 / 125）；0 表示 100。
 	UIScale int `json:"uiScale,omitempty"`
