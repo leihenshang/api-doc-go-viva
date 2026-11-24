@@ -227,9 +227,9 @@ bash scripts/check.sh          # gofmt + build + vet + test（含无头界面测
 GOWORK=off go run . -collection ../api-doc-go-flutter/sample-collection -env dev
 ```
 
-`GOWORK=off` 是必需的：上一级的 `go.work`（由 `api-doc-go-share/scripts/gowork.sh` 生成）只 `use`
-三个正式模块，本模块不在其中；本模块自己的 `go.mod` 用 `replace` 指向 `../api-doc-go-share`，
-因此不依赖 workspace 也能拿到最新共享库代码。
+`GOWORK=off` 只在本机需要：上一级的 `go.work`（由 `api-doc-go-share/scripts/gowork.sh` 生成）只 `use`
+三个正式模块，本模块不在其中，不关掉会先去 workspace 里找。`go.mod` 依赖 `api-doc-go-share v0.15.3`
+的正式版本、没有 `replace`：换一台机器 clone 下来 `go mod download` 就能构建，不需要共享库目录并排。
 
 日常调试用 `bin/dev`：构建到 `bin/.cache/`，后台运行并记 pid，启停都不用手写 `go build` / `kill`：
 
@@ -256,7 +256,7 @@ GOWORK=off go run . -collection "../api-doc-go-flutter/sample-collection,../api-
 
 Windows 后端是纯 Go（Viva 用 purego 动态调用 Win32），`CGO_ENABLED=0` 即可，不需要 MinGW。
 两个脚本都默认输出到 `dist/`，默认隐藏控制台；调试时加 `-Console` / `--console` 保留控制台看日志。
-前提：`api-doc-go-share` 与本仓库并排（`go.mod` 的 `replace` 指向 `../api-doc-go-share`）。
+前提：Go 1.26+；共享库走正式版本（`api-doc-go-share v0.15.3`），首次构建需要联网拉模块，不再要求共享库目录并排。
 
 ```powershell
 # 在 Windows 上（PowerShell）

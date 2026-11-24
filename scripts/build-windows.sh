@@ -19,8 +19,6 @@
 # Viva 的 Windows 后端是纯 Go（purego 动态调用），CGO_ENABLED=0 即可交叉编译，
 # 不需要 MinGW；NSIS 也能在 Linux 上跑（makensis 是原生程序，输出的是 Windows 安装器）。
 #
-# go.mod 用 replace 指向同级目录的 api-doc-go-share，构建前必须存在。
-#
 # 找 makensis 的顺序：$NSIS_BIN → PATH 里的 makensis → $NSISDIR/usr/bin/makensis
 # （最后一种是为「下载 deb 解包、没有 root」的场景准备的）：
 #
@@ -102,11 +100,6 @@ esac
 
 if ! command -v go >/dev/null 2>&1; then
 	echo "找不到 go，请先安装 Go 1.26+ 并加入 PATH（本机通常在 \$HOME/go/bin）" >&2
-	exit 1
-fi
-
-if [[ ! -f ../api-doc-go-share/go.mod ]]; then
-	echo "找不到 ../api-doc-go-share：go.mod 的 replace 需要它和本仓库并排" >&2
 	exit 1
 fi
 

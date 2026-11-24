@@ -76,11 +76,6 @@ if ! command -v go >/dev/null 2>&1; then
 	echo "找不到 go，请先安装 Go 1.26+ 并加入 PATH" >&2
 	exit 1
 fi
-if [[ ! -f ../api-doc-go-share/go.mod ]]; then
-	echo "找不到 ../api-doc-go-share：go.mod 的 replace 需要它和本仓库并排" >&2
-	exit 1
-fi
-
 # 版本号与 Windows 包、检查更新用同一个数：只维护 internal/updater 里那一处。
 if [[ -z "$VERSION" ]]; then
 	VERSION="$(sed -n 's/^var Version = "\(.*\)"$/\1/p' internal/updater/updater.go | head -1)"

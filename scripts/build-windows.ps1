@@ -6,7 +6,6 @@
 #
 # 产物默认 dist\api-doc-viva-windows-<arch>.exe。
 # Viva 的 Windows 后端是纯 Go（purego 动态调用），CGO_ENABLED=0 即可，无需 MinGW。
-# go.mod 用 replace 指向同级目录的 api-doc-go-share，构建前必须存在。
 [CmdletBinding()]
 param(
     [ValidateSet('amd64', 'arm64')]
@@ -26,11 +25,6 @@ Set-Location $root
 $go = Get-Command go -ErrorAction SilentlyContinue
 if (-not $go) {
     throw '找不到 go：请安装 Go 1.26+（winget install GoLang.Go）后重开终端'
-}
-
-$share = Join-Path (Split-Path $root -Parent) 'api-doc-go-share'
-if (-not (Test-Path (Join-Path $share 'go.mod'))) {
-    throw "找不到 $share：go.mod 的 replace 需要 api-doc-go-share 和本仓库并排"
 }
 
 $outDirPath = Join-Path $root $OutDir

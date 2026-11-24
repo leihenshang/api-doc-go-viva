@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 验证版门禁：格式 → 编译 → vet → 测试（含无头界面）。
-# 父目录的 go.work 只含三个正式模块，这里一律 GOWORK=off 走本模块自己的 go.mod（replace 指向 share）。
+# 父目录的 go.work 只含三个正式模块，这里一律 GOWORK=off 走本模块自己的 go.mod；
+# 共享库依赖 api-doc-go-share 的正式版本，不需要并排目录。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
