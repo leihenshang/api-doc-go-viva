@@ -948,6 +948,30 @@ func (m *Model) confirmInit() {
 	m.openCollection(dir)
 }
 
+// rememberRecent 把集合目录记进「最近打开」：最新在前、去重、最多 8 条。
+func (m *Model) rememberRecent(dir string) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return
+	}
+	list := []string{dir}
+	for _, path := range m.settings.RecentCollections {
+		if path != dir && len(list) < 8 {
+			list = append(list, path)
+		}
+	}
+	m.settings.RecentCollections = list
+	_ = settings.Save(m.settings)
+}
+
+// clearRecentCollections 清空「最近打开」的历史（不影响已经打开的集合）。
+func (m *Model) clearRecentCollections() {
+	m.settings.RecentCollections = nil
+	_ = settings.Save(m.settings)
+	m.copyNote = "已清除最近打开记录"
+	m.invalidator.Invalidate()
+}
+
 // persistRoots 把「已打开的集合根 + 当前根」写进偏好，下次启动照此恢复。
 func (m *Model) persistRoots() {
 	paths := make([]string, 0, len(m.roots))
@@ -1126,6 +1150,7 @@ func (m *Model) closeRoot(i int) {
 
 // adoptCollection 打开一个集合：已打开过就切过去，否则追加成一个新的根。
 func (m *Model) adoptCollection(col *explorer.Collection) {
+	m.rememberRecent(col.Dir)
 	for i, root := range m.roots {
 		if root.col.Dir == col.Dir {
 			m.activateRoot(i)

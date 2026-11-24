@@ -51,6 +51,8 @@ type Settings struct {
 	AutoSaveSec int `json:"autoSaveSec,omitempty"`
 	// SplitSideBySide 为真时请求 / 响应左右分栏，否则上下分栏。
 	SplitSideBySide bool `json:"splitSideBySide,omitempty"`
+	// RecentCollections 是最近打开过的集合目录（最新在前，最多 8 条），下拉里可清。
+	RecentCollections []string `json:"recentCollections,omitempty"`
 	// DocSplit 为真时文档页默认左右双屏；默认（假）是全宽预览。
 	DocSplit bool `json:"docSplit,omitempty"`
 	// UIScale 是界面缩放百分比（80 / 90 / 100 / 110 / 125）；0 表示 100。

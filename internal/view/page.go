@@ -219,6 +219,33 @@ func (m *Model) collectionPicker(c ui.C) {
 			}
 		}
 		menu.Separator()
+		// 最近打开：记录在偏好里，与「已打开的根」分开——关掉集合后仍能从这里回去。
+		menu.Label("最近打开")
+		recent := m.settings.RecentCollections
+		for _, path := range recent {
+			if path == "" {
+				continue
+			}
+			target := path
+			name := filepath.Base(path)
+			if name == "" || name == "." || name == string(filepath.Separator) {
+				name = path
+			}
+			if menu.Item(name).Clicked() {
+				c.After(func() { m.openCollection(target) })
+			}
+		}
+		if len(recent) == 0 {
+			menu.Item("（还没有记录）").Disabled(true)
+		}
+		clear := menu.Item("清除最近打开记录").Destructive()
+		if len(recent) == 0 {
+			clear.Disabled(true)
+		}
+		if clear.Clicked() {
+			c.After(m.clearRecentCollections)
+		}
+		menu.Separator()
 		if menu.Item("打开集合…").Icon(IconFolderOpen).Clicked() {
 			c.After(m.chooseCollection)
 		}

@@ -3995,3 +3995,40 @@ func TestDocOpensAsPreviewAndCanSplit(t *testing.T) {
 		t.Fatalf("双屏应出现编辑框：%v", painted(driver))
 	}
 }
+
+// TestRecentCollectionsListAndClear 最近打开：去重、最新在前、可清除；下拉里有清除项。
+func TestRecentCollectionsListAndClear(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	first := writeCollection(t, "http://127.0.0.1:1")
+	col, err := explorer.Load(first)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	model.rememberRecent(first)
+	model.rememberRecent(first) // 重复打开只留一条
+	if got := model.settings.RecentCollections; len(got) != 1 || got[0] != first {
+		t.Fatalf("去重后应只有一条：%v", got)
+	}
+	second := writeCollection(t, "http://127.0.0.1:2")
+	model.rememberRecent(second)
+	if got := model.settings.RecentCollections; len(got) != 2 || got[0] != second || got[1] != first {
+		t.Fatalf("最新的应在最前：%v", got)
+	}
+	if saved := settings.Load().RecentCollections; len(saved) != 2 {
+		t.Fatalf("没有落盘：%v", saved)
+	}
+
+	driver := openWindow(t, model)
+	model.collectionMenuOpen = true
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	if !hasControl(driver, "清除最近打开记录") {
+		t.Fatalf("下拉里应有清除项：%v", painted(driver))
+	}
+
+	model.clearRecentCollections()
+	if len(model.settings.RecentCollections) != 0 || len(settings.Load().RecentCollections) != 0 {
+		t.Fatalf("清除没生效：%v", model.settings.RecentCollections)
+	}
+}
