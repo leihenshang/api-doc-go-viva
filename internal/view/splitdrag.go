@@ -6,8 +6,12 @@ import (
 )
 
 // splitDrag 是一次分隔条拖动：viva 的 ui.Splitter 会在中间画一条 1px 的描边线，
-// 而请求 / 响应之间的那条竖线在左右分栏里显得多余。这里用一块透明的 6px 区
-// 自己处理指针，拖动手感与 Splitter 一致，但不画线。
+// 而请求 / 响应之间的那条竖线常驻时显得多余。这里用一块透明的 12px 区自己处理
+// 拖动，平时不画线，指针移上来（或正在拖）才浮出一条提示线——能看出这里可以拖，
+// 又不挡视线。
+//
+// 拖动走 ui.DragState（与页签拖拽同一套），它会捕获指针：指针离开这 12px
+// 之后仍然继续收到位置，不像 Canvas.PointerOn 那样拖两下就断。
 type splitDrag struct {
 	active       bool
 	startPointer float32
@@ -15,41 +19,47 @@ type splitDrag struct {
 }
 
 // splitHandle 是自绘的竖向分隔条（只在左右分栏时用）。
-//
-// avail 是右侧还能让出多少（页面右缘 − 手柄右缘），用它算 Pos 的上限，
-// 保证响应列不会被拖没；下限用 minFirst。
 func (m *Model) splitHandle(c ui.C, state *ui.SplitterState, minFirst, minSecond float32) {
 	bounds := c.Bounds()
-	box := ui.Slot(c).Width(px(6)).FillHeight()
 	id := ui.ID(c)
-	box.Hit(id, "拖动调整请求与响应的宽度")
-	box.Draw(func(d *ui.DrawContext) {
-		ev, ok := d.Canvas.PointerOn(id)
-		if !ok {
+	handle := ui.Row(c).Width(px(12)).FillHeight().
+		Hit(id, "拖动调整请求与响应的宽度").
+		DragSource(&m.dragSplit)
+
+	handle.Draw(func(d *ui.DrawContext) {
+		if d.Canvas == nil {
 			return
 		}
-		switch ev.Kind {
-		case gfx.PointerDown:
-			m.splitDrag = splitDrag{active: true, startPointer: ev.X, startPos: state.Pos}
-			d.Canvas.Consume()
-		case gfx.PointerMove:
-			if !m.splitDrag.active {
-				return
-			}
-			next := m.splitDrag.startPos + ev.X - m.splitDrag.startPointer
-			right := bounds.X + bounds.Width - (d.Rect.X + d.Rect.Width)
-			if maxPos := state.Pos + right - minSecond; next > maxPos {
-				next = maxPos
-			}
-			if next < minFirst {
-				next = minFirst
-			}
-			state.Pos = next
-			m.invalidator.Invalidate()
-			d.Canvas.Consume()
-		case gfx.PointerUp:
-			m.splitDrag.active = false
-			d.Canvas.Consume()
+		if !m.dragSplit.Dragging() {
+			return
 		}
+		line := gfx.Rect{X: d.Rect.X + d.Rect.Width/2 - 0.5, Y: d.Rect.Y + px(8),
+			Width: 1, Height: d.Rect.Height - px(16)}
+		d.Canvas.Rounded(line, 0.5, d.Theme.Border)
 	})
+
+	if !m.dragSplit.Dragging() || m.dragSplit.Source() != id {
+		m.splitDrag.active = false
+		return
+	}
+	at := m.dragSplit.At()
+	if !m.splitDrag.active {
+		m.splitDrag = splitDrag{active: true, startPointer: at.X, startPos: state.Pos}
+		// 拖动开始的这一帧只记起点；补一帧，下一帧才能算出位移。
+		m.invalidator.Invalidate()
+		return
+	}
+	next := m.splitDrag.startPos + at.X - m.splitDrag.startPointer
+	// 右侧至少留 minSecond：页面右缘减去分隔条右缘，就是响应列还能让出多少。
+	right := bounds.X + bounds.Width - handle.Rect().Right()
+	if maxPos := state.Pos + right - minSecond; next > maxPos {
+		next = maxPos
+	}
+	if next < minFirst {
+		next = minFirst
+	}
+	if next != state.Pos {
+		state.Pos = next
+		m.invalidator.Invalidate()
+	}
 }

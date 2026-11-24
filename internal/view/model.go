@@ -474,6 +474,7 @@ type Model struct {
 	tabFollowed int
 	// splitDrag 是请求 / 响应之间那条透明分隔条的拖动状态。
 	splitDrag splitDrag
+	dragSplit ui.DragState
 	// tabStrip 是页签条的滚动状态；tabOverflow 表示它装不下（决定左右箭头是否出现）。
 	tabStrip     *ui.ScrollState
 	tabOverflows bool
