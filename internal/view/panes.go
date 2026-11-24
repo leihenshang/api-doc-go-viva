@@ -789,9 +789,15 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 				ui.Text(c, "源码").FontSize(fs(11)).Muted()
 				// 编辑区自己滚，但 viva 的 TextArea 不画滚动条：把它的高度撑到内容
 				// 实际需要的高度，外面套 Scroll，长文档才有右侧滚动条。
-				ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
+				box := ui.Scroll(c).Grow(1).Scrollbars()
+				box.Children(func() {
+					// 默认就撑满可见高度（点哪儿都能落光标）；内容更长时再按内容长。
+					height := m.editorTextHeight(c, paneText)
+					if state := box.ScrollState(); state != nil && state.Viewport > height {
+						height = state.Viewport
+					}
 					ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").
-						FillWidth().Height(m.editorTextHeight(c, paneText))
+						FillWidth().Height(height)
 				})
 			})
 			ui.Divider(c)
