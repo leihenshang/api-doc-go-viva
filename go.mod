@@ -6,7 +6,7 @@ require (
 	github.com/bufbuild/protocompile v0.14.1
 	github.com/leihenshang/api-doc-go-share v0.15.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/vivaui/viva v0.6.5
+	github.com/vivaui/viva v0.6.8
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1

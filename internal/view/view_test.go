@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -367,7 +368,11 @@ func TestTitlebarIsMergedIntoTheToolbar(t *testing.T) {
 			t.Fatalf("标题栏整行应是拖动区（宽 %.0f）：%v", width, painted(driver))
 		}
 
-		_, trailing := app.TitlebarInsets()
+		// v0.6.8 删了 app.TitlebarInsets：让开的宽度由平台决定，这里是它的口径。
+		var trailing float32
+		if runtime.GOOS != "darwin" {
+			trailing = 3 * app.WindowControlWidth
+		}
 		if trailing <= 0 {
 			return // 这个平台由系统画按钮，没有需要让开的宽度
 		}

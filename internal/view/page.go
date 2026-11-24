@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
-	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -116,7 +115,7 @@ const (
 // 整行是拖动区（MovesWindow），空白处按下拖走窗口，控件自己吃点击。
 // 右端 3×46 留给 viva 自绘的最小化 / 最大化 / 关闭，所以右侧要多留 TitlebarInsets 的尾宽。
 func (m *Model) toolbar(c ui.C) {
-	_, trailing := app.TitlebarInsets()
+	_, trailing := c.TitlebarInsets()
 	ui.Row(c).FillWidth().Height(titlebarHeight).Items(ui.Center).MovesWindow().Children(func() {
 		ui.Row(c).Width(m.split.Pos).Height(titlebarHeight).PadX(px(12)).Gap(px(8)).Items(ui.Center).Children(func() {
 			ui.Text(c, "api-doc-go").FontSize(fs(15)).Bold()

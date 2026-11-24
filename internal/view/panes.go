@@ -99,9 +99,10 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 		ui.Slot(c).Width(px(24))
-		ui.Text(c, "名称").FontSize(fs(11)).Muted().Width(px(150))
-		ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(1)
-		ui.Text(c, "说明").FontSize(fs(11)).Muted().Width(px(160))
+		// v0.6.8 的 Row 不再压缩子项：列宽用 Grow 比例分配，窄栏也能排下。
+		ui.Text(c, "名称").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
+		ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(3).MinWidth(0).Ellipsis()
+		ui.Text(c, "说明").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
 		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range *rows {
@@ -110,13 +111,13 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.name, "名称", "name").Width(px(150)).Changed() {
+			if ui.TextField(c, &row.name, "名称", "name").Grow(2).MinWidth(0).Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.value, "值", "value").Grow(1).Changed() {
+			if ui.TextField(c, &row.value, "值", "value").Grow(3).MinWidth(0).Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.desc, "说明", "").Width(px(160)).Changed() {
+			if ui.TextField(c, &row.desc, "说明", "").Grow(2).MinWidth(0).Changed() {
 				m.markEdited()
 			}
 			m.rowMover(c, index, len(*rows), func(from, to int) {
@@ -255,20 +256,20 @@ func (m *Model) bodyTab(c ui.C) {
 // fieldEditor 编辑请求体字段表（body.fields）：字段名 / 类型 / 必填 / 示例 / 说明。
 func (m *Model) fieldEditor(c ui.C) {
 	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-		ui.Text(c, "字段名").FontSize(fs(11)).Muted().Width(px(150))
-		ui.Text(c, "类型").FontSize(fs(11)).Muted().Width(px(100))
+		ui.Text(c, "字段名").FontSize(fs(11)).Muted().Grow(3).MinWidth(0).Ellipsis()
+		ui.Text(c, "类型").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
 		ui.Text(c, "必填").FontSize(fs(11)).Muted().Width(px(40))
-		ui.Text(c, "示例").FontSize(fs(11)).Muted().Width(px(160))
-		ui.Text(c, "说明").FontSize(fs(11)).Muted().Grow(1)
+		ui.Text(c, "示例").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
+		ui.Text(c, "说明").FontSize(fs(11)).Muted().Grow(3).MinWidth(0).Ellipsis()
 		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range m.req.fields {
 		slot := index
 		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-			if ui.TextField(c, &row.name, "字段名", "id").Width(px(150)).Changed() {
+			if ui.TextField(c, &row.name, "字段名", "id").Grow(3).MinWidth(0).Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.typ, "类型", "string").Width(px(100)).Changed() {
+			if ui.TextField(c, &row.typ, "类型", "string").Grow(2).MinWidth(0).Changed() {
 				m.markEdited()
 			}
 			if ui.Checkbox(c, &row.required, "").Changed() {
@@ -316,12 +317,12 @@ func (m *Model) fieldEditor(c ui.C) {
 func (m *Model) formEditor(c ui.C, multipart bool) {
 	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 		ui.Slot(c).Width(px(24))
-		ui.Text(c, "名称").FontSize(fs(11)).Muted().Width(px(150))
-		ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(1)
+		ui.Text(c, "名称").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
+		ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(3).MinWidth(0).Ellipsis()
 		if multipart {
-			ui.Text(c, "类型").FontSize(fs(11)).Muted().Width(px(96))
+			ui.Text(c, "类型").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
 		}
-		ui.Text(c, "说明").FontSize(fs(11)).Muted().Width(px(140))
+		ui.Text(c, "说明").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
 		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range m.req.form {
@@ -330,22 +331,22 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.name, "名称", "field").Width(px(150)).Changed() {
+			if ui.TextField(c, &row.name, "名称", "field").Grow(2).MinWidth(0).Changed() {
 				m.markEdited()
 			}
 			placeholder := "value"
 			if multipart && row.typ == "file" {
 				placeholder = "相对集合根的文件路径"
 			}
-			if ui.TextField(c, &row.value, "值", placeholder).Grow(1).Changed() {
+			if ui.TextField(c, &row.value, "值", placeholder).Grow(3).MinWidth(0).Changed() {
 				m.markEdited()
 			}
 			if multipart {
-				if ui.Select(c, &row.typ, formTypes, nil).Width(px(96)).Changed() {
+				if ui.Select(c, &row.typ, formTypes, nil).Grow(2).MinWidth(0).Changed() {
 					m.markEdited()
 				}
 			}
-			if ui.TextField(c, &row.desc, "说明", "").Width(px(140)).Changed() {
+			if ui.TextField(c, &row.desc, "说明", "").Grow(2).MinWidth(0).Changed() {
 				m.markEdited()
 			}
 			m.rowMover(c, index, len(m.req.form), func(from, to int) {

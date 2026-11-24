@@ -696,9 +696,19 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 }
 
 // config 是窗口与页面的接线：Run 与无头测试共用，免得两处配置漂移。
+// pageConfig 是页面自己的配置（不含窗口参数）。
+func (m *Model) pageConfig() ui.PageConfig {
+	return ui.PageConfig{View: m.Page, Theme: &m.theme, Background: &m.pal.bg}
+}
+
+// config 把页面与窗口参数合成一个 app.Config（无头用例仍按这条路起窗口）。
 func (m *Model) config() app.Config {
-	page := ui.NewPage(ui.PageConfig{View: m.Page, Theme: &m.theme, Background: &m.pal.bg})
-	return page.Config(app.Config{
+	return ui.Configure(ui.NewPage(m.pageConfig()), m.windowConfig())
+}
+
+// windowConfig 是窗口参数：标题、尺寸、无边框标题栏、托盘关闭拦截等。
+func (m *Model) windowConfig() app.Config {
+	return app.Config{
 		Title:     "API-DOC-GO",
 		Class:     "api-doc-viva",
 		Width:     1180,
@@ -723,7 +733,7 @@ func (m *Model) config() app.Config {
 			}
 			allow()
 		},
-	})
+	}
 }
 
 // windowControls 是标题栏右端那组窗口按钮的配色：每帧调用，跟着主题走。
@@ -746,10 +756,9 @@ func (m *Model) windowControls() app.WindowControlsStyle {
 // 用 RunApplication 而不是 RunCanvas 是为了拿到 *app.Application：
 // 托盘（AddStatusItem）只挂在应用对象上。
 func (m *Model) Run() error {
-	var canvas gfx.Canvas
 	return app.RunApplication(func(application *app.Application) error {
 		m.app = application
-		window, err := application.OpenWindow(m.config(), &canvas)
+		window, err := ui.OpenWindow(application, m.windowConfig(), m.pageConfig())
 		if err != nil {
 			return err
 		}
