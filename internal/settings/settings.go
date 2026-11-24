@@ -51,6 +51,8 @@ type Settings struct {
 	AutoSaveSec int `json:"autoSaveSec,omitempty"`
 	// SplitSideBySide 为真时请求 / 响应左右分栏，否则上下分栏。
 	SplitSideBySide bool `json:"splitSideBySide,omitempty"`
+	// DocSplit 为真时文档页默认左右双屏；默认（假）是全宽预览。
+	DocSplit bool `json:"docSplit,omitempty"`
 	// UIScale 是界面缩放百分比（80 / 90 / 100 / 110 / 125）；0 表示 100。
 	UIScale int `json:"uiScale,omitempty"`
 	// Envs 记住每个集合根上次选中的环境名（键是集合目录的绝对路径）。

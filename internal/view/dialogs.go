@@ -281,6 +281,12 @@ func (m *Model) settingsAppearance(c ui.C) {
 		hintTip(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。")
 	})
 	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+		formLabel(c, "文档打开")
+		ui.Choice(c, &m.ui.docSplitPick, docOptions, func(i int) string { return docNames[i] })
+		ui.Spacer(c)
+		hintTip(c, "默认只显示预览（全宽）；选「双屏」就是左边写 Markdown、右边看效果。文档页右上角的按钮可以随时临时切换。")
+	})
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "自动保存")
 		ui.Switch(c, &m.ui.autoSave, "自动保存").Changed()
 		ui.Text(c, "停顿").FontSize(fs(11)).Muted()

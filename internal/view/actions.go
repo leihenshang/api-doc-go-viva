@@ -46,6 +46,8 @@ var (
 	themeNames   = []string{"深色", "浅色"}
 	splitOptions = []int{0, 1}
 	splitNames   = []string{"上下", "左右"}
+	docOptions   = []int{0, 1}
+	docNames     = []string{"预览", "双屏"}
 	// 界面缩放：百分数，100 是设计稿大小。
 	scaleOptions = []int{80, 90, 100, 110, 125}
 	scaleNames   = []string{"80%", "90%", "100%", "110%", "125%"}
@@ -1567,6 +1569,11 @@ func (m *Model) applySettingsEdits() {
 		m.settings.SplitSideBySide = side
 		changed = true
 	}
+	if split := m.ui.docSplitPick == 1; split != m.settings.DocSplit {
+		m.settings.DocSplit = split
+		m.ui.docSplit = split
+		changed = true
+	}
 	if changed {
 		_ = settings.Save(m.settings)
 	}
@@ -1801,6 +1808,18 @@ func (m *Model) formatURL() {
 	m.invalidator.Invalidate()
 }
 
+// setDocSplit 记住文档页的默认视图（false = 全宽预览，true = 双屏）。
+func (m *Model) setDocSplit(split bool) {
+	m.settings.DocSplit = split
+	m.ui.docSplit = split
+	m.ui.docSplitPick = 0
+	if split {
+		m.ui.docSplitPick = 1
+	}
+	_ = settings.Save(m.settings)
+	m.invalidator.Invalidate()
+}
+
 // setSplitLayout 切换请求 / 响应分栏方向（工具条按钮与设置面板共用）。
 func (m *Model) setSplitLayout(side bool) {
 	m.settings.SplitSideBySide = side
@@ -1824,6 +1843,11 @@ func (m *Model) syncSettingsUI() {
 	m.ui.closeToTray = m.settings.CloseToTray
 	m.ui.sealSecrets = m.settings.SealSecrets()
 	m.ui.scalePick = m.settings.UIScalePercent()
+	m.ui.docSplit = m.settings.DocSplit
+	m.ui.docSplitPick = 0
+	if m.settings.DocSplit {
+		m.ui.docSplitPick = 1
+	}
 	m.ui.autoSave = m.settings.AutoSave()
 	m.ui.autoSaveSec = strconv.Itoa(int(m.settings.AutoSaveInterval().Seconds()))
 	m.ui.updateRepo = m.settings.UpdateRepo

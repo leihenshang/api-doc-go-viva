@@ -772,6 +772,13 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 			case m.editor.status != "":
 				ui.Text(c, m.editor.status).FontSize(fs(11)).Muted()
 			}
+			viewLabel := "双屏"
+			if m.ui.docSplit {
+				viewLabel = "预览"
+			}
+			if ui.Button(c, viewLabel).Ghost().Small().Tooltip("切换文档视图（默认值在设置里改）").Clicked() {
+				c.After(func() { m.setDocSplit(!m.ui.docSplit) })
+			}
 			save := ui.Button(c, "保存")
 			if !dirty {
 				save.Disabled(true)
@@ -781,36 +788,46 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 			}
 		})
 		ui.Text(c, m.editor.metaLine).FontSize(fs(11)).Muted().Mono()
-		// 两栏等宽：内容宽 − 两个间距 − 中间分隔线，再各减左右内边距。
-		column := (m.contentWidth(c) - px(24) - px(1)) / 2
-		paneText := column - 2*px(12)
-		ui.Row(c).FillWidth().Grow(1).FillHeight().Gap(px(12)).Children(func() {
-			ui.Column(c).Grow(1).FillHeight().Pad(px(12)).Draw(cardDraw).Children(func() {
-				ui.Text(c, "源码").FontSize(fs(11)).Muted()
-				// 编辑区自己滚，但 viva 的 TextArea 不画滚动条：把它的高度撑到内容
-				// 实际需要的高度，外面套 Scroll，长文档才有右侧滚动条。
-				box := ui.Scroll(c).Grow(1).Scrollbars()
-				box.Children(func() {
-					// 默认就撑满可见高度（点哪儿都能落光标）；内容更长时再按内容长。
-					height := m.editorTextHeight(c, paneText)
-					if state := box.ScrollState(); state != nil && state.Viewport > height {
-						height = state.Viewport
-					}
-					ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").
-						FillWidth().Height(height)
-				})
+		if m.ui.docSplit {
+			// 双屏：左写右看。
+			column := (m.contentWidth(c) - px(24) - px(1)) / 2
+			text := column - 2*px(12)
+			ui.Row(c).FillWidth().Grow(1).FillHeight().Gap(px(12)).Children(func() {
+				m.docSourcePane(c, text)
+				ui.Divider(c)
+				m.docPreviewPane(c, text)
 			})
-			ui.Divider(c)
-			ui.Column(c).Grow(1).FillHeight().Gap(px(6)).Pad(px(12)).Draw(cardDraw).Children(func() {
-				ui.Text(c, "预览").FontSize(fs(11)).Muted()
-				if strings.TrimSpace(m.editor.text) == "" {
-					ui.Text(c, "（空文档）").Muted()
-					return
-				}
-				ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
-					m.previewBlock(c, m.editor.text, m.editor.previewKey, paneText)
-				})
-			})
+		} else {
+			// 默认全宽预览（设置里可以改成默认双屏）。
+			m.docPreviewPane(c, m.contentWidth(c)-2*px(12))
+		}
+	})
+}
+
+// docSourcePane 是源码编辑栏：只有 TextArea 自己的一层边框，不再套卡片。
+func (m *Model) docSourcePane(c ui.C, textWidth float32) {
+	ui.Column(c).Grow(1).FillHeight().Children(func() {
+		box := ui.Scroll(c).Grow(1).Scrollbars()
+		box.Children(func() {
+			height := m.editorTextHeight(c, textWidth)
+			if state := box.ScrollState(); state != nil && state.Viewport > height {
+				height = state.Viewport
+			}
+			ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").
+				FillWidth().Height(height)
+		})
+	})
+}
+
+// docPreviewPane 是预览栏：卡片外框 + 可滚动正文。
+func (m *Model) docPreviewPane(c ui.C, textWidth float32) {
+	ui.Column(c).Grow(1).FillWidth().FillHeight().Pad(px(12)).Draw(cardDraw).Children(func() {
+		if strings.TrimSpace(m.editor.text) == "" {
+			ui.Text(c, "（空文档）").Muted()
+			return
+		}
+		ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
+			m.previewBlock(c, m.editor.text, m.editor.previewKey, textWidth)
 		})
 	})
 }

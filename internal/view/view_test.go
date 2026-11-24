@@ -3957,3 +3957,41 @@ body:json {
 		t.Fatalf("没导入出请求：%+v", model.ui.importNote)
 	}
 }
+
+// TestDocOpensAsPreviewAndCanSplit 文档默认全宽预览（没有编辑框），切双屏才出现编辑器。
+func TestDocOpensAsPreviewAndCanSplit(t *testing.T) {
+	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "docs"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	t.Cleanup(func() { model.setDocSplit(false) })
+
+	var doc *explorer.Entry
+	for _, entry := range col.Entries {
+		if entry.IsDoc() {
+			doc = entry
+			break
+		}
+	}
+	if doc == nil {
+		t.Fatal("夹子里没有文档")
+	}
+	model.openEntry(doc)
+	model.invalidator.Invalidate()
+	pump(t, driver)
+
+	if hasControl(driver, "文档内容") {
+		t.Fatalf("默认应是全宽预览，不该出现编辑框：%v", painted(driver))
+	}
+	if !hasControl(driver, "双屏") {
+		t.Fatalf("头部应有切到双屏的按钮：%v", painted(driver))
+	}
+
+	model.setDocSplit(true)
+	pump(t, driver)
+	if !hasControl(driver, "文档内容") {
+		t.Fatalf("双屏应出现编辑框：%v", painted(driver))
+	}
+}

@@ -413,9 +413,12 @@ type workspaceUI struct {
 	updateBusy bool
 	updateRepo string
 	splitSide  int // 0 = 上下，1 = 左右
-	scalePick  int // 界面缩放在 scaleOptions 里的下标
-	envs       []string
-	envPick    string
+	// 文档页视图：默认全宽预览；docSplitPick 是设置表单里的 0/1。
+	docSplit     bool
+	docSplitPick int
+	scalePick    int // 界面缩放在 scaleOptions 里的下标
+	envs         []string
+	envPick      string
 
 	// MCP 服务的设置（独立弹窗，与软件设置分开）：开关 / 监听地址 / 令牌 / 工作区授权。
 	mcpOpen     bool
