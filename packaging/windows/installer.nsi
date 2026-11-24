@@ -113,9 +113,12 @@ OutFile "${OUT_FILE}"
 !if "${INSTALL_SCOPE}" == "user"
   InstallDir "$LOCALAPPDATA\Programs\${PRODUCT_NAME}"
   InstallDirRegKey HKCU "${UNINST_KEY}" "InstallLocation"
+  ; 本产品的默认目录：装错目录时用来改回去（见 .onInit / .onVerifyInstDir）。
+  !define DEFAULT_INSTDIR "$LOCALAPPDATA\Programs\${PRODUCT_NAME}"
 !else
   InstallDir "$PROGRAMFILES64\${PRODUCT_NAME}"
   InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
+  !define DEFAULT_INSTDIR "$PROGRAMFILES64\${PRODUCT_NAME}"
 !endif
 
 ShowInstDetails show
@@ -123,6 +126,26 @@ ShowUninstDetails show
 
 Var PrevLoc
 Var Running
+Var WarnedForeign
+
+; 目录页校验：不许装进另一个产品的目录。
+;
+; 两个产品共用一个「api-doc-go」品牌，但安装目录 / 卸载键 / exe 名都不同
+; （Wails 版是 api-doc-go\api-doc-go\api-doc-client.exe，本产品是 api-doc-go-viva\api-doc-viva.exe）。
+; 真装进对方目录，会把对方的 uninstall.exe 覆盖成本产品的：之后「应用和功能」里
+; 两条目的卸载程序指向同一个文件，互相删不干净，快捷方式也会打架。
+; 调 Abort 会让「下一步」置灰，用户只能换目录。
+Function .onVerifyInstDir
+  ${If} ${FileExists} "$INSTDIR\api-doc-client.exe"
+  ${OrIf} ${FileExists} "$INSTDIR\api-doc-go.exe"
+    Abort
+    ${If} $WarnedForeign != "1"
+      StrCpy $WarnedForeign "1"
+      MessageBox MB_OK|MB_ICONEXCLAMATION \
+        "这个目录里有 api-doc-client.exe，是 api-doc-go（Wails 版）的安装目录。$\r$\n$\r$\n两个产品可以并存，但要各装各的目录：装在一起会覆盖对方的卸载程序。$\r$\n$\r$\n请换一个目录，默认是本产品自己的目录。"
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
 
 ; 检测客户端是否在跑。
 ; 用 tasklist 的 CSV 输出判断：有该进程时输出以引号开头（"xxx.exe","1234",...），
@@ -160,6 +183,28 @@ Function .onInit
   !endif
   ${If} $PrevLoc != ""
     StrCpy $INSTDIR $PrevLoc
+  ${EndIf}
+
+  ; 上次记录的目录如果属于另一个产品，不能沿用：装进去会把对方覆盖掉。
+  ; 交互安装有目录页兜底（见 .onVerifyInstDir）；静默安装没有页面，只能在这里中止。
+  ${If} ${FileExists} "$INSTDIR\api-doc-client.exe"
+  ${OrIf} ${FileExists} "$INSTDIR\api-doc-go.exe"
+    ${If} $INSTDIR != "${DEFAULT_INSTDIR}"
+      StrCpy $INSTDIR "${DEFAULT_INSTDIR}"
+      ${If} ${Silent}
+        DetailPrint "上次的安装目录属于 api-doc-go，静默安装改用 ${DEFAULT_INSTDIR}"
+      ${Else}
+        MessageBox MB_OK|MB_ICONINFORMATION \
+          "上次记录的安装目录属于 api-doc-go（Wails 版）。$\r$\n$\r$\n两个产品可以并存，但要各装各的目录；已改回本产品的默认目录 ${DEFAULT_INSTDIR}。"
+      ${EndIf}
+    ${Else}
+      ; 默认目录本身就是对方的地盘：静默安装没有目录页可以拦，直接失败退出。
+      ${If} ${Silent}
+        DetailPrint "${DEFAULT_INSTDIR} 属于 api-doc-go，静默安装中止（请用 /D= 指定另一个目录）"
+        SetErrorLevel 3
+        Quit
+      ${EndIf}
+    ${EndIf}
   ${EndIf}
 
   ; 客户端在跑就先处理：交互模式问一句，静默安装直接结束进程。

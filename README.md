@@ -324,7 +324,12 @@ bash scripts/build-windows.sh --installer-only                # 只重打安装�
 - 开始菜单（含卸载快捷方式）+ 完成页可选建桌面快捷方式；「应用和功能」条目带版本、发布者、体积、
   `QuietUninstallString`、`NoModify`/`NoRepair`；
 - 卸载**不碰**用户配置目录（Cookie、偏好、加密密钥）；正式版与 `--dev` 版产品名 / 目录 / 卸载键各不相同，
-  可以并存。
+  可以并存；
+- **与 Wails 版（api-doc-go）互不覆盖**：产品名 `api-doc-go-viva`、安装目录 `…\api-doc-go-viva`、
+  卸载键 `…\Uninstall\api-doc-go-viva`、进程名 `api-doc-viva.exe`、配置目录 `%AppData%\api-doc-viva`，
+  与对方的 `api-doc-go` / `api-doc-client.exe` / `%AppData%\api-doc-client` 全部分开，可以同时安装；
+  万一选进对方的目录（里面有 `api-doc-client.exe`），目录页会禁用「下一步」并说明原因；静默安装则退回
+  本产品默认目录，默认目录本身被对方占用时以退出码 3 中止。
 
 `--scope user` 与 `--scope machine` 是两个独立安装（不同目录、不同注册表 hive），升级时请固定用同一个 scope。
 静默安装 `setup.exe /S`，静默卸载 `uninstall.exe /S`。
