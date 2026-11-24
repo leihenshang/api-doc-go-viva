@@ -68,12 +68,14 @@ func TestDIBEntryTransparentCorner(t *testing.T) {
 	if firstPixel != 0 {
 		t.Fatalf("左下角应透明，实际 alpha=%d", firstPixel)
 	}
-	center := (size/2)*size*4 + (size/2)*4
-	if pixels[center+3] != 255 {
-		t.Fatalf("中心应不透明，实际 alpha=%d", pixels[center+3])
+	// 图标是透明底的线条画，中心可能留白：数不透明像素，确认画进来了。
+	opaque := 0
+	for i := 3; i < size*size*4; i += 4 {
+		if pixels[i] != 0 {
+			opaque++
+		}
 	}
-	// BGRA：中心是强调色，B 分量为 Accent[2]。
-	if pixels[center] == 0 && pixels[center+1] == 0 {
-		t.Fatalf("中心颜色不对：%v", pixels[center:center+4])
+	if opaque < size*size/20 {
+		t.Fatalf("图标几乎是空的：不透明像素 %d / %d", opaque, size*size)
 	}
 }

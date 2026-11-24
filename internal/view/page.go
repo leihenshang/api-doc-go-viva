@@ -197,7 +197,7 @@ func (m *Model) collectionPicker(c ui.C) {
 	if m.col != nil && m.col.Name != "" {
 		label = m.collectionLabel(m.active)
 	}
-	button := ui.Button(c, label).Icon(IconFolderOpen).Outline().Tooltip("切换集合")
+	button := ui.Button(c, label).Icon(IconFolderOpen).Outline().Weight(gfx.WeightRegular).Tooltip("切换集合")
 	if button.Clicked() {
 		c.After(func() { m.collectionMenuOpen = !m.collectionMenuOpen })
 	}
@@ -291,7 +291,7 @@ func (m *Model) envPicker(c ui.C) {
 	if m.envName != "" {
 		label = m.envName
 	}
-	envButton := ui.Button(c, "环境 "+label).Icon(IconGlobe).Outline().Tooltip("切换环境")
+	envButton := ui.Button(c, "环境 "+label).Icon(IconGlobe).Outline().Weight(gfx.WeightRegular).Tooltip("切换环境")
 	if envButton.Clicked() {
 		c.After(func() { m.envMenuOpen = !m.envMenuOpen })
 	}
@@ -398,6 +398,11 @@ func (m *Model) tabBar(c ui.C) {
 	ui.Column(c).FillWidth().Background(m.pal.sidebar).Children(func() {
 		ui.Row(c).FillWidth().Height(px(37)).PadX(px(6)).Gap(px(2)).Items(ui.Center).Children(func() {
 			m.pinnedTab(c)
+			// 装不下时两端各一颗滚动按钮；左箭头在 strip 之前声明，
+			// 所以用的是上一帧量出的 tabOverflows。
+			if m.tabOverflows {
+				m.tabArrow(c, -1)
+			}
 			strip := ui.Scroll(c).Grow(1).Height(px(37)).Sideways()
 			strip.Children(func() {
 				ui.Row(c).Gap(px(2)).Height(px(37)).Items(ui.Center).Children(func() {
@@ -407,6 +412,9 @@ func (m *Model) tabBar(c ui.C) {
 				})
 			})
 			m.followTab(strip)
+			if m.tabOverflows {
+				m.tabArrow(c, 1)
+			}
 			m.tabOverflow(c)
 			if ui.Button(c, "新建临时请求").Icon(IconPlus).IconOnly().Ghost().Tooltip("新建临时请求").Clicked() {
 				c.After(m.openScratch)
@@ -426,8 +434,43 @@ func (m *Model) followTab(scroll ui.Box) {
 		m.tabScrollRestore = false
 		state.ScrollToX(m.tabScrollWant)
 	}
-	state.ScrollToX(tabScrollTarget(m.curTab, m.overview, state.OffsetX, state.ViewportWidth))
+	if m.tabFollowed != m.curTab {
+		state.ScrollToX(tabScrollTarget(m.curTab, m.overview, state.OffsetX, state.ViewportWidth))
+		m.tabFollowed = m.curTab
+	}
 	m.tabScrollX = state.OffsetX
+	m.tabStrip = state
+	overflow := state.ContentWidth > state.ViewportWidth+0.5
+	if overflow != m.tabOverflows {
+		// 左箭头在 strip 之前声明，这一帧才知道装不下：补一帧让它出现。
+		m.tabOverflows = overflow
+		m.invalidator.Invalidate()
+	}
+}
+
+// tabArrow 是标签条两端的横向滚动按钮，只在装不下时出现：一次滚三格。
+func (m *Model) tabArrow(c ui.C, dir int) {
+	st := m.tabStrip
+	if st == nil {
+		return
+	}
+	icon, label := IconChevronLeft, "向左滚动标签"
+	disabled := st.OffsetX <= 0.5
+	if dir > 0 {
+		icon, label = IconChevronRight, "向右滚动标签"
+		disabled = st.OffsetX+st.ViewportWidth >= st.ContentWidth-0.5
+	}
+	btn := ui.Button(c, label).Icon(icon).Ghost().IconOnly().Disabled(disabled).Tooltip(label)
+	if btn.Clicked() {
+		target := st.OffsetX + float32(dir)*tabPitch*3
+		if limit := st.ContentWidth - st.ViewportWidth; target > limit {
+			target = limit
+		}
+		if target < 0 {
+			target = 0
+		}
+		st.ScrollToX(target)
+	}
 }
 
 // tabScrollTarget 算「让第 cur 个标签可见」需要的横向偏移。
@@ -646,7 +689,8 @@ func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
 			ui.Column(c).Width(m.hsplit.Pos).MinWidth(0).FillHeight().Children(func() {
 				m.requestPane(c)
 			})
-			ui.Splitter(c, &m.hsplit).Mins(px(320), px(260))
+			// 请求 / 响应之间不画竖线：透明手柄自己拖。
+			m.splitHandle(c, &m.hsplit, px(320), px(260))
 			// MinWidth(0)：响应内容（格式化 JSON 的行）不该反过来决定这一列的宽度，
 			// 否则切「原始 / 格式化」时请求列会被挤窄或放宽。
 			ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {

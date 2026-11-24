@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -30,7 +31,7 @@ func (m *Model) statusBar(c ui.C) {
 // statusActions 是底栏右侧的入口组：回收站、MCP（带运行状态点）、设置。
 func (m *Model) statusActions(c ui.C) {
 	hasCollection := m.hasCollection()
-	trash := ui.Button(c, "回收站").Icon(IconTrash).Ghost().XSmall().Tooltip("查看回收站")
+	trash := ui.Button(c, "回收站").Icon(IconTrash).Ghost().XSmall().Weight(gfx.WeightRegular).Tooltip("查看回收站")
 	if !hasCollection {
 		trash.Disabled(true)
 	}
@@ -39,7 +40,7 @@ func (m *Model) statusActions(c ui.C) {
 	}
 
 	mockLabel, mockHint := m.mockLabel()
-	mockButton := ui.Button(c, "Mock").Icon(IconServer).Ghost().XSmall().Tooltip(mockHint)
+	mockButton := ui.Button(c, "Mock").Icon(IconServer).Ghost().XSmall().Weight(gfx.WeightRegular).Tooltip(mockHint)
 	if !hasCollection {
 		mockButton.Disabled(true)
 	}
@@ -54,7 +55,7 @@ func (m *Model) statusActions(c ui.C) {
 	}
 	ui.Slot(c).Width(px(6)).Height(px(6)).Radius(px(3)).Background(mockDot).Hit(ui.ID(c), mockLabel)
 
-	if ui.Button(c, "历史").Icon(IconClock).Ghost().XSmall().Tooltip("查看请求历史").Clicked() {
+	if ui.Button(c, "历史").Icon(IconClock).Ghost().XSmall().Weight(gfx.WeightRegular).Tooltip("查看请求历史").Clicked() {
 		m.openHistory()
 	}
 	// Cookie 只跟「发过请求」有关，不依赖集合是否打开。

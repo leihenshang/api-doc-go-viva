@@ -201,6 +201,12 @@ type rootState struct {
 	tabSeq   int
 	// tabScroll 是页签条的横向偏移，换根回来时接着上次的位置。
 	tabScroll float32
+	// tabFollowed 是上一次自动跟随的标签下标：只在换标签时把条滚过去，
+	// 用户自己横扫 / 点箭头之后不再每帧把他拽回来。
+	tabFollowed int
+	// tabStrip 是页签条的滚动状态；tabOverflow 表示它装不下（决定左右箭头是否出现）。
+	tabStrip     *ui.ScrollState
+	tabOverflows bool
 }
 
 // kvRow 是一行可编辑的键值（查询参数 / 请求头 / 环境变量）：指针存进切片，
@@ -463,6 +469,14 @@ type Model struct {
 	tabScrollX       float32
 	tabScrollWant    float32
 	tabScrollRestore bool
+	// tabFollowed 是上一次自动跟随的标签下标：只在换标签时把条滚过去；
+	// 用户自己横扫或点箭头之后，不再每帧把他拽回当前标签。
+	tabFollowed int
+	// splitDrag 是请求 / 响应之间那条透明分隔条的拖动状态。
+	splitDrag splitDrag
+	// tabStrip 是页签条的滚动状态；tabOverflow 表示它装不下（决定左右箭头是否出现）。
+	tabStrip     *ui.ScrollState
+	tabOverflows bool
 	// tabMenuOpen 是右侧「⋯」的展开状态。
 	tabMenuOpen bool
 	// 自动保存：autoSaveAt 是「停手后第几秒落盘」，pending 表示还欠一次写。

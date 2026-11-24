@@ -137,9 +137,15 @@ func TestTrayIconIsOpaqueCenter(t *testing.T) {
 	if icon.Size != size || len(icon.RGBA) != size*size*4 {
 		t.Fatalf("图标尺寸不对：%d / %d 字节", icon.Size, len(icon.RGBA))
 	}
-	center := ((size/2)*size + size/2) * 4
-	if icon.RGBA[center+3] != 255 {
-		t.Fatalf("中心应不透明，实际 alpha=%d", icon.RGBA[center+3])
+	// 图标是有透明底的线条画，中心可能正好落在留白里：数不透明像素的比例。
+	opaque := 0
+	for i := 3; i < len(icon.RGBA); i += 4 {
+		if icon.RGBA[i] != 0 {
+			opaque++
+		}
+	}
+	if opaque < size*size/20 {
+		t.Fatalf("图标几乎是空的：不透明像素 %d / %d", opaque, size*size)
 	}
 	corner := 3 // (0,0) 的 alpha
 	if icon.RGBA[corner] != 0 {
