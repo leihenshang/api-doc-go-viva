@@ -119,8 +119,12 @@ func (m *Model) openEntry(entry *explorer.Entry) {
 }
 
 // activateTab 切到第 i 个标签：先存当前，再装目标。
+//
+// 「已经是当前标签」只有在不在概览页时才算没事可做：点过「集合」页签后
+// curTab 仍停在进来之前那条上，若照旧早退，再点它自己的标签行就毫无反应
+// （看起来像标签点不动了）。
 func (m *Model) activateTab(i int) {
-	if i < 0 || i >= len(m.tabs) || i == m.curTab {
+	if i < 0 || i >= len(m.tabs) || (i == m.curTab && !m.overview) {
 		return
 	}
 	m.storeTab()

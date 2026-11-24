@@ -946,6 +946,40 @@ func TestTabsKeepPerRequestState(t *testing.T) {
 	}
 }
 
+// TestOverviewTabReturnsToItsTab 点「集合」页签后再点原来那条标签，要能回到它。
+//
+// 回归点：activateTab 的早退条件只看 i == m.curTab，而进概览不会改 curTab；
+// 于是「进来之前那条」再点一次毫无反应（其他标签下标不同，反而正常）。
+func TestOverviewTabReturnsToItsTab(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	if model.overview || model.curTab != 0 {
+		t.Fatalf("打开请求后应在第一个标签：overview=%v cur=%d", model.overview, model.curTab)
+	}
+
+	click(t, driver, "标签 集合")
+	pump(t, driver)
+	if !model.overview || !shows(driver, "存储格式") {
+		t.Fatalf("点「集合」应回到概览：%v", painted(driver))
+	}
+
+	click(t, driver, "标签 健康检查")
+	pump(t, driver)
+	if model.overview || model.curTab != 0 {
+		t.Fatalf("再点原标签应切回去：overview=%v cur=%d", model.overview, model.curTab)
+	}
+	if !shows(driver, "健康检查") {
+		t.Fatalf("切回后应显示请求页：%v", painted(driver))
+	}
+}
+
 // TestSendResultLandsInItsOwnTab 发送后切走，结果应该回到发起它的标签，而不是贴在当前标签上。
 func TestSendResultLandsInItsOwnTab(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
