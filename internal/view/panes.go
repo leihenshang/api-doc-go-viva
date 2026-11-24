@@ -781,20 +781,28 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 			}
 		})
 		ui.Text(c, m.editor.metaLine).FontSize(fs(11)).Muted().Mono()
-		ui.Row(c).FillWidth().Grow(1).Gap(px(12)).Children(func() {
-			ui.Column(c).Grow(1).Gap(px(6)).Children(func() {
+		// 两栏等宽：内容宽 − 两个间距 − 中间分隔线，再各减左右内边距。
+		column := (m.contentWidth(c) - px(24) - px(1)) / 2
+		paneText := column - 2*px(12)
+		ui.Row(c).FillWidth().Grow(1).FillHeight().Gap(px(12)).Children(func() {
+			ui.Column(c).Grow(1).FillHeight().Pad(px(12)).Draw(cardDraw).Children(func() {
 				ui.Text(c, "源码").FontSize(fs(11)).Muted()
-				ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").FillWidth().Grow(1)
+				// 编辑区自己滚，但 viva 的 TextArea 不画滚动条：把它的高度撑到内容
+				// 实际需要的高度，外面套 Scroll，长文档才有右侧滚动条。
+				ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
+					ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").
+						FillWidth().Height(m.editorTextHeight(c, paneText))
+				})
 			})
 			ui.Divider(c)
-			ui.Column(c).Grow(1).Gap(px(6)).Children(func() {
+			ui.Column(c).Grow(1).FillHeight().Gap(px(6)).Pad(px(12)).Draw(cardDraw).Children(func() {
 				ui.Text(c, "预览").FontSize(fs(11)).Muted()
 				if strings.TrimSpace(m.editor.text) == "" {
 					ui.Text(c, "（空文档）").Muted()
 					return
 				}
-				ui.Scroll(c).Grow(1).Children(func() {
-					m.previewBlock(c, m.editor.text, m.editor.previewKey, m.contentWidth(c)/2-20)
+				ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
+					m.previewBlock(c, m.editor.text, m.editor.previewKey, paneText)
 				})
 			})
 		})
