@@ -7,7 +7,9 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/codeeditor"
 )
 
 // requestTitle 是请求标题行：方法角标、名称、脏状态与「复制 cURL」；
@@ -794,7 +796,7 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 			column := (m.contentWidth(c) - px(24) - px(1)) / 2
 			text := column - 2*px(12)
 			ui.Row(c).FillWidth().Grow(1).FillHeight().Gap(px(12)).Children(func() {
-				m.docSourcePane(c, text)
+				m.docSourcePane(c)
 				ui.Divider(c)
 				m.docPreviewPane(c, text)
 			})
@@ -805,18 +807,26 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 	})
 }
 
-// docSourcePane 是源码编辑栏：只有 TextArea 自己的一层边框，不再套卡片。
-func (m *Model) docSourcePane(c ui.C, textWidth float32) {
+// docSourcePane 是源码编辑栏：用 viva 的 codeeditor——行号栏、当前行高亮、
+// 选区与滚动条都由组件自带；正文真源仍是 m.editor.text（见 docode.go）。
+func (m *Model) docSourcePane(c ui.C) {
+	doc := m.docCodeDocument()
 	ui.Column(c).Grow(1).FillHeight().Children(func() {
-		box := ui.Scroll(c).Grow(1).Scrollbars()
-		box.Children(func() {
-			height := m.editorTextHeight(c, textWidth)
-			if state := box.ScrollState(); state != nil && state.Viewport > height {
-				height = state.Viewport
-			}
-			ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").
-				FillWidth().Height(height)
-		})
+		m.docCode.Document = doc
+		m.docCode.Key = m.docCodeKey
+		m.docCode.Text = m.docCodeInput
+		snap := &m.docCode.Snapshot
+		snap.Placeholder = "在此编写 Markdown…"
+		snap.LineNumbers = true
+		snap.CurrentLine = true
+		snap.MatchBrackets = false
+		snap.Wrap = true
+		snap.ShowCaret = true
+		snap.TabWidth = 4
+		// 占位：wrapper 在绘制时换成组件自己的滚动条身份（parts.At(0)）。
+		snap.ScrollbarID = gfx.Item(1)
+		codeeditor.View(c, "文档内容", &m.docCode).Fill()
+		m.syncDocTextFromCode()
 	})
 }
 

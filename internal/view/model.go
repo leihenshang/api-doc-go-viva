@@ -26,7 +26,9 @@ import (
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
+	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/codeeditor"
 )
 
 // detailTab 是右侧的页签：请求 / 响应 / 文档（请求条目）与 编辑 / 预览（文档条目）。
@@ -546,13 +548,18 @@ type Model struct {
 	// docsEditing 是请求「文档」分段是否处于编辑态：默认预览，点一下才编辑（按标签记忆）。
 	docsEditing bool
 
-	docs     docState
-	editor   docEditor
-	drafts   map[string]string
-	req      requestDraft
-	scratch  bool // 当前标签是不是未落盘的临时请求
-	overview bool // 正在看集合概览（固定的「集合」页）
-	settings settings.Settings
+	docs   docState
+	editor docEditor
+	// 文档源码区的代码编辑器（行号 + 当前行高亮）；正文真源仍是 m.editor.text。
+	docCode     codeeditor.Editor
+	docText     *text.Editor
+	docCodeFile string
+	docMirror   string
+	drafts      map[string]string
+	req         requestDraft
+	scratch     bool // 当前标签是不是未落盘的临时请求
+	overview    bool // 正在看集合概览（固定的「集合」页）
+	settings    settings.Settings
 	// 树的排序（磁盘顺序 / 名称升降），跟着偏好走。
 	sortMode     string
 	sortMenuOpen bool
