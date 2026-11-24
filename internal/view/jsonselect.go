@@ -60,8 +60,7 @@ func (m *Model) jsonBody(c ui.C) {
 	sel.buildJSON(m)
 	m.refreshFind(sel.vis, "json")
 	box := ui.Slot(c).FillWidth().Height(float32(len(sel.vis))*selLineH).
-		Hit(id, "响应正文").
-		Tooltip("拖动选中，Ctrl+C 复制")
+		Hit(id, "响应正文")
 	box.Draw(func(d *ui.DrawContext) { m.paintJSON(c, d, id) })
 }
 
@@ -84,8 +83,7 @@ func (m *Model) rawBody(c ui.C) {
 	sel.buildRaw(text)
 	m.refreshFind(sel.vis, "raw")
 	box := ui.Slot(c).FillWidth().Height(float32(len(sel.vis))*selLineH).
-		Hit(id, "响应正文").
-		Tooltip("拖动选中，Ctrl+C 复制")
+		Hit(id, "响应正文")
 	box.Draw(func(d *ui.DrawContext) { m.paintRaw(c, d, id) })
 }
 
