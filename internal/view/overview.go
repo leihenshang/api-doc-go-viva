@@ -9,15 +9,15 @@ import (
 // overviewPage 是固定「集合」页：四个数字卡 + 常用动作，尺寸对齐参考图。
 func (m *Model) overviewPage(c ui.C) {
 	theme := c.Theme()
-	ui.Column(c).Fill().Pad(24).Gap(16).Children(func() {
-		ui.Text(c, m.col.Name).FontSize(24).Bold()
-		ui.Row(c).FillWidth().Gap(12).Children(func() {
+	ui.Column(c).Fill().Pad(px(24)).Gap(px(16)).Children(func() {
+		ui.Text(c, m.col.Name).FontSize(fs(24)).Bold()
+		ui.Row(c).FillWidth().Gap(px(12)).Children(func() {
 			m.statCard(c, "目录", m.col.Dir)
 			m.statCard(c, "请求", strconv.Itoa(len(m.col.Entries)))
 			m.statCard(c, "变量环境", strconv.Itoa(len(m.ui.envs)))
 			m.statCard(c, "存储格式", "纯文本 YAML")
 		})
-		ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			if ui.Button(c, "新建请求").Icon(IconPlus).Clicked() {
 				m.openNewRequest()
 			}
@@ -35,10 +35,10 @@ func (m *Model) overviewPage(c ui.C) {
 				m.openSettings()
 			}
 		})
-		ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			for _, hint := range overviewHints {
-				ui.Text(c, hint).FontSize(10).Mono().Muted().
-					PadX(8).PadY(4).Radius(theme.Metrics.RadiusControl).
+				ui.Text(c, hint).FontSize(fs(10)).Mono().Muted().
+					PadX(8).PadY(px(4)).Radius(theme.Metrics.RadiusControl).
 					Background(theme.Muted)
 			}
 		})
@@ -53,8 +53,8 @@ var overviewHints = []string{"Ctrl+K 命令面板", "Ctrl+S 保存", "Ctrl+Enter
 
 // statCard 是一张数字卡：标签在上、值在下，卡片底用组件目录的 Card。
 func (m *Model) statCard(c ui.C, label, value string) {
-	ui.Column(c).Width(0).Grow(1).Height(64).Pad(12).Gap(6).Draw(cardDraw).Children(func() {
-		ui.Text(c, label).FontSize(11).Muted()
-		ui.Text(c, value).FontSize(13).Ellipsis().MaxLines(1)
+	ui.Column(c).Width(0).Grow(1).Height(px(64)).Pad(px(12)).Gap(px(6)).Draw(cardDraw).Children(func() {
+		ui.Text(c, label).FontSize(fs(11)).Muted()
+		ui.Text(c, value).FontSize(fs(13)).Ellipsis().MaxLines(1)
 	})
 }

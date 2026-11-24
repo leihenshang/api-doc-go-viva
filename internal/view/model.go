@@ -98,12 +98,12 @@ type docEditor struct {
 	status     string
 }
 
-// 布局常量：分隔条厚度与详情页内边距，用于推算 Markdown 的可用宽度。
-const (
-	splitterThickness = 8
-	detailPadding     = 20
+// 布局尺寸：随界面缩放重算（见 scale.go 的 applyUIScale）。
+var (
+	splitterThickness float32 = 8
+	detailPadding     float32 = 20
 	// panePadding 是请求栏与响应区两张卡片的内部边距；两边同值才对齐。
-	panePadding = 12
+	panePadding float32 = 12
 )
 
 // newDocName 是「新建文档」的默认名，与客户端一样靠 -2 后缀去重。
@@ -407,6 +407,7 @@ type workspaceUI struct {
 	updateBusy bool
 	updateRepo string
 	splitSide  int // 0 = 上下，1 = 左右
+	scalePick  int // 界面缩放在 scaleOptions 里的下标
 	envs       []string
 	envPick    string
 
@@ -650,11 +651,13 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 			}
 		}
 	}
+	// 缩放要在建主题与布局之前定下来：主题度量与布局常量都由它算。
+	applyUIScale(m.settings.UIScalePercent())
 	m.applyTheme()
 	m.ui.imeDetail = ime.Detect().Detail
-	m.split.Pos = 260
-	m.rsplit.Pos = 260
-	m.hsplit.Pos = 460
+	m.split.Pos = px(260)
+	m.rsplit.Pos = px(260)
+	m.hsplit.Pos = px(460)
 	m.overview = true
 	m.menuRoot = -1
 	m.expanded = map[string]bool{}
@@ -662,8 +665,8 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	m.tree.Label = m.treeLabel
 	m.tree.Key = m.treeKey
 	m.tree.CanDrop = m.canDrop
-	m.tree.RowHeight = 30
-	m.tree.Indent = 16
+	m.tree.RowHeight = px(30)
+	m.tree.Indent = px(16)
 	m.refreshShown()
 	m.refreshEnvs()
 	m.ui.envPick = m.envName
@@ -1254,7 +1257,7 @@ func (m *Model) contentWidth(c ui.C) float32 {
 // paneWidth 是请求栏卡片内部可用的文字宽度（Markdown 预览按它折行）：
 // 左右分栏取左栏宽，上下分栏取整幅，再减去卡片内边距与 1px 描边。
 func (m *Model) paneWidth(c ui.C) float32 {
-	const chrome = 2*panePadding + 2
+	chrome := 2*panePadding + px(2)
 	if m.settings.SplitSideBySide {
 		return m.hsplit.Pos - chrome
 	}

@@ -140,41 +140,41 @@ func optionalSeconds(text string, low, high int) (int, string) {
 // reqSettingsDialog 是「请求设置」弹窗。
 func (m *Model) reqSettingsDialog(c ui.C) {
 	ui.ModalWith(c, &m.ui.reqSetOpen, "请求设置", ui.ModalSpec{Width: 520, Height: 460}, func() {
-		ui.Column(c).FillWidth().Height(340).Gap(10).Children(func() {
+		ui.Column(c).FillWidth().Height(px(340)).Gap(px(10)).Children(func() {
 			ui.Text(c, "这些值只作用于当前请求，留空或「跟随全局」就不写进文件——"+
-				"以后改设置面板里的全局值仍然生效。").FontSize(11).Muted()
+				"以后改设置面板里的全局值仍然生效。").FontSize(fs(11)).Muted()
 
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "超时（秒）")
-				ui.TextField(c, &m.ui.reqSetTimeout, "超时", "留空跟随全局").Width(120)
-				ui.Text(c, "1~600").FontSize(11).Muted()
+				ui.TextField(c, &m.ui.reqSetTimeout, "超时", "留空跟随全局").Width(px(120))
+				ui.Text(c, "1~600").FontSize(fs(11)).Muted()
 			})
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "最大重定向")
-				ui.TextField(c, &m.ui.reqSetMaxRedirect, "最大重定向", "留空用默认 10").Width(120)
-				ui.Text(c, "1~50").FontSize(11).Muted()
+				ui.TextField(c, &m.ui.reqSetMaxRedirect, "最大重定向", "留空用默认 10").Width(px(120))
+				ui.Text(c, "1~50").FontSize(fs(11)).Muted()
 			})
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "跟随重定向")
 				ui.Choice(c, &m.ui.reqSetFollow, []int{triDefault, triOn, triOff},
 					func(value int) string { return triNames("跟随", "不跟随")[value] })
 			})
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "TLS 校验")
 				ui.Choice(c, &m.ui.reqSetInsecure, []int{triDefault, triOn, triOff},
 					func(value int) string { return triNames("跳过校验", "正常校验")[value] })
 			})
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "URL 编码")
 				ui.Choice(c, &m.ui.reqSetEncode, []int{triDefault, triOn, triOff},
 					func(value int) string { return triNames("自动编码", "原样发送")[value] })
 			})
 			if m.ui.reqSetErr != "" {
-				ui.Text(c, m.ui.reqSetErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.reqSetErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Outline().Clicked() {
 				m.ui.reqSetOpen = false
 			}

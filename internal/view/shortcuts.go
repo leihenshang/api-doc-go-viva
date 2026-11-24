@@ -58,18 +58,18 @@ func (m *Model) openShortcuts() {
 func (m *Model) shortcutsDialog(c ui.C) {
 	ui.ModalWith(c, &m.ui.shortcutsOpen, "快捷键", ui.ModalSpec{Width: 560, Height: 520}, func() {
 		primary := primaryName()
-		ui.Column(c).FillWidth().Height(430).Gap(2).Children(func() {
+		ui.Column(c).FillWidth().Height(px(430)).Gap(px(2)).Children(func() {
 			for _, group := range shortcutGroups {
-				ui.Text(c, group.name).FontSize(10).Muted().PadY(5)
+				ui.Text(c, group.name).FontSize(fs(10)).Muted().PadY(px(5))
 				for _, row := range group.rows {
 					keys := row.keys
 					if row.primary {
 						keys = primary + "+" + keys
 					}
 					keysCopy, what := keys, row.what
-					ui.Row(c).FillWidth().PadY(3).Gap(10).Items(ui.Center).Children(func() {
-						ui.Text(c, keysCopy).FontSize(11).Mono().Width(130).Muted()
-						ui.Text(c, what).FontSize(12).Ellipsis()
+					ui.Row(c).FillWidth().PadY(px(3)).Gap(px(10)).Items(ui.Center).Children(func() {
+						ui.Text(c, keysCopy).FontSize(fs(11)).Mono().Width(px(130)).Muted()
+						ui.Text(c, what).FontSize(fs(12)).Ellipsis()
 					})
 				}
 			}

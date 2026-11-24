@@ -84,17 +84,17 @@ func (m *Model) saveDefaults() {
 // defaultsDialog 是「公共参数」弹窗。
 func (m *Model) defaultsDialog(c ui.C) {
 	ui.ModalWith(c, &m.ui.defaultsOpen, "集合公共参数", ui.ModalSpec{Width: 720, Height: 520}, func() {
-		ui.Column(c).FillWidth().Height(440).Gap(8).Children(func() {
+		ui.Column(c).FillWidth().Height(px(440)).Gap(px(8)).Children(func() {
 			ui.Text(c, "下面的请求头每条请求都会带上；同名时以请求自己的为准。"+
 				"认证要生效，请把请求的认证类型选成「继承集合」。").
 				FontSize(11).Muted().MaxLines(2)
-			ui.Text(c, "默认请求头").FontSize(12).Bold()
+			ui.Text(c, "默认请求头").FontSize(fs(12)).Bold()
 			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 				for index, row := range m.ui.defHeaders {
 					slot := index
-					ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
+					ui.Row(c).FillWidth().Gap(px(8)).PadY(px(2)).Items(ui.Center).Children(func() {
 						ui.Checkbox(c, &row.enabled, "").Changed()
-						ui.TextField(c, &row.name, "名称", "X-Team").Width(200).Changed()
+						ui.TextField(c, &row.name, "名称", "X-Team").Width(px(200)).Changed()
 						ui.TextField(c, &row.value, "值", "{{team}}").Grow(1).Changed()
 						if ui.Button(c, "删除头").Icon(IconTrash).Ghost().IconOnly().
 							Tooltip("删除这一行").Clicked() {
@@ -112,19 +112,19 @@ func (m *Model) defaultsDialog(c ui.C) {
 					m.invalidator.Invalidate()
 				})
 			}
-			ui.Text(c, "默认认证").FontSize(12).Bold()
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "类型").FontSize(11).Muted()
-				ui.Select(c, &m.ui.defAuthType, defaultsAuthTypes, nil).Width(140).Changed()
+			ui.Text(c, "默认认证").FontSize(fs(12)).Bold()
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "类型").FontSize(fs(11)).Muted()
+				ui.Select(c, &m.ui.defAuthType, defaultsAuthTypes, nil).Width(px(140)).Changed()
 				ui.Spacer(c)
 			})
 			m.defaultsAuthFields(c)
 			if m.ui.defNote != "" {
-				ui.Text(c, m.ui.defNote).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.defNote).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Outline().Clicked() {
 				c.After(m.closeDefaults)
 			}
@@ -139,20 +139,20 @@ func (m *Model) defaultsDialog(c ui.C) {
 func (m *Model) defaultsAuthFields(c ui.C) {
 	switch m.ui.defAuthType {
 	case "basic":
-		ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.TextField(c, &m.ui.defAuthUser, "用户名", "{{username}}").Grow(1).Changed()
 			ui.TextField(c, &m.ui.defAuthPass, "口令", "{{password}}").Grow(1).Secure().Changed()
 		})
 	case "bearer":
 		ui.TextField(c, &m.ui.defAuthToken, "Token", "{{token}}").Grow(1).Changed()
 	case "apikey":
-		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 			ui.TextField(c, &m.ui.defAuthKey, "Key", "X-API-Key").Grow(1).Changed()
 			ui.TextField(c, &m.ui.defAuthValue, "Value", "{{apiKey}}").Grow(1).Changed()
-			ui.Select(c, &m.ui.defAuthIn, authPlaces, nil).Width(110).Changed()
+			ui.Select(c, &m.ui.defAuthIn, authPlaces, nil).Width(px(110)).Changed()
 		})
 	default:
-		ui.Text(c, "不配置默认认证：请求选「继承集合」时不会带上任何认证信息。").FontSize(11).Muted()
+		ui.Text(c, "不配置默认认证：请求选「继承集合」时不会带上任何认证信息。").FontSize(fs(11)).Muted()
 	}
 }
 

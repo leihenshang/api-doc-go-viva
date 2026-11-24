@@ -1563,6 +1563,12 @@ func TestToggleJSONFold(t *testing.T) {
 
 func openWindow(t *testing.T, model *Model) *app.Driver {
 	t.Helper()
+	// 界面缩放是进程级状态：无头用例固定按 100% 跑，别被本机偏好带跑。
+	applyUIScale(100)
+	model.split.Pos, model.rsplit.Pos, model.hsplit.Pos = px(260), px(260), px(460)
+	model.tree.RowHeight, model.tree.Indent = px(30), px(16)
+	model.applyTheme() // 主题度量也要回到 100%
+	model.settings.SplitSideBySide, model.ui.splitSide = false, 0
 	driver, err := app.NewDriver(model.config(), nil)
 	if err != nil {
 		t.Fatalf("NewDriver: %v", err)
@@ -3645,6 +3651,8 @@ func TestResponseStatusSurvivesNarrowPane(t *testing.T) {
 	click(t, driver, "发送")
 	waitFor(t, driver, "200")
 
+	// 分栏方向会写进共享偏好：用例结束还原，否则后面的用例都在左右分栏下跑。
+	t.Cleanup(func() { model.setSplitLayout(false) })
 	model.setSplitLayout(true)
 	pump(t, driver)
 	model.hsplit.Pos = 380

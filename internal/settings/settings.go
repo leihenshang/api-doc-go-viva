@@ -51,6 +51,8 @@ type Settings struct {
 	AutoSaveSec int `json:"autoSaveSec,omitempty"`
 	// SplitSideBySide 为真时请求 / 响应左右分栏，否则上下分栏。
 	SplitSideBySide bool `json:"splitSideBySide,omitempty"`
+	// UIScale 是界面缩放百分比（80 / 90 / 100 / 110 / 125）；0 表示 100。
+	UIScale int `json:"uiScale,omitempty"`
 	// Envs 记住每个集合根上次选中的环境名（键是集合目录的绝对路径）。
 	Envs map[string]string `json:"envs,omitempty"`
 	// LastCollection 是上次打开的集合目录（启动时没给 -collection 就用它）。
@@ -106,6 +108,14 @@ func Default() Settings {
 
 // AutoSave 报告是否自动保存（默认开）。
 func (s Settings) AutoSave() bool { return !s.NoAutoSave }
+
+// UIScalePercent 是界面缩放百分比；没设过或越界时按 100 处理。
+func (s Settings) UIScalePercent() int {
+	if s.UIScale < 50 || s.UIScale > 200 {
+		return 100
+	}
+	return s.UIScale
+}
 
 // AutoSaveInterval 是「最后一次编辑之后静默多久落盘」，夹在 1..30 秒。
 func (s Settings) AutoSaveInterval() time.Duration {

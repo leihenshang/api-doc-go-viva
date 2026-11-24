@@ -53,11 +53,15 @@ func (m *Model) Page(c ui.C) {
 		return
 	}
 	ui.Row(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).Width(m.split.Pos).FillHeight().Background(m.pal.sidebar).Children(func() {
+		// Shrink(0)：侧栏宽度只由分隔条决定。详情页的内容（请求列 + 响应列）一宽，
+		// 可收缩的侧栏就会被分走几十像素——用户看到的就是「切到请求标签，集合栏变窄」。
+		ui.Column(c).Width(m.split.Pos).Shrink(0).FillHeight().Background(m.pal.sidebar).Children(func() {
 			m.sidebar(c)
 		})
-		ui.Splitter(c, &m.split).Mins(240, 420)
-		ui.Column(c).Grow(1).FillHeight().Background(m.pal.panel).Children(func() {
+		ui.Splitter(c, &m.split).Mins(px(240), px(420))
+		// MinWidth(0)：详情页自己会声明最小宽度（请求列 + 响应列），这里再要求一份就会
+		// 反过来挤压侧栏——切到请求标签时「集合栏」忽然变窄，就是这个链路。
+		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(m.pal.panel).Children(func() {
 			m.tabBar(c)
 			if m.overview {
 				m.overviewPage(c)
@@ -77,10 +81,10 @@ func (m *Model) hasCollection() bool {
 
 // welcomePage 是还没打开集合时的首屏：一个说明 + 打开集合 / 打开上次集合。
 func (m *Model) welcomePage(c ui.C) {
-	ui.Column(c).Fill().Items(ui.Center).Justify(ui.Center).Gap(12).Children(func() {
-		ui.Text(c, "尚未打开集合").FontSize(20).Bold()
-		ui.Text(c, "选择一个含 opencollection.yml 的目录，或在命令行用 -collection 指定。").FontSize(12).Muted()
-		ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+	ui.Column(c).Fill().Items(ui.Center).Justify(ui.Center).Gap(px(12)).Children(func() {
+		ui.Text(c, "尚未打开集合").FontSize(fs(20)).Bold()
+		ui.Text(c, "选择一个含 opencollection.yml 的目录，或在命令行用 -collection 指定。").FontSize(fs(12)).Muted()
+		ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
 			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Clicked() {
 				c.After(m.chooseCollection)
 			}
@@ -97,7 +101,7 @@ func (m *Model) welcomePage(c ui.C) {
 const appVersion = "v0.1.0"
 
 // titlebarHeight 是标题栏高度，与 Wails 版的 --app-titlebar-h 一致。
-const titlebarHeight = 44
+var titlebarHeight float32 = 44
 
 // 标题栏图标按钮的无障碍名称：按钮上不再写字，读屏软件靠这个说清点下去会怎样。
 const (
@@ -114,12 +118,12 @@ const (
 func (m *Model) toolbar(c ui.C) {
 	_, trailing := app.TitlebarInsets()
 	ui.Row(c).FillWidth().Height(titlebarHeight).Items(ui.Center).MovesWindow().Children(func() {
-		ui.Row(c).Width(m.split.Pos).Height(titlebarHeight).PadX(12).Gap(8).Items(ui.Center).Children(func() {
-			ui.Text(c, "api-doc-go").FontSize(15).Bold()
-			ui.Text(c, appVersion).FontSize(11).Muted().Mono()
+		ui.Row(c).Width(m.split.Pos).Height(titlebarHeight).PadX(px(12)).Gap(px(8)).Items(ui.Center).Children(func() {
+			ui.Text(c, "api-doc-go").FontSize(fs(15)).Bold()
+			ui.Text(c, appVersion).FontSize(fs(11)).Muted().Mono()
 		})
 		// PadLeft(6)：集合 / 环境下拉的左缘与下方标签条、内容区左侧对齐（侧栏右框的 x）。
-		ui.Row(c).Grow(1).Height(titlebarHeight).PadLeft(6).PadRight(trailing + 12).Gap(8).Items(ui.Center).Children(func() {
+		ui.Row(c).Grow(1).Height(titlebarHeight).PadLeft(6).PadRight(trailing + 12).Gap(px(8)).Items(ui.Center).Children(func() {
 			m.collectionPicker(c)
 			m.envPicker(c)
 			ui.Spacer(c)
@@ -134,7 +138,7 @@ func (m *Model) toolbar(c ui.C) {
 // 两个方向同时摊开，比一个循环切换的按钮更直白——一眼看得出当前是左右还是上下。
 func (m *Model) splitToggle(c ui.C) {
 	side := m.settings.SplitSideBySide
-	ui.Row(c).Border(1, m.pal.border).Radius(8).Pad(2).Gap(2).Items(ui.Center).Children(func() {
+	ui.Row(c).Border(1, m.pal.border).Radius(px(8)).Pad(px(2)).Gap(px(2)).Items(ui.Center).Children(func() {
 		// 点当前已选中的那一段不算切换：setSplitLayout 会把分隔条位置重置，
 		// 也会多写一次偏好。只有真的换方向才动。
 		m.iconToggle(c, IconColumns, splitSideLabel, side, func() {
@@ -162,7 +166,7 @@ func (m *Model) themeToggle(c ui.C) {
 // iconToggle 是一个只有图标的小方块：选中时铺主色浅底、图标用主色；悬停给一层灰底。
 // 按下后交给 c.After，和别的按钮一样不在一帧里改状态。
 func (m *Model) iconToggle(c ui.C, icon gfx.Icon, label string, active bool, onClick func()) {
-	box := ui.Row(c).Size(28, 24).Shrink(0).Center().Radius(6)
+	box := ui.Row(c).Size(px(28), px(24)).Shrink(0).Center().Radius(px(6))
 	if active {
 		box = box.Background(m.pal.accentTint)
 	}
@@ -178,7 +182,7 @@ func (m *Model) iconToggle(c ui.C, icon gfx.Icon, label string, active bool, onC
 		ink = m.pal.accent
 	}
 	box.Children(func() {
-		glyph := ui.Icon(c, icon).Size(15, 15).Color(ink)
+		glyph := ui.Icon(c, icon).Size(px(15), px(15)).Color(ink)
 		if !active {
 			// 未选中：图标平时是次要色，指针移上来才提到正文色。
 			glyph.StateFrom(box).Hover(ui.Look{}.Color(m.theme.Foreground))
@@ -314,8 +318,8 @@ func (m *Model) envPicker(c ui.C) {
 // sidebar 是左侧集合树：顶部动作 + 搜索 + 树（集合根 / 分组 / 请求 / 文档）。
 func (m *Model) sidebar(c ui.C) {
 	m.sideC = c
-	ui.Column(c).Fill().Pad(6).Gap(6).Children(func() {
-		ui.Row(c).FillWidth().Gap(4).Items(ui.Center).Children(func() {
+	ui.Column(c).Fill().Pad(px(6)).Gap(px(6)).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(4)).Items(ui.Center).Children(func() {
 			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Outline().IconOnly().Tooltip("打开集合").Clicked() {
 				c.After(m.chooseCollection)
 			}
@@ -359,7 +363,7 @@ func (m *Model) sidebar(c ui.C) {
 		m.applyPendingSelect()
 		m.flushHoverExpand()
 		if m.createErr != "" {
-			ui.Text(c, m.createErr).FontSize(11).Color(c.Theme().Danger)
+			ui.Text(c, m.createErr).FontSize(fs(11)).Color(c.Theme().Danger)
 		}
 		if len(m.rows) == 0 {
 			emptyBox(c, "没有匹配的请求", "换个关键字，或清空搜索框")
@@ -377,10 +381,10 @@ func (m *Model) sidebar(c ui.C) {
 }
 
 // tabWidth 是标签的固定宽度：宽度一致，横向滚动的偏移才好算。
-const tabWidth float32 = 132
+var tabWidth float32 = 132
 
 // tabPitch 是一个标签占的横向距离（标签 + 行间距）。
-const tabPitch float32 = tabWidth + 2
+var tabPitch float32 = tabWidth + 2
 
 // tabBar 是详情区顶部的标签条：固定的「集合」页 + 可横向滚动的条目标签。
 //
@@ -392,11 +396,11 @@ func (m *Model) tabBar(c ui.C) {
 	m.tabSlotIDs = m.tabSlotIDs[:0]
 	m.tabSlots = make(map[gfx.ID]int, len(m.tabs)*2)
 	ui.Column(c).FillWidth().Background(m.pal.sidebar).Children(func() {
-		ui.Row(c).FillWidth().Height(37).PadX(6).Gap(2).Items(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Height(px(37)).PadX(px(6)).Gap(px(2)).Items(ui.Center).Children(func() {
 			m.pinnedTab(c)
-			strip := ui.Scroll(c).Grow(1).Height(37).Sideways()
+			strip := ui.Scroll(c).Grow(1).Height(px(37)).Sideways()
 			strip.Children(func() {
-				ui.Row(c).Gap(2).Height(37).Items(ui.Center).Children(func() {
+				ui.Row(c).Gap(px(2)).Height(px(37)).Items(ui.Center).Children(func() {
 					for index, tab := range m.tabs {
 						m.tabItem(c, tab, index, !m.overview && index == m.curTab)
 					}
@@ -481,15 +485,15 @@ func (m *Model) tabOverflow(c ui.C) {
 // pinnedTab 是固定在最左的「集合」页：点它回到概览。
 func (m *Model) pinnedTab(c ui.C) {
 	theme := c.Theme()
-	ui.Column(c).Width(68).Gap(0).Children(func() {
-		row := ui.Row(c).Height(35).PadX(10).Gap(6).Items(ui.Center).
+	ui.Column(c).Width(px(68)).Gap(px(0)).Children(func() {
+		row := ui.Row(c).Height(px(35)).PadX(px(10)).Gap(px(6)).Items(ui.Center).
 			Hover(ui.Look{}.Background(theme.Hover)).
 			Hit(ui.ID(c), "标签 集合")
 		if m.overview {
 			row.Background(theme.Card)
 		}
 		row.Children(func() {
-			ui.Text(c, "集合").FontSize(12.5)
+			ui.Text(c, "集合").FontSize(fs(12.5))
 		})
 		if row.Clicked() {
 			c.After(func() { m.overview = true })
@@ -506,11 +510,11 @@ func (m *Model) pinnedTab(c ui.C) {
 func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 	theme := c.Theme()
 	title := m.tabTitleAt(slot)
-	ui.Column(c).Gap(0).Children(func() {
+	ui.Column(c).Gap(px(0)).Children(func() {
 		id := ui.ID(c)
 		m.setTabSlotID(slot, id)
 		// 标签既是拖拽源也是目标：拖着换位置（排序是用户自己排的，与树的排序无关）。
-		row := ui.Row(c).Height(35).PadX(8).Gap(6).Items(ui.Center).
+		row := ui.Row(c).Height(px(35)).PadX(px(8)).Gap(px(6)).Items(ui.Center).
 			Hover(ui.Look{}.Background(theme.Hover)).
 			Hit(id, "标签 "+title).
 			DragSource(&m.tabDrag).
@@ -524,13 +528,13 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 		}
 		row.Children(func() {
 			if tab.entry != nil && tab.entry.Kind == explorer.KindHTTP {
-				ui.Text(c, tab.entry.Method).FontSize(9).Mono().Muted()
+				ui.Text(c, tab.entry.Method).FontSize(fs(9)).Mono().Muted()
 			} else if tab.scratch {
-				ui.Text(c, tab.req.method).FontSize(9).Mono().Muted()
+				ui.Text(c, tab.req.method).FontSize(fs(9)).Mono().Muted()
 			}
 			// 备注：文字上按下不会启动拖拽（viva 把文字当无障碍标签，press 归它），
 			// 所以拖拽要按在标签的空白处；菜单里另有「左移 / 右移」兜底。
-			ui.Text(c, title).FontSize(12.5).Ellipsis()
+			ui.Text(c, title).FontSize(fs(12.5)).Ellipsis()
 			if ui.Button(c, "关闭 "+title).Icon(IconX).IconOnly().Ghost().Tooltip("关闭标签").Clicked() {
 				c.After(func() { m.closeTab(slot) })
 			}
@@ -580,7 +584,7 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 // detail 是右侧：请求按 Wails 的排版——标题、地址栏、分段页签、响应区（可拖拽分隔）。
 func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 	if entry == nil {
-		ui.Column(c).Fill().Pad(24).Children(func() {
+		ui.Column(c).Fill().Pad(px(24)).Children(func() {
 			emptyBox(c, "选择左侧的一条内容", "请求会显示地址与响应，文档会打开编辑器")
 		})
 		return
@@ -591,13 +595,13 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 		return
 	}
 	if entry.Kind != explorer.KindHTTP {
-		ui.Column(c).Fill().Pad(20).Gap(12).Children(func() {
-			ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+		ui.Column(c).Fill().Pad(px(20)).Gap(px(12)).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 				methodBadge(c, entry)
-				ui.Text(c, entry.Name).FontSize(17).Bold()
+				ui.Text(c, entry.Name).FontSize(fs(17)).Bold()
 				ui.Spacer(c)
 				if m.grpcDirty {
-					ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
+					ui.Text(c, "未保存").FontSize(fs(11)).Color(c.Theme().Danger)
 				}
 				save := ui.Button(c, "保存").Outline()
 				save.Disabled(!m.grpcDirty)
@@ -617,14 +621,14 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 					c.After(func() { m.sendGRPC(entry) })
 				}
 			})
-			ui.Text(c, m.tables.metaLine).FontSize(11).Muted().Mono()
+			ui.Text(c, m.tables.metaLine).FontSize(fs(11)).Muted().Mono()
 			ui.Scroll(c).Grow(1).Children(func() {
 				m.grpcTab(c, entry)
 			})
 		})
 		return
 	}
-	ui.Column(c).Fill().Pad(16).Gap(10).Children(func() {
+	ui.Column(c).Fill().Pad(px(16)).Gap(px(10)).Children(func() {
 		m.requestTitle(c, entry)
 		m.requestBar(c, entry)
 		m.requestResponsePanes(c, entry)
@@ -636,10 +640,13 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
 	if m.settings.SplitSideBySide {
 		ui.Row(c).FillWidth().Grow(1).Children(func() {
-			ui.Column(c).Width(m.hsplit.Pos).MinWidth(m.hsplit.Pos).FillHeight().Children(func() {
+			// MinWidth(0)：这一列不该锁死 hsplit.Pos。窗口放不下时（缩小窗口、界面放大），
+			// 锁死的下限会顺着 Row 往上传递，最后从侧栏身上扣宽度；让分隔条按 span 自己
+			// 钳制 Pos 更贴近用户预期。下限由 Splitter 的 Mins(320) 兜底。
+			ui.Column(c).Width(m.hsplit.Pos).MinWidth(0).FillHeight().Children(func() {
 				m.requestPane(c)
 			})
-			ui.Splitter(c, &m.hsplit).Mins(320, 260)
+			ui.Splitter(c, &m.hsplit).Mins(px(320), px(260))
 			// MinWidth(0)：响应内容（格式化 JSON 的行）不该反过来决定这一列的宽度，
 			// 否则切「原始 / 格式化」时请求列会被挤窄或放宽。
 			ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
@@ -651,7 +658,7 @@ func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
 	ui.Column(c).FillWidth().Height(m.rsplit.Pos).Children(func() {
 		m.requestPane(c)
 	})
-	ui.Splitter(c, &m.rsplit).Mins(200, 120)
+	ui.Splitter(c, &m.rsplit).Mins(px(200), px(120))
 	ui.Column(c).Grow(1).FillWidth().Children(func() {
 		m.responsePanel(c, entry)
 	})
@@ -664,11 +671,11 @@ func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
 // 整栏是一张和响应区同款的卡片（同内边距 / 圆角 / 描边）—— 两栏观感一致。
 func (m *Model) requestPane(c ui.C) {
 	theme := c.Theme()
-	ui.Column(c).Fill().Pad(panePadding).Gap(8).Radius(theme.Metrics.RadiusSurface).
+	ui.Column(c).Fill().Pad(panePadding).Gap(px(8)).Radius(theme.Metrics.RadiusSurface).
 		Background(theme.Card).Border(1, m.pal.border).Children(func() {
 		ui.Tabs(c, &m.tab, httpSegments, tabLabel).Line()
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Gap(10).Children(func() {
+			ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 				switch m.tab {
 				case tabBody:
 					m.bodyTab(c)
@@ -682,11 +689,11 @@ func (m *Model) requestPane(c ui.C) {
 					m.kvEditor(c, &m.req.params, "添加参数")
 				}
 				if m.req.err != "" {
-					ui.Text(c, m.req.err).FontSize(11).Color(c.Theme().Danger)
+					ui.Text(c, m.req.err).FontSize(fs(11)).Color(c.Theme().Danger)
 				}
 				// 外部改动冲突：给两个明确的出路，别让用户猜「保存为什么失败」。
 				if m.req.conflict {
-					ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 						if ui.Button(c, "重新加载磁盘版本").Outline().Clicked() {
 							c.After(m.reloadRequestFromDisk)
 						}

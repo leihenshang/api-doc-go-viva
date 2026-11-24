@@ -47,20 +47,20 @@ func (m *Model) dialogs(c ui.C) {
 // newRequestDialog 是「新建请求」：请求名、方法、地址，创建后写进集合并被选中。
 func (m *Model) newRequestDialog(c ui.C) {
 	ui.Modal(c, &m.ui.newReqOpen, "新建请求", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "请求会写进集合目录，文件名取请求名；重名自动加 -2。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			ui.Text(c, "请求会写进集合目录，文件名取请求名；重名自动加 -2。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.newName, "请求名", "例如：获取用户列表").FillWidth()
-			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "方法").FontSize(11).Muted()
-				ui.Select(c, &m.ui.newMethod, httpMethods, nil).Width(120)
+			ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "方法").FontSize(fs(11)).Muted()
+				ui.Select(c, &m.ui.newMethod, httpMethods, nil).Width(px(120))
 			})
 			ui.TextField(c, &m.ui.newURL, "地址", "{{host}}/api/users").FillWidth()
 			if m.ui.newErr != "" {
-				ui.Text(c, m.ui.newErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.newErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.newReqOpen = false
 			}
@@ -74,15 +74,15 @@ func (m *Model) newRequestDialog(c ui.C) {
 // newFolderDialog 是「新建分组」：只填名字，落在右键的那个分组里（或集合根）。
 func (m *Model) newFolderDialog(c ui.C) {
 	ui.Modal(c, &m.ui.folderOpen, "新建分组", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "分组会建在当前层级下；重名自动加 -2。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			ui.Text(c, "分组会建在当前层级下；重名自动加 -2。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.folderName, "分组名", "例如：用户").FillWidth()
 			if m.ui.folderErr != "" {
-				ui.Text(c, m.ui.folderErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.folderErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.folderOpen = false
 			}
@@ -95,10 +95,10 @@ func (m *Model) newFolderDialog(c ui.C) {
 
 // codeDialog 展示当前请求的代码片段：cURL / fetch / axios / Go / Python。
 func (m *Model) codeDialog(c ui.C) {
-	ui.ModalWith(c, &m.codeOpen, "代码生成", ui.ModalSpec{Width: 760, Height: 520}, func() {
-		ui.Column(c).FillWidth().Height(380).Gap(10).Children(func() {
-			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "语言").FontSize(11).Muted()
+	ui.ModalWith(c, &m.codeOpen, "代码生成", ui.ModalSpec{Width: px(760), Height: px(520)}, func() {
+		ui.Column(c).FillWidth().Height(px(380)).Gap(px(10)).Children(func() {
+			ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "语言").FontSize(fs(11)).Muted()
 				choice := ui.Choice(c, &m.codeLang, codeLangs, func(i int) string { return codeLangNames[i] })
 				if choice.Changed() {
 					m.refreshCode()
@@ -108,11 +108,11 @@ func (m *Model) codeDialog(c ui.C) {
 					FontSize(11).Muted()
 			})
 			ui.Scroll(c).Grow(1).Children(func() {
-				ui.Paragraph(c, m.codeText, 0).Mono().FontSize(11)
+				ui.Paragraph(c, m.codeText, 0).Mono().FontSize(fs(11))
 			})
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "复制代码").Icon(IconCopy).Clicked() {
 				c.After(func() { m.copyValue(m.codeText) })
 			}
@@ -126,12 +126,12 @@ func (m *Model) codeDialog(c ui.C) {
 // deleteFolderDialog 确认删除分组：整棵子树进回收站，之后可从回收站恢复。
 func (m *Model) deleteFolderDialog(c ui.C) {
 	ui.Modal(c, &m.ui.folderDeleteOpen, "删除分组", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "「"+m.ui.folderDeleteName+"」及里面的请求 / 文档会一起移进回收站。").FontSize(12)
-			ui.Text(c, "需要时可从「回收站」恢复（回到集合根）。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			ui.Text(c, "「"+m.ui.folderDeleteName+"」及里面的请求 / 文档会一起移进回收站。").FontSize(fs(12))
+			ui.Text(c, "需要时可从「回收站」恢复（回到集合根）。").FontSize(fs(11)).Muted()
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.folderDeleteOpen = false
 			}
@@ -145,15 +145,15 @@ func (m *Model) deleteFolderDialog(c ui.C) {
 // renameDialog 是「重命名」：只改显示名，文件名不动（与客户端一致）。
 func (m *Model) renameDialog(c ui.C) {
 	ui.Modal(c, &m.ui.renameOpen, "重命名", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "只改显示名，文件名保持不变。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			ui.Text(c, "只改显示名，文件名保持不变。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.renameName, "名称", "新的显示名").FillWidth()
 			if m.ui.renameErr != "" {
-				ui.Text(c, m.ui.renameErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.renameErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.renameOpen = false
 			}
@@ -167,12 +167,12 @@ func (m *Model) renameDialog(c ui.C) {
 // settingsDialog 是设置：左侧分区导航（外观 / 网络与安全 / 本地数据 / 关于），
 // 右侧是当前分区的表单，尺寸与布局对齐参考图 15-17。
 func (m *Model) settingsDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.settingsOpen, "设置", ui.ModalSpec{Width: 780, Height: 520}, func() {
-		ui.Row(c).FillWidth().Height(420).Gap(16).Children(func() {
-			ui.Column(c).Width(160).Gap(4).Children(func() {
+	ui.ModalWith(c, &m.ui.settingsOpen, "设置", ui.ModalSpec{Width: px(780), Height: px(520)}, func() {
+		ui.Row(c).FillWidth().Height(px(420)).Gap(px(16)).Children(func() {
+			ui.Column(c).Width(px(160)).Gap(px(4)).Children(func() {
 				for index, name := range settingsSections {
 					section := index
-					row := ui.Row(c).FillWidth().PadX(10).PadY(5).Gap(6).Items(ui.Center).
+					row := ui.Row(c).FillWidth().PadX(px(10)).PadY(px(5)).Gap(px(6)).Items(ui.Center).
 						Radius(c.Theme().Metrics.RadiusControl).
 						Hover(ui.Look{}.Background(c.Theme().Hover)).
 						Hit(ui.ID(c), "设置分区 "+name)
@@ -180,7 +180,7 @@ func (m *Model) settingsDialog(c ui.C) {
 						row.Background(m.pal.active)
 					}
 					row.Children(func() {
-						ui.Text(c, name).FontSize(12)
+						ui.Text(c, name).FontSize(fs(12))
 					})
 					if row.Clicked() {
 						m.ui.settingsSection = section
@@ -188,7 +188,7 @@ func (m *Model) settingsDialog(c ui.C) {
 				}
 			})
 			ui.Divider(c)
-			ui.Column(c).Grow(1).FillWidth().Items(ui.Start).Gap(10).Children(func() {
+			ui.Column(c).Grow(1).FillWidth().Items(ui.Start).Gap(px(10)).Children(func() {
 				switch m.ui.settingsSection {
 				case 1:
 					m.settingsNetwork(c)
@@ -202,7 +202,7 @@ func (m *Model) settingsDialog(c ui.C) {
 			})
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "完成").Clicked() {
 				m.ui.settingsOpen = false
 			}
@@ -222,21 +222,21 @@ func (m *Model) settingsDialog(c ui.C) {
 var settingsSections = []string{"外观", "网络与安全", "本地数据", "关于"}
 
 // formLabelWidth 是设置表单里标签列的宽度：各分区共用，右侧控件才对得齐。
-const formLabelWidth = 90
+var formLabelWidth float32 = 90
 
 // formRowWidth 是设置表单行的宽度：每行同宽，标签列才会在同一条竖线上。
-const formRowWidth = 360
+var formRowWidth float32 = 360
 
 // settingsBodyWidth 是设置右侧内容区的宽度：对话框 780 − 左右内边距 − 左侧导航 160 − 间距。
 // 换行文本必须拿到一个确定宽度才会真的换行（Percent 在这里按对话框算，不按内容区）。
-const settingsBodyWidth = 556
+var settingsBodyWidth float32 = 556
 
 // formLabel 是设置表单左侧的标签：固定 90px 的列，文字靠右，右缘贴着控件。
 // 用一个定宽的 Row 兜住（而不是给 Text 设 Width + TextEnd：那样 TextEnd 会把
 // 文本矩形整体挪位，不同长度的标签反而对不齐）。
 func formLabel(c ui.C, text string) {
 	ui.Row(c).Width(formLabelWidth).Justify(ui.End).Children(func() {
-		ui.Text(c, text).FontSize(11).Muted()
+		ui.Text(c, text).FontSize(fs(11)).Muted()
 	})
 }
 
@@ -247,7 +247,7 @@ func formLabel(c ui.C, text string) {
 // 按 MaxWidth 自动换行，放在控件右侧，既不挡输入也不再撑破表单。
 func hintTip(c ui.C, text string) {
 	id := ui.ID(c)
-	ui.Icon(c, IconInfo).Size(14, 14).Shrink(0).
+	ui.Icon(c, IconInfo).Size(px(14), px(14)).Shrink(0).
 		Color(c.Theme().MutedForeground).
 		Hit(id, text).
 		Tooltip(text).
@@ -256,83 +256,94 @@ func hintTip(c ui.C, text string) {
 
 // settingsAppearance 是外观分区：主题立即生效并落盘。
 func (m *Model) settingsAppearance(c ui.C) {
-	ui.Text(c, "外观").FontSize(12).Bold().Muted()
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Text(c, "外观").FontSize(fs(12)).Bold().Muted()
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "主题")
 		ui.Choice(c, &m.ui.themePick, themeOptions, func(i int) string { return themeNames[i] })
 		ui.Spacer(c)
 		hintTip(c, "切换后立即生效，并写入本地偏好；Markdown 预览的配色一起切换。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	// 五档选项比一行表单宽：单独加宽，否则标签列会被挤没。
+	ui.Row(c).Width(formRowWidth + px(80)).Gap(px(8)).Items(ui.Center).Children(func() {
+		formLabel(c, "界面缩放")
+		ui.Choice(c, &m.ui.scalePick, scaleOptions, func(pct int) string { return scaleLabel(pct) })
+		ui.Spacer(c)
+		hintTip(c, "按比例放大或缩小整个界面：文字、控件、行高、侧栏与弹窗一起变，立即生效并写入偏好。")
+	})
+	// Choice 在声明时就写回了 scalePick（百分比）：这里跟随切换，立即按新比例重排。
+	if pct := m.ui.scalePick; pct != m.settings.UIScalePercent() {
+		m.setUIScale(pct)
+	}
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "请求 / 响应分栏")
 		ui.Choice(c, &m.ui.splitSide, splitOptions, func(i int) string { return splitNames[i] })
 		ui.Spacer(c)
 		hintTip(c, "「左右」适合宽屏对照；拖动中间的分隔条可调整大小，切换后立即生效。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "自动保存")
 		ui.Switch(c, &m.ui.autoSave, "自动保存").Changed()
-		ui.Text(c, "停顿").FontSize(11).Muted()
-		ui.TextField(c, &m.ui.autoSaveSec, "间隔", "2").Width(56)
-		ui.Text(c, "秒").FontSize(11).Muted()
+		ui.Text(c, "停顿").FontSize(fs(11)).Muted()
+		ui.TextField(c, &m.ui.autoSaveSec, "间隔", "2").Width(px(56))
+		ui.Text(c, "秒").FontSize(fs(11)).Muted()
 		ui.Spacer(c)
 		hintTip(c, "开着：最后一次编辑停这么久就写回集合（与 Ctrl+S 等价）。"+
 			"关掉：改动只存成草稿，重开还能捡回来，但集合文件不动。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "关闭窗口")
 		ui.Switch(c, &m.ui.closeToTray, "关闭窗口时收到托盘").Changed()
 		ui.Spacer(c)
 		hintTip(c, "开着时点关闭只把窗口收到托盘，进程继续跑；托盘不可用的桌面会自动退回「关窗即退出」。")
 	})
 	// 托盘状态是「结果」不是「说明」：它得一直看得见，所以留在表单里，但要换行。
-	ui.Wrap(c, m.trayHint()).Width(settingsBodyWidth).FontSize(11).Muted()
+	ui.Wrap(c, m.trayHint()).Width(settingsBodyWidth).FontSize(fs(11)).Muted()
 }
 
 // settingsNetwork 是网络与安全分区：默认超时与重定向策略。
 func (m *Model) settingsNetwork(c ui.C) {
-	ui.Text(c, "网络与安全").FontSize(12).Bold().Muted()
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Text(c, "网络与安全").FontSize(fs(12)).Bold().Muted()
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "默认超时（秒）")
-		ui.TextField(c, &m.ui.timeoutText, "默认超时", "20").Width(90).Changed()
+		ui.TextField(c, &m.ui.timeoutText, "默认超时", "20").Width(px(90)).Changed()
 		ui.Spacer(c)
 		hintTip(c, "请求文件里的 settings.timeout 显式设置时优先于这里。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "跟随重定向")
 		ui.Switch(c, &m.ui.follow, "跟随重定向").Changed()
 		ui.Spacer(c)
 		hintTip(c, "请求文件里的 settings.followRedirects 显式设置时优先于这里。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "忽略证书校验")
 		ui.Switch(c, &m.ui.insecure, "忽略证书校验").Changed()
 		ui.Spacer(c)
 		hintTip(c, "只用于自签 / 内网证书调试；请求文件里的 settings.insecureSsl 显式设置时优先于这里。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "加密敏感值")
 		ui.Switch(c, &m.ui.sealSecrets, "加密保存敏感值").Changed()
 		ui.Spacer(c)
 		hintTip(c, "敏感值（环境里的 secret 变量）落盘时用 AES-256-GCM 加密，密钥在配置目录（0600），"+
 			"与集合分开：集合进 git 也只留密文。关掉后新保存的值变回明文，已有的密文仍可读。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "保存 Cookie")
 		ui.Switch(c, &m.ui.persistCookies, "保存 Cookie").Changed()
 		ui.Spacer(c)
 		hintTip(c, "开着时响应的 Cookie 会存本机，下次发同一域名的请求自动带上；不写进集合。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "代理地址")
 		ui.TextField(c, &m.ui.proxyText, "代理地址", "http://127.0.0.1:7890").Grow(1).Changed()
 		hintTip(c, "留空即直连；支持 http / https / socks5。")
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "客户端证书")
 		ui.TextField(c, &m.ui.clientCertText, "客户端证书", "client.crt（PEM）").Grow(1).Changed()
 	})
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "客户端私钥")
 		ui.TextField(c, &m.ui.clientKeyText, "客户端私钥", "client.key（PEM）").Grow(1).Changed()
 		hintTip(c, "证书与私钥都填才启用双向 TLS。")
@@ -341,22 +352,22 @@ func (m *Model) settingsNetwork(c ui.C) {
 
 // settingsLocal 是本地数据分区：集合路径、配置文件与当前环境。
 func (m *Model) settingsLocal(c ui.C) {
-	ui.Text(c, "本地数据").FontSize(12).Bold().Muted()
-	ui.Wrap(c, m.ui.dirLine).Width(settingsBodyWidth).FontSize(11).Muted().Mono()
+	ui.Text(c, "本地数据").FontSize(fs(12)).Bold().Muted()
+	ui.Wrap(c, m.ui.dirLine).Width(settingsBodyWidth).FontSize(fs(11)).Muted().Mono()
 	if dir, err := settings.Dir(); err == nil {
-		ui.Wrap(c, "偏好文件："+dir).Width(settingsBodyWidth).FontSize(11).Muted().Mono()
+		ui.Wrap(c, "偏好文件："+dir).Width(settingsBodyWidth).FontSize(fs(11)).Muted().Mono()
 	}
-	ui.Wrap(c, m.ui.envLine).Width(settingsBodyWidth).FontSize(11).Muted()
+	ui.Wrap(c, m.ui.envLine).Width(settingsBodyWidth).FontSize(fs(11)).Muted()
 	ui.Wrap(c, "集合是纯文本真相源，本机偏好（主题 / 超时 / 上次环境）不写进集合。").
-		Width(settingsBodyWidth).FontSize(11).Muted()
+		Width(settingsBodyWidth).FontSize(fs(11)).Muted()
 	if ui.Button(c, "打开回收站").Icon(IconTrash).Secondary().Clicked() {
 		c.After(m.openTrash)
 	}
-	ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "发布仓库")
 		ui.TextField(c, &m.ui.updateRepo, "发布仓库", "owner/repo（留空用内置默认）").Grow(1).Changed()
 	})
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 		label := "检查更新"
 		if m.ui.updateBusy {
 			label = "检查中…"
@@ -369,35 +380,35 @@ func (m *Model) settingsLocal(c ui.C) {
 				c.After(m.openUpdatePage)
 			}
 		}
-		ui.Text(c, "当前版本 v"+updater.Version).FontSize(11).Muted()
+		ui.Text(c, "当前版本 v"+updater.Version).FontSize(fs(11)).Muted()
 	})
 	if m.ui.updateNote != "" {
-		ui.Text(c, m.ui.updateNote).FontSize(11).Muted()
+		ui.Text(c, m.ui.updateNote).FontSize(fs(11)).Muted()
 	}
 }
 
 // cookieDialog 是 Cookie Jar：发过的请求种下的 cookie 都在这儿，可查看与清空。
 // 它与「请求历史」分开：历史是发过什么，这里是这台机器现在持有什么会话。
 func (m *Model) cookieDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.cookieOpen, "Cookie Jar", ui.ModalSpec{Width: 700, Height: 460}, func() {
-		ui.Column(c).FillWidth().Height(360).Gap(6).Children(func() {
+	ui.ModalWith(c, &m.ui.cookieOpen, "Cookie Jar", ui.ModalSpec{Width: px(700), Height: px(460)}, func() {
+		ui.Column(c).FillWidth().Height(px(360)).Gap(px(6)).Children(func() {
 			ui.Text(c, "发送请求时自动带上；集合运行器也用同一份 jar，所以「先登录再跑」是成立的。").
 				FontSize(11).Muted()
 			if len(m.ui.cookieRows) == 0 {
-				ui.Text(c, "还没有 cookie：发一次会种 cookie 的请求就会出现在这里。").FontSize(11).Muted()
+				ui.Text(c, "还没有 cookie：发一次会种 cookie 的请求就会出现在这里。").FontSize(fs(11)).Muted()
 				return
 			}
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "域名").FontSize(11).Muted().Width(200)
-				ui.Text(c, "名称").FontSize(11).Muted().Width(140)
-				ui.Text(c, "值").FontSize(11).Muted().Grow(1)
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "域名").FontSize(fs(11)).Muted().Width(px(200))
+				ui.Text(c, "名称").FontSize(fs(11)).Muted().Width(px(140))
+				ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(1)
 			})
 			for _, item := range m.ui.cookieRows {
 				row := item
-				ui.Row(c).FillWidth().Gap(8).PadY(3).Items(ui.Center).Children(func() {
-					ui.Text(c, row.Domain).FontSize(11).Mono().Width(200).Ellipsis()
-					ui.Text(c, row.Name).FontSize(11).Mono().Width(140).Ellipsis()
-					ui.Text(c, row.Value).FontSize(11).Mono().Muted().Grow(1).Ellipsis()
+				ui.Row(c).FillWidth().Gap(px(8)).PadY(px(3)).Items(ui.Center).Children(func() {
+					ui.Text(c, row.Domain).FontSize(fs(11)).Mono().Width(px(200)).Ellipsis()
+					ui.Text(c, row.Name).FontSize(fs(11)).Mono().Width(px(140)).Ellipsis()
+					ui.Text(c, row.Value).FontSize(fs(11)).Mono().Muted().Grow(1).Ellipsis()
 					if ui.Button(c, "删除 "+row.Name).Icon(IconTrash).Ghost().IconOnly().
 						Tooltip("只删这一条（" + row.Name + "）").Clicked() {
 						c.After(func() { m.deleteCookie(row) })
@@ -405,11 +416,11 @@ func (m *Model) cookieDialog(c ui.C) {
 				})
 			}
 			if m.ui.cookieNote != "" {
-				ui.Text(c, m.ui.cookieNote).FontSize(11).Muted()
+				ui.Text(c, m.ui.cookieNote).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "刷新").Outline().Clicked() {
 				c.After(func() {
 					m.reloadCookies()
@@ -430,8 +441,8 @@ func (m *Model) cookieDialog(c ui.C) {
 // historyDialog 是「请求历史」：每次真实发送都记一条，点一行回到那条请求。
 // 记录只在本机（history.jsonl），不写进集合。
 func (m *Model) historyDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.historyOpen, "请求历史", ui.ModalSpec{Width: 760, Height: 500}, func() {
-		ui.Column(c).FillWidth().Height(400).Gap(6).Children(func() {
+	ui.ModalWith(c, &m.ui.historyOpen, "请求历史", ui.ModalSpec{Width: px(760), Height: px(500)}, func() {
+		ui.Column(c).FillWidth().Height(px(400)).Gap(px(6)).Children(func() {
 			ui.TextField(c, &m.ui.historyQuery, "搜索历史", "按地址或请求名过滤…").FillWidth()
 			needle := strings.ToLower(strings.TrimSpace(m.ui.historyQuery))
 			shown := 0
@@ -449,22 +460,22 @@ func (m *Model) historyDialog(c ui.C) {
 				if item.Size > 0 {
 					meta += " · " + humanBytes(item.Size)
 				}
-				row := ui.Row(c).FillWidth().PadX(8).PadY(4).Gap(8).Items(ui.Center).
+				row := ui.Row(c).FillWidth().PadX(px(8)).PadY(px(4)).Gap(px(8)).Items(ui.Center).
 					Radius(c.Theme().Metrics.RadiusControl).
 					Hover(ui.Look{}.Background(c.Theme().Hover)).
 					Hit(ui.ID(c), "历史 "+item.URL).
 					Tooltip("点这一行回到那条请求（不在当前集合时复制地址）")
 				row.Children(func() {
-					ui.Text(c, item.Time.Format("01-02 15:04")).FontSize(10).Mono().Muted().Width(76)
-					ui.Text(c, item.Method).FontSize(10).Mono().Bold().Width(48).
+					ui.Text(c, item.Time.Format("01-02 15:04")).FontSize(fs(10)).Mono().Muted().Width(px(76))
+					ui.Text(c, item.Method).FontSize(fs(10)).Mono().Bold().Width(px(48)).
 						Color(methodTint(item.Method, m.isLight()))
 					tint := c.Theme().Success
 					if item.Err != "" || item.Status >= 400 {
 						tint = c.Theme().Danger
 					}
-					ui.Text(c, status).FontSize(10).Mono().Color(tint).Width(34)
-					ui.Text(c, item.URL).FontSize(11).Grow(1).Ellipsis()
-					ui.Text(c, meta).FontSize(10).Mono().Muted().Width(100)
+					ui.Text(c, status).FontSize(fs(10)).Mono().Color(tint).Width(px(34))
+					ui.Text(c, item.URL).FontSize(fs(11)).Grow(1).Ellipsis()
+					ui.Text(c, meta).FontSize(fs(10)).Mono().Muted().Width(px(100))
 					if ui.Button(c, "详情").Ghost().XSmall().
 						Tooltip("看当时的请求头 / 参数 / 正文").Clicked() {
 						c.After(func() {
@@ -485,14 +496,14 @@ func (m *Model) historyDialog(c ui.C) {
 				}
 			}
 			if shown == 0 {
-				ui.Text(c, "还没有记录：发送一次请求就会记在这里。").FontSize(11).Muted()
+				ui.Text(c, "还没有记录：发送一次请求就会记在这里。").FontSize(fs(11)).Muted()
 			}
 			if m.ui.historyNote != "" {
-				ui.Text(c, m.ui.historyNote).FontSize(11).Muted()
+				ui.Text(c, m.ui.historyNote).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "清空历史").Icon(IconTrash).Outline().Clicked() {
 				c.After(m.clearHistory)
 			}
@@ -505,19 +516,19 @@ func (m *Model) historyDialog(c ui.C) {
 
 // historyDetailCard 是历史里展开的详情：当时真正发出去的请求头、参数与正文。
 func (m *Model) historyDetailCard(c ui.C, item history.Entry) {
-	ui.Column(c).FillWidth().Gap(4).Pad(8).Radius(c.Theme().Metrics.RadiusControl).
+	ui.Column(c).FillWidth().Gap(px(4)).Pad(px(8)).Radius(c.Theme().Metrics.RadiusControl).
 		Background(m.pal.panel).Border(1, m.pal.border).Children(func() {
-		ui.Text(c, "请求头（敏感值已打码）").FontSize(10).Muted()
+		ui.Text(c, "请求头（敏感值已打码）").FontSize(fs(10)).Muted()
 		if len(item.Headers) == 0 {
-			ui.Text(c, "没有请求头").FontSize(11).Muted()
+			ui.Text(c, "没有请求头").FontSize(fs(11)).Muted()
 		}
 		for _, header := range item.Headers {
-			ui.Text(c, header.Name+": "+header.Value).FontSize(10).Mono().Ellipsis()
+			ui.Text(c, header.Name+": "+header.Value).FontSize(fs(10)).Mono().Ellipsis()
 		}
 		if len(item.Params) > 0 {
-			ui.Text(c, "查询参数").FontSize(10).Muted()
+			ui.Text(c, "查询参数").FontSize(fs(10)).Muted()
 			for _, param := range item.Params {
-				ui.Text(c, param.Name+" = "+param.Value).FontSize(10).Mono().Ellipsis()
+				ui.Text(c, param.Name+" = "+param.Value).FontSize(fs(10)).Mono().Ellipsis()
 			}
 		}
 		if item.Body != "" {
@@ -525,8 +536,8 @@ func (m *Model) historyDetailCard(c ui.C, item history.Entry) {
 			if item.BodyTruncated {
 				label += "（只存了前 8 KB）"
 			}
-			ui.Text(c, label).FontSize(10).Muted()
-			ui.Text(c, item.Body).FontSize(10).Mono().MaxLines(6)
+			ui.Text(c, label).FontSize(fs(10)).Muted()
+			ui.Text(c, item.Body).FontSize(fs(10)).Mono().MaxLines(6)
 		}
 	})
 }
@@ -542,24 +553,24 @@ func formatDuration(ms int64) string {
 // mcpDialog 是内嵌 MCP 服务的**独立**设置弹窗：与软件设置分开，没有左侧分区菜单
 // （对齐 Wails 版：MCP 是状态栏入口自带的面板，不属于软件设置）。
 func (m *Model) mcpDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: 680, Height: 560}, func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
+	ui.ModalWith(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: px(680), Height: px(560)}, func() {
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "把当前打开的集合以工具的形式提供给 AI（Claude Desktop / Cursor 等 MCP 客户端）。").
 				FontSize(11).Muted()
-			ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "启用服务")
 				ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
 			})
-			ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "监听地址")
-				ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(200).Changed()
+				ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(px(200)).Changed()
 			})
-			ui.Row(c).Width(formRowWidth).Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "只读模式")
 				ui.Switch(c, &m.ui.mcpReadOnly, "只读：不暴露发请求与写磁盘的工具").Changed()
 				ui.Spacer(c)
 			})
-			ui.Row(c).Width(formRowWidth).Gap(10).Items(ui.Center).Children(func() {
+			ui.Row(c).Width(formRowWidth).Gap(px(10)).Items(ui.Center).Children(func() {
 				formLabel(c, "工具组")
 				for index, name := range appmcp.Groups {
 					slot := index
@@ -568,18 +579,18 @@ func (m *Model) mcpDialog(c ui.C) {
 			})
 			switch {
 			case m.mcp.running:
-				ui.Text(c, "运行中："+m.mcp.addr).FontSize(11).Mono().Color(c.Theme().Success)
+				ui.Text(c, "运行中："+m.mcp.addr).FontSize(fs(11)).Mono().Color(c.Theme().Success)
 			case m.mcp.err != "":
-				ui.Text(c, "启动失败："+m.mcp.err).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, "启动失败："+m.mcp.err).FontSize(fs(11)).Color(c.Theme().Danger)
 			default:
-				ui.Text(c, "未启用").FontSize(11).Muted()
+				ui.Text(c, "未启用").FontSize(fs(11)).Muted()
 			}
 			m.mcpAllowList(c)
 			if token := m.ui.mcpToken; token != "" {
-				ui.Text(c, "访问令牌：").FontSize(11).Muted()
-				ui.Text(c, token).FontSize(11).Mono().Ellipsis()
+				ui.Text(c, "访问令牌：").FontSize(fs(11)).Muted()
+				ui.Text(c, token).FontSize(fs(11)).Mono().Ellipsis()
 			}
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				ui.Text(c, "客户端连接："+mcpURL(m.ui.mcpAddr)).
 					FontSize(11).Muted().Ellipsis()
 				ui.Spacer(c)
@@ -593,11 +604,11 @@ func (m *Model) mcpDialog(c ui.C) {
 			ui.Text(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。").
 				FontSize(11).Muted()
 			if m.copyNote != "" {
-				ui.Text(c, m.copyNote).FontSize(11).Muted()
+				ui.Text(c, m.copyNote).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "完成").Clicked() {
 				m.ui.mcpOpen = false
 			}
@@ -613,17 +624,17 @@ func (m *Model) mcpDialog(c ui.C) {
 // mcpAllowList 是 MCP 弹窗里的「可访问的工作区」：勾选 = 授权 AI 读这个集合，
 // 右侧「可写」决定写类工具能否落盘（当前工具集还没有写工具，先随配置存下来）。
 func (m *Model) mcpAllowList(c ui.C) {
-	ui.Text(c, "可访问的工作区").FontSize(11).Muted()
+	ui.Text(c, "可访问的工作区").FontSize(fs(11)).Muted()
 	if len(m.ui.mcpAllow) == 0 {
-		ui.Text(c, "（还没有打开的集合：先在侧栏打开一个目录）").FontSize(11).Muted()
+		ui.Text(c, "（还没有打开的集合：先在侧栏打开一个目录）").FontSize(fs(11)).Muted()
 		return
 	}
-	ui.Column(c).FillWidth().Gap(6).Children(func() {
+	ui.Column(c).FillWidth().Gap(px(6)).Children(func() {
 		for index := range m.ui.mcpAllow {
 			row := &m.ui.mcpAllow[index]
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				ui.Checkbox(c, &row.Allowed, row.Name).Changed()
-				ui.Text(c, row.Dir).FontSize(10).Mono().Muted().Ellipsis()
+				ui.Text(c, row.Dir).FontSize(fs(10)).Mono().Muted().Ellipsis()
 				ui.Spacer(c)
 				writable := ui.Checkbox(c, &row.Writable, "可写")
 				if !row.Allowed {
@@ -639,40 +650,40 @@ func (m *Model) mcpAllowList(c ui.C) {
 
 // settingsAbout 是「关于」：版本与输入法现状。
 func (m *Model) settingsAbout(c ui.C) {
-	ui.Text(c, "关于").FontSize(12).Bold().Muted()
-	ui.Text(c, "api-doc-go "+appVersion).FontSize(13)
+	ui.Text(c, "关于").FontSize(fs(12)).Bold().Muted()
+	ui.Text(c, "api-doc-go "+appVersion).FontSize(fs(13))
 	ui.Divider(c)
-	ui.Text(c, "输入法").FontSize(12).Bold().Muted()
-	ui.Wrap(c, m.ui.imeDetail).Width(settingsBodyWidth).FontSize(11).Muted()
+	ui.Text(c, "输入法").FontSize(fs(12)).Bold().Muted()
+	ui.Wrap(c, m.ui.imeDetail).Width(settingsBodyWidth).FontSize(fs(11)).Muted()
 	ui.Wrap(c, "Viva 的 Linux 后端只支持 IBus；复制粘贴中文可用（Ctrl+C / Ctrl+V）。").
-		Width(settingsBodyWidth).FontSize(11).Muted()
+		Width(settingsBodyWidth).FontSize(fs(11)).Muted()
 }
 
 // mockRuleDialog 编辑一条请求的桩规则：状态码、延迟与整段响应体覆盖。
 func (m *Model) mockRuleDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.mockRuleOpen, "桩规则 · "+m.ui.mockRuleName, ui.ModalSpec{Width: 720, Height: 520}, func() {
-		ui.Column(c).FillWidth().Height(420).Gap(8).Children(func() {
+	ui.ModalWith(c, &m.ui.mockRuleOpen, "桩规则 · "+m.ui.mockRuleName, ui.ModalSpec{Width: px(720), Height: px(520)}, func() {
+		ui.Column(c).FillWidth().Height(px(420)).Gap(px(8)).Children(func() {
 			ui.Text(c, "只影响本地桩服务；留空表示用默认值（200 / 不延迟 / 由字段表生成）。").
 				FontSize(11).Muted()
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "状态码")
-				ui.TextField(c, &m.ui.mockRuleStatus, "状态码", "201").Width(120)
+				ui.TextField(c, &m.ui.mockRuleStatus, "状态码", "201").Width(px(120))
 				formLabel(c, "延迟")
-				ui.TextField(c, &m.ui.mockRuleDelay, "延迟（毫秒）", "120").Width(120)
-				ui.Text(c, "毫秒").FontSize(11).Muted()
+				ui.TextField(c, &m.ui.mockRuleDelay, "延迟（毫秒）", "120").Width(px(120))
+				ui.Text(c, "毫秒").FontSize(fs(11)).Muted()
 				ui.Spacer(c)
 			})
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "响应体")
-				ui.Text(c, "留空则由请求体字段表生成示例 JSON").FontSize(11).Muted()
+				ui.Text(c, "留空则由请求体字段表生成示例 JSON").FontSize(fs(11)).Muted()
 			})
-			ui.TextArea(c, &m.ui.mockRuleBody, "覆盖响应体", `{"ok": true}`).FillWidth().Height(220)
+			ui.TextArea(c, &m.ui.mockRuleBody, "覆盖响应体", `{"ok": true}`).FillWidth().Height(px(220))
 			if m.ui.mockRuleNote != "" {
-				ui.Text(c, m.ui.mockRuleNote).FontSize(11).Muted()
+				ui.Text(c, m.ui.mockRuleNote).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.mockRuleOpen = false
 			}
@@ -689,11 +700,11 @@ func (m *Model) exportDialog(c ui.C) {
 	if m.ui.exportFormat == "html" {
 		title = "导出 HTML"
 	}
-	ui.ModalWith(c, &m.ui.exportOpen, title, ui.ModalSpec{Width: 760, Height: 560}, func() {
-		ui.Column(c).FillWidth().Height(460).Gap(6).Children(func() {
+	ui.ModalWith(c, &m.ui.exportOpen, title, ui.ModalSpec{Width: px(760), Height: px(560)}, func() {
+		ui.Column(c).FillWidth().Height(px(460)).Gap(px(6)).Children(func() {
 			requests, files := m.exportCounts()
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "勾选要导出的分组与请求；勾分组会带上它下面的条目。").FontSize(11).Muted()
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "勾选要导出的分组与请求；勾分组会带上它下面的条目。").FontSize(fs(11)).Muted()
 				ui.Spacer(c)
 				ui.Text(c, "已选 "+strconv.Itoa(requests)+" 条请求 · "+strconv.Itoa(files)+" 篇文档").
 					FontSize(11).Muted().Mono()
@@ -706,13 +717,13 @@ func (m *Model) exportDialog(c ui.C) {
 			})
 			ui.Divider(c)
 			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-				ui.Column(c).FillWidth().Gap(2).Children(func() {
+				ui.Column(c).FillWidth().Gap(px(2)).Children(func() {
 					if len(m.ui.exportRows) == 0 {
-						ui.Text(c, "这个集合里没有可导出的条目。").FontSize(11).Muted()
+						ui.Text(c, "这个集合里没有可导出的条目。").FontSize(fs(11)).Muted()
 					}
 					for index := range m.ui.exportRows {
 						row := &m.ui.exportRows[index]
-						ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
+						ui.Row(c).FillWidth().Gap(px(8)).PadY(px(2)).Items(ui.Center).Children(func() {
 							ui.Slot(c).Width(float32(row.Depth) * 14)
 							label := row.Title
 							if ui.Checkbox(c, &row.Selected, label).Changed() {
@@ -722,18 +733,18 @@ func (m *Model) exportDialog(c ui.C) {
 							}
 							ui.Spacer(c)
 							if row.Group {
-								ui.Text(c, "分组").FontSize(10).Muted()
+								ui.Text(c, "分组").FontSize(fs(10)).Muted()
 							}
 						})
 					}
 				})
 			})
 			if m.ui.exportNote != "" {
-				ui.Text(c, m.ui.exportNote).FontSize(11).Muted()
+				ui.Text(c, m.ui.exportNote).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.exportOpen = false
 			}
@@ -747,13 +758,13 @@ func (m *Model) exportDialog(c ui.C) {
 // runRulesDialog 编辑一条请求的运行规则：提取（写进变量袋）与断言（判定成败）。
 // 规则存进请求文件的顶层 run: 键，随集合走，不塞进本机偏好。
 func (m *Model) runRulesDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.rulesOpen, "运行规则 · "+m.ui.rulesName, ui.ModalSpec{Width: 820, Height: 580}, func() {
-		ui.Column(c).FillWidth().Height(480).Gap(6).Children(func() {
+	ui.ModalWith(c, &m.ui.rulesOpen, "运行规则 · "+m.ui.rulesName, ui.ModalSpec{Width: px(820), Height: px(580)}, func() {
+		ui.Column(c).FillWidth().Height(px(480)).Gap(px(6)).Children(func() {
 			ui.Text(c, "规则写在请求文件的 run: 键里；提取到的变量供本次运行后面的请求用 {{名字}} 引用。").
 				FontSize(11).Muted()
 
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "提取").FontSize(11).Bold().Muted()
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "提取").FontSize(fs(11)).Bold().Muted()
 				ui.Spacer(c)
 				if ui.Button(c, "添加提取").Icon(IconPlus).Ghost().Small().Clicked() {
 					m.ui.ruleExtracts = append(m.ui.ruleExtracts, runner.Extract{From: "json", Path: "$.data.token"})
@@ -761,9 +772,9 @@ func (m *Model) runRulesDialog(c ui.C) {
 			})
 			for index := range m.ui.ruleExtracts {
 				row := &m.ui.ruleExtracts[index]
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-					ui.TextField(c, &row.Name, "变量名", "token").Width(140)
-					ui.Select(c, &row.From, runExtractSources, nil).Width(110)
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+					ui.TextField(c, &row.Name, "变量名", "token").Width(px(140))
+					ui.Select(c, &row.From, runExtractSources, nil).Width(px(110))
 					ui.TextField(c, &row.Path, "路径", "$.data.token（header 时填头名）").Grow(1)
 					if ui.Button(c, "删除提取").Icon(IconTrash).Outline().IconOnly().Clicked() {
 						m.ui.ruleExtracts = append(m.ui.ruleExtracts[:index], m.ui.ruleExtracts[index+1:]...)
@@ -771,12 +782,12 @@ func (m *Model) runRulesDialog(c ui.C) {
 				})
 			}
 			if len(m.ui.ruleExtracts) == 0 {
-				ui.Text(c, "还没有提取规则。").FontSize(11).Muted()
+				ui.Text(c, "还没有提取规则。").FontSize(fs(11)).Muted()
 			}
 
 			ui.Divider(c)
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "断言").FontSize(11).Bold().Muted()
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "断言").FontSize(fs(11)).Bold().Muted()
 				ui.Spacer(c)
 				if ui.Button(c, "添加断言").Icon(IconPlus).Ghost().Small().Clicked() {
 					m.ui.ruleAsserts = append(m.ui.ruleAsserts, runner.Assert{Kind: "status", Op: "equals", Want: "200"})
@@ -784,10 +795,10 @@ func (m *Model) runRulesDialog(c ui.C) {
 			})
 			for index := range m.ui.ruleAsserts {
 				row := &m.ui.ruleAsserts[index]
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-					ui.Select(c, &row.Kind, runAssertKinds, nil).Width(110)
-					ui.TextField(c, &row.Path, "路径", "$.code（status / time 留空）").Width(200)
-					ui.Select(c, &row.Op, runAssertOps, nil).Width(110)
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+					ui.Select(c, &row.Kind, runAssertKinds, nil).Width(px(110))
+					ui.TextField(c, &row.Path, "路径", "$.code（status / time 留空）").Width(px(200))
+					ui.Select(c, &row.Op, runAssertOps, nil).Width(px(110))
 					ui.TextField(c, &row.Want, "期望值", "200").Grow(1)
 					if ui.Button(c, "删除断言").Icon(IconTrash).Outline().IconOnly().Clicked() {
 						m.ui.ruleAsserts = append(m.ui.ruleAsserts[:index], m.ui.ruleAsserts[index+1:]...)
@@ -795,14 +806,14 @@ func (m *Model) runRulesDialog(c ui.C) {
 				})
 			}
 			if len(m.ui.ruleAsserts) == 0 {
-				ui.Text(c, "还没有断言规则。").FontSize(11).Muted()
+				ui.Text(c, "还没有断言规则。").FontSize(fs(11)).Muted()
 			}
 			if m.ui.rulesNote != "" {
-				ui.Text(c, m.ui.rulesNote).FontSize(11).Muted()
+				ui.Text(c, m.ui.rulesNote).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.rulesOpen = false
 			}
@@ -822,10 +833,10 @@ var (
 
 // runnerDialog 是集合运行器：勾一批请求顺序跑，右边是逐条结果。
 func (m *Model) runnerDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.runOpen, "运行集合", ui.ModalSpec{Width: 820, Height: 620}, func() {
-		ui.Column(c).FillWidth().Height(520).Gap(8).Children(func() {
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "顺序执行勾选的请求；状态码 ≥ 400 或连不上算失败。").FontSize(11).Muted()
+	ui.ModalWith(c, &m.ui.runOpen, "运行集合", ui.ModalSpec{Width: px(820), Height: px(620)}, func() {
+		ui.Column(c).FillWidth().Height(px(520)).Gap(px(8)).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "顺序执行勾选的请求；状态码 ≥ 400 或连不上算失败。").FontSize(fs(11)).Muted()
 				ui.Spacer(c)
 				if ui.Button(c, "全选").Ghost().Small().Clicked() {
 					c.After(func() { m.selectAllRuns(true) })
@@ -837,18 +848,18 @@ func (m *Model) runnerDialog(c ui.C) {
 			})
 			ui.Divider(c)
 			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-				ui.Column(c).FillWidth().Gap(2).Children(func() {
+				ui.Column(c).FillWidth().Gap(px(2)).Children(func() {
 					if len(m.run.Rows) == 0 {
-						ui.Text(c, "当前集合里没有 http 请求。").FontSize(11).Muted()
+						ui.Text(c, "当前集合里没有 http 请求。").FontSize(fs(11)).Muted()
 					}
 					for index := range m.run.Rows {
 						item := &m.run.Rows[index]
-						ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
+						ui.Row(c).FillWidth().Gap(px(8)).PadY(px(2)).Items(ui.Center).Children(func() {
 							ui.Checkbox(c, &item.Selected, "")
-							ui.Text(c, runMethodText(item.Method)).FontSize(10).Mono().Bold().Width(52).
+							ui.Text(c, runMethodText(item.Method)).FontSize(fs(10)).Mono().Bold().Width(px(52)).
 								Color(methodTint(item.Method, m.isLight()))
-							ui.Text(c, item.Name).FontSize(11).Grow(1).Ellipsis()
-							ui.Text(c, item.URL).FontSize(10).Mono().Muted().Grow(1).Ellipsis()
+							ui.Text(c, item.Name).FontSize(fs(11)).Grow(1).Ellipsis()
+							ui.Text(c, item.URL).FontSize(fs(10)).Mono().Muted().Grow(1).Ellipsis()
 							if ui.Button(c, "规则 "+item.Name).Ghost().XSmall().Icon(IconSliders).Clicked() {
 								file := item.File
 								c.After(func() { m.openRunRules(file) })
@@ -858,13 +869,13 @@ func (m *Model) runnerDialog(c ui.C) {
 				})
 			})
 			ui.Divider(c)
-			ui.Text(c, "结果").FontSize(11).Muted()
+			ui.Text(c, "结果").FontSize(fs(11)).Muted()
 			if len(m.run.Results) == 0 {
-				ui.Text(c, "还没运行。").FontSize(11).Muted()
+				ui.Text(c, "还没运行。").FontSize(fs(11)).Muted()
 			}
 			for _, result := range m.run.Results {
 				entry := result
-				ui.Row(c).FillWidth().Gap(8).PadY(2).Items(ui.Center).Children(func() {
+				ui.Row(c).FillWidth().Gap(px(8)).PadY(px(2)).Items(ui.Center).Children(func() {
 					tint := c.Theme().Success
 					status := "错误"
 					if entry.Err != "" {
@@ -875,17 +886,17 @@ func (m *Model) runnerDialog(c ui.C) {
 							tint = c.Theme().Danger
 						}
 					}
-					ui.Text(c, status).FontSize(10).Mono().Color(tint).Width(44)
-					ui.Text(c, entry.Name).FontSize(11).Width(180).Ellipsis()
-					ui.Text(c, formatDuration(entry.Duration.Milliseconds())).FontSize(10).Mono().Muted().Width(70)
+					ui.Text(c, status).FontSize(fs(10)).Mono().Color(tint).Width(px(44))
+					ui.Text(c, entry.Name).FontSize(fs(11)).Width(px(180)).Ellipsis()
+					ui.Text(c, formatDuration(entry.Duration.Milliseconds())).FontSize(fs(10)).Mono().Muted().Width(px(70))
 					detail := entry.URL
 					if entry.Err != "" {
 						detail = entry.Err
 					}
-					ui.Text(c, detail).FontSize(10).Mono().Muted().Grow(1).Ellipsis()
+					ui.Text(c, detail).FontSize(fs(10)).Mono().Muted().Grow(1).Ellipsis()
 				})
 				for _, failure := range entry.Failures {
-					ui.Text(c, "　✗ "+failure).FontSize(10).Color(c.Theme().Danger)
+					ui.Text(c, "　✗ "+failure).FontSize(fs(10)).Color(c.Theme().Danger)
 				}
 				if len(entry.Extracted) > 0 {
 					ui.Text(c, "　提取 "+strings.Join(runner.SortedVars(entry.Extracted), "；")).
@@ -893,11 +904,11 @@ func (m *Model) runnerDialog(c ui.C) {
 				}
 			}
 			if m.run.Note != "" {
-				ui.Text(c, m.run.Note).FontSize(11).Muted()
+				ui.Text(c, m.run.Note).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.runOpen = false
 			}
@@ -923,37 +934,37 @@ func (m *Model) runnerDialog(c ui.C) {
 // mockDialog 是本地 Mock 服务：开关、监听地址与当前注册的路由表。
 // 桩只回示例数据，不转发、不执行脚本，用于前端联调。
 func (m *Model) mockDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.mockOpen, "本地 Mock 服务", ui.ModalSpec{Width: 760, Height: 560}, func() {
-		ui.Column(c).FillWidth().Height(460).Gap(8).Children(func() {
+	ui.ModalWith(c, &m.ui.mockOpen, "本地 Mock 服务", ui.ModalSpec{Width: px(760), Height: px(560)}, func() {
+		ui.Column(c).FillWidth().Height(px(460)).Gap(px(8)).Children(func() {
 			ui.Text(c, "按当前打开集合里的请求假回复：方法与路径取自请求文件，"+
-				"响应体按请求体字段表生成示例值（没字段表就回 {\"mock\":true}）。").FontSize(11).Muted()
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				"响应体按请求体字段表生成示例值（没字段表就回 {\"mock\":true}）。").FontSize(fs(11)).Muted()
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "监听地址")
-				ui.TextField(c, &m.ui.mockAddrText, "监听地址", settings.DefaultMockAddr).Width(220)
+				ui.TextField(c, &m.ui.mockAddrText, "监听地址", settings.DefaultMockAddr).Width(px(220))
 				ui.Spacer(c)
 			})
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				formLabel(c, "启用服务")
 				ui.Switch(c, &m.ui.mockOn, "启用本地桩服务")
 				ui.Spacer(c)
 			})
 			if m.mock.err != "" {
-				ui.Text(c, "启动失败："+m.mock.err).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, "启动失败："+m.mock.err).FontSize(fs(11)).Color(c.Theme().Danger)
 			} else if m.mock.running {
 				ui.Text(c, "正在监听 http://"+m.mock.addr+"　路由 "+strconv.Itoa(len(m.mock.routes))+" 条").
 					FontSize(11).Muted().Mono()
 			}
 			ui.Divider(c)
-			ui.Text(c, "路由").FontSize(11).Muted()
+			ui.Text(c, "路由").FontSize(fs(11)).Muted()
 			if len(m.mock.routes) == 0 {
-				ui.Text(c, "没有路由：先打开集合（或在上面启用服务）。").FontSize(11).Muted()
+				ui.Text(c, "没有路由：先打开集合（或在上面启用服务）。").FontSize(fs(11)).Muted()
 			}
 			for _, route := range m.mock.routes {
 				item := route
-				ui.Row(c).FillWidth().Gap(10).PadY(3).Items(ui.Center).Children(func() {
-					ui.Text(c, item.Method).FontSize(10).Mono().Bold().Width(52).
+				ui.Row(c).FillWidth().Gap(px(10)).PadY(px(3)).Items(ui.Center).Children(func() {
+					ui.Text(c, item.Method).FontSize(fs(10)).Mono().Bold().Width(px(52)).
 						Color(methodTint(item.Method, m.isLight()))
-					ui.Text(c, item.Path).FontSize(11).Mono().Grow(1).Ellipsis()
+					ui.Text(c, item.Path).FontSize(fs(11)).Mono().Grow(1).Ellipsis()
 					rule := ""
 					if item.Status > 0 {
 						rule = strconv.Itoa(item.Status)
@@ -962,9 +973,9 @@ func (m *Model) mockDialog(c ui.C) {
 						rule = strings.TrimSpace(rule + " · " + strconv.Itoa(item.DelayMS) + "ms")
 					}
 					if rule != "" {
-						ui.Text(c, rule).FontSize(10).Mono().Muted().Width(96)
+						ui.Text(c, rule).FontSize(fs(10)).Mono().Muted().Width(px(96))
 					}
-					ui.Text(c, item.Name).FontSize(10).Muted().Width(150).Ellipsis()
+					ui.Text(c, item.Name).FontSize(fs(10)).Muted().Width(px(150)).Ellipsis()
 					if ui.Button(c, "规则 "+item.Name).Ghost().XSmall().Icon(IconSliders).Clicked() {
 						file := item.File
 						c.After(func() { m.openMockRule(file) })
@@ -973,7 +984,7 @@ func (m *Model) mockDialog(c ui.C) {
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.mockOpen = false
 			}
@@ -987,21 +998,21 @@ func (m *Model) mockDialog(c ui.C) {
 // importDialog 是「导入集合」：Postman 导出的 JSON，或另一个 OpenCollection 集合目录。
 // 两种来源落到同一个落点分组，导完就重扫，同名一律加 -2。
 func (m *Model) importDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.importOpen, "导入集合", ui.ModalSpec{Width: 720, Height: 520}, func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
-				ui.Text(c, "来源").FontSize(11).Muted().Width(48)
+	ui.ModalWith(c, &m.ui.importOpen, "导入集合", ui.ModalSpec{Width: px(720), Height: px(520)}, func() {
+		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+				ui.Text(c, "来源").FontSize(fs(11)).Muted().Width(px(48))
 				ui.Choice(c, &m.ui.importMode, importModes, func(mode int) string {
 					return importModeNames[mode]
 				})
 				ui.Spacer(c)
-				ui.Text(c, "导入到").FontSize(11).Muted().Width(48)
-				ui.Select(c, &m.ui.importFolder, m.ui.importFolders, nil).Width(200)
+				ui.Text(c, "导入到").FontSize(fs(11)).Muted().Width(px(48))
+				ui.Select(c, &m.ui.importFolder, m.ui.importFolders, nil).Width(px(200))
 			})
 			if m.ui.importMode == 3 {
 				ui.Text(c, "api-doc-go 集合包：把另一个集合的请求、文档与清单原样搬进来，同名文件自动加 -2。").
 					FontSize(11).Muted()
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					if ui.Button(c, "选择集合包…").Icon(IconFilePlus).Outline().Clicked() {
 						c.After(m.pickImportFile)
 					}
@@ -1017,15 +1028,15 @@ func (m *Model) importDialog(c ui.C) {
 					ui.Spacer(c)
 				})
 				ui.TextArea(c, &m.ui.importText, "集合包 JSON", `{"format":"api-doc-go/collection","files":[...]}`).
-					FillWidth().Height(220)
+					FillWidth().Height(px(220))
 			} else if m.ui.importMode == 2 {
 				ui.Text(c, "OpenAPI 3 文档（JSON）：一个「路径 + 方法」导入成一条请求，"+
 					"查询参数与请求头进表，描述进文档；$ref 不展开。").
 					FontSize(11).Muted()
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-					ui.Text(c, "地址前缀").FontSize(11).Muted().Width(64)
-					ui.TextField(c, &m.ui.importBase, "地址前缀", "{{host}}").Width(260)
-					ui.Text(c, "留空则只写路径").FontSize(11).Muted()
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+					ui.Text(c, "地址前缀").FontSize(fs(11)).Muted().Width(px(64))
+					ui.TextField(c, &m.ui.importBase, "地址前缀", "{{host}}").Width(px(260))
+					ui.Text(c, "留空则只写路径").FontSize(fs(11)).Muted()
 					ui.Spacer(c)
 					if ui.Button(c, "选择 JSON 文件…").Icon(IconFilePlus).Outline().Clicked() {
 						c.After(m.pickImportFile)
@@ -1041,20 +1052,20 @@ func (m *Model) importDialog(c ui.C) {
 					}
 				})
 				ui.TextArea(c, &m.ui.importText, "OpenAPI JSON", `{"openapi":"3.0.0","paths":{...}}`).
-					FillWidth().Height(200)
+					FillWidth().Height(px(200))
 			} else if m.ui.importMode == 4 {
 				ui.Text(c, "原生 Bruno 集合（含 .bru 文件）：方法 / 地址 / 查询参数 / 请求头 / "+
 					"body:json·text·form·multipart / bearer·basic·apikey 会转过来；脚本与断言忽略。").
 					FontSize(11).Muted()
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					ui.TextField(c, &m.ui.importDir, "Bruno 目录", "/path/to/bruno/collection").Grow(1)
 					if ui.Button(c, "选择目录…").Icon(IconFolderOpen).Outline().Clicked() {
 						c.After(m.pickImportDir)
 					}
 				})
 			} else if m.ui.importMode == 1 {
-				ui.Text(c, "另一个 OpenCollection 集合：分组照层级复制，请求换成新 uid，文档进 docs/。").FontSize(11).Muted()
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(c, "另一个 OpenCollection 集合：分组照层级复制，请求换成新 uid，文档进 docs/。").FontSize(fs(11)).Muted()
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					ui.TextField(c, &m.ui.importDir, "集合目录", "/path/to/collection").Grow(1)
 					if ui.Button(c, "选择目录…").Icon(IconFolderOpen).Outline().Clicked() {
 						c.After(m.pickImportDir)
@@ -1062,8 +1073,8 @@ func (m *Model) importDialog(c ui.C) {
 				})
 			} else {
 				ui.Text(c, "Postman v2 集合：方法 / 地址 / 查询参数 / 请求头 / raw·urlencoded·formdata body / "+
-					"bearer·basic·apikey 认证会转过来；脚本与断言忽略。").FontSize(11).Muted()
-				ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+					"bearer·basic·apikey 认证会转过来；脚本与断言忽略。").FontSize(fs(11)).Muted()
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					if ui.Button(c, "选择 JSON 文件…").Icon(IconFilePlus).Outline().Clicked() {
 						c.After(m.pickImportFile)
 					}
@@ -1079,17 +1090,17 @@ func (m *Model) importDialog(c ui.C) {
 					ui.Spacer(c)
 				})
 				ui.TextArea(c, &m.ui.importText, "Postman 集合 JSON", `{"info": {...}, "item": [...]}`).
-					FillWidth().Height(220)
+					FillWidth().Height(px(220))
 			}
 			if m.ui.importErr != "" {
-				ui.Text(c, m.ui.importErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.importErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 			if m.ui.importNote != "" {
-				ui.Text(c, m.ui.importNote).FontSize(11).Muted()
+				ui.Text(c, m.ui.importNote).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.importOpen = false
 			}
@@ -1109,17 +1120,17 @@ var (
 
 // curlImportDialog 是「导入 cURL」：粘贴命令，解析成一条新请求（参考 19）。
 func (m *Model) curlImportDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.curlOpen, "导入 cURL", ui.ModalSpec{Width: 720, Height: 460}, func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
+	ui.ModalWith(c, &m.ui.curlOpen, "导入 cURL", ui.ModalSpec{Width: px(720), Height: px(460)}, func() {
+		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Text(c, "支持 Chrome / Firefox / Postman 的 Copy as cURL；-d/-F/-H/-u/-b/-A/-k/-m 会映射到请求。").
 				FontSize(11).Muted()
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "导入到").FontSize(11).Muted().Width(48)
-				ui.Select(c, &m.ui.curlFolder, m.ui.curlFolders, nil).Width(200)
-				ui.Text(c, "请求名").FontSize(11).Muted().Width(48)
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "导入到").FontSize(fs(11)).Muted().Width(px(48))
+				ui.Select(c, &m.ui.curlFolder, m.ui.curlFolders, nil).Width(px(200))
+				ui.Text(c, "请求名").FontSize(fs(11)).Muted().Width(px(48))
 				ui.TextField(c, &m.ui.curlName, "请求名", "留空则用 URL 末段").Grow(1)
 			})
-			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
 				if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
 					text, err := app.ClipboardText()
 					if err != nil {
@@ -1129,16 +1140,16 @@ func (m *Model) curlImportDialog(c ui.C) {
 						m.ui.curlErr = ""
 					}
 				}
-				ui.Text(c, "命令行把整段 curl 复制过来即可。").FontSize(11).Muted()
+				ui.Text(c, "命令行把整段 curl 复制过来即可。").FontSize(fs(11)).Muted()
 			})
 			ui.TextArea(c, &m.ui.curlText, "curl 命令", "curl 'https://api.example.com/users'").
-				FillWidth().Height(210)
+				FillWidth().Height(px(210))
 			if m.ui.curlErr != "" {
-				ui.Text(c, m.ui.curlErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.curlErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.curlOpen = false
 			}
@@ -1151,16 +1162,16 @@ func (m *Model) curlImportDialog(c ui.C) {
 
 // trashDialog 是回收站：列出 .trash 里的文件，可逐个恢复（参考 22）。
 func (m *Model) trashDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.trashOpen, "回收站", ui.ModalSpec{Width: 720, Height: 460}, func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
+	ui.ModalWith(c, &m.ui.trashOpen, "回收站", ui.ModalSpec{Width: px(720), Height: px(460)}, func() {
+		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Text(c, "恢复的文件会回到集合根；同名时自动补「-恢复2」后缀，不覆盖。").
 				FontSize(11).Muted()
 			if len(m.ui.trashRows) == 0 {
 				ui.Text(c, "回收站是空的").Muted()
 				return
 			}
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "勾选后可在底部批量恢复或彻底删除").FontSize(11).Muted()
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Text(c, "勾选后可在底部批量恢复或彻底删除").FontSize(fs(11)).Muted()
 				ui.Spacer(c)
 				if ui.Button(c, "全选").Ghost().Small().Clicked() {
 					c.After(func() { m.toggleAllTrash(true) })
@@ -1172,13 +1183,13 @@ func (m *Model) trashDialog(c ui.C) {
 			for index := range m.ui.trashRows {
 				item := &m.ui.trashRows[index]
 				selected := m.ui.trashSel[item.File]
-				ui.Row(c).FillWidth().PadY(4).Gap(8).Items(ui.Center).Children(func() {
+				ui.Row(c).FillWidth().PadY(px(4)).Gap(px(8)).Items(ui.Center).Children(func() {
 					if ui.Checkbox(c, &selected, item.Name).Changed() {
 						// 勾选状态存进 map（行是每次重扫重建的，别挂在行结构上）。
 						file, on := item.File, selected
 						c.After(func() { m.ui.trashSel[file] = on })
 					}
-					ui.Text(c, item.File).FontSize(10).Mono().Muted().Ellipsis()
+					ui.Text(c, item.File).FontSize(fs(10)).Mono().Muted().Ellipsis()
 					ui.Spacer(c)
 					trashFile := item.File
 					if ui.Button(c, "恢复").Small().Clicked() {
@@ -1187,11 +1198,11 @@ func (m *Model) trashDialog(c ui.C) {
 				})
 			}
 			if m.ui.trashMsg != "" {
-				ui.Text(c, m.ui.trashMsg).FontSize(11).Muted()
+				ui.Text(c, m.ui.trashMsg).FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			purgeLabel := "彻底删除"
 			if m.ui.trashArmed {
 				purgeLabel = "确认彻底删除"
@@ -1212,13 +1223,13 @@ func (m *Model) trashDialog(c ui.C) {
 // envDialog 是「环境变量」：左侧环境列表，右侧变量表；敏感值单独写 *.secrets.yml。
 func (m *Model) envDialog(c ui.C) {
 	theme := c.Theme()
-	ui.ModalWith(c, &m.ui.envOpen, "环境变量", ui.ModalSpec{Width: 880, Height: 520}, func() {
-		ui.Row(c).FillWidth().Gap(16).Children(func() {
-			ui.Column(c).Width(180).Gap(6).Children(func() {
+	ui.ModalWith(c, &m.ui.envOpen, "环境变量", ui.ModalSpec{Width: px(880), Height: px(520)}, func() {
+		ui.Row(c).FillWidth().Gap(px(16)).Children(func() {
+			ui.Column(c).Width(px(180)).Gap(px(6)).Children(func() {
 				for _, name := range m.ui.envs {
 					current := name
 					active := current == m.ui.envSel
-					row := ui.Row(c).FillWidth().PadX(10).PadY(5).Gap(6).Items(ui.Center).
+					row := ui.Row(c).FillWidth().PadX(px(10)).PadY(px(5)).Gap(px(6)).Items(ui.Center).
 						Radius(theme.Metrics.RadiusControl).
 						Hover(ui.Look{}.Background(theme.Hover)).
 						Hit(ui.ID(c), "环境 "+current)
@@ -1226,7 +1237,7 @@ func (m *Model) envDialog(c ui.C) {
 						row.Background(m.pal.active)
 					}
 					row.Children(func() {
-						text := ui.Text(c, current).FontSize(12)
+						text := ui.Text(c, current).FontSize(fs(12))
 						if active {
 							text.Color(theme.Primary)
 						}
@@ -1249,10 +1260,10 @@ func (m *Model) envDialog(c ui.C) {
 				ui.Spacer(c)
 			})
 			ui.Divider(c)
-			ui.Column(c).Grow(1).Gap(10).Children(func() {
-				ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-					ui.Text(c, "环境名").FontSize(11).Muted().Width(52)
-					ui.TextField(c, &m.ui.envNameEdit, "环境名", "dev").Width(220)
+			ui.Column(c).Grow(1).Gap(px(10)).Children(func() {
+				ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
+					ui.Text(c, "环境名").FontSize(fs(11)).Muted().Width(px(52))
+					ui.TextField(c, &m.ui.envNameEdit, "环境名", "dev").Width(px(220))
 				})
 				hint := "敏感值单独存 environments/<环境>.secrets.yml，落盘时加密（密钥在本机配置目录）；" +
 					"没有密钥的机器上只能看到密文，集合进 git 也只留密文。"
@@ -1260,23 +1271,23 @@ func (m *Model) envDialog(c ui.C) {
 					hint = "注意：设置里关掉了「加密敏感值」，新保存的敏感值会以明文写进 " +
 						"environments/<环境>.secrets.yml（记得别提交）。"
 				}
-				ui.Text(c, hint).FontSize(11).Muted()
-				ui.Column(c).FillWidth().Pad(8).Gap(6).Radius(theme.Metrics.RadiusControl).
+				ui.Text(c, hint).FontSize(fs(11)).Muted()
+				ui.Column(c).FillWidth().Pad(px(8)).Gap(px(6)).Radius(theme.Metrics.RadiusControl).
 					Border(1, m.pal.border).Children(func() {
-					ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-						ui.Text(c, "启用").FontSize(11).Muted().Width(36)
-						ui.Text(c, "变量名").FontSize(11).Muted().Width(150)
-						ui.Text(c, "值").FontSize(11).Muted().Grow(1)
-						ui.Text(c, "敏感值").FontSize(11).Muted().Width(56)
-						ui.Slot(c).Width(28)
+					ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+						ui.Text(c, "启用").FontSize(fs(11)).Muted().Width(px(36))
+						ui.Text(c, "变量名").FontSize(fs(11)).Muted().Width(px(150))
+						ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(1)
+						ui.Text(c, "敏感值").FontSize(fs(11)).Muted().Width(px(56))
+						ui.Slot(c).Width(px(28))
 					})
 					// 变量表用 ui.List：按住行拖动即可重排（ListState.Reorder）。
 					ui.List(c, &m.ui.envList, len(m.ui.envRows), func(r ui.ListRow) {
 						row := m.ui.envRows[r.Index]
 						slot := r.Index
-						r.Element.Gap(8).Items(ui.Center).Children(func() {
+						r.Element.Gap(px(8)).Items(ui.Center).Children(func() {
 							ui.Checkbox(c, &row.enabled, "")
-							ui.TextField(c, &row.name, "变量名", "host").Width(150)
+							ui.TextField(c, &row.name, "变量名", "host").Width(px(150))
 							ui.TextField(c, &row.value, "值", "http://127.0.0.1:8080").Grow(1)
 							ui.Checkbox(c, &row.secret, "")
 							// 行尾也有上移 / 下移：拖拽之外给一个稳妥的键盘/点击路径。
@@ -1291,7 +1302,7 @@ func (m *Model) envDialog(c ui.C) {
 								})
 							}
 						})
-					}).FillWidth().Height(240)
+					}).FillWidth().Height(px(240))
 				})
 				ui.Row(c).FillWidth().Children(func() {
 					if ui.Button(c, "添加变量").Icon(IconPlus).Ghost().Clicked() {
@@ -1299,13 +1310,13 @@ func (m *Model) envDialog(c ui.C) {
 					}
 				})
 				if m.ui.envErr != "" {
-					ui.Text(c, m.ui.envErr).FontSize(11).Color(theme.Danger)
+					ui.Text(c, m.ui.envErr).FontSize(fs(11)).Color(theme.Danger)
 				}
 				ui.Spacer(c)
 			})
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.envOpen = false
 			}
@@ -1319,15 +1330,15 @@ func (m *Model) envDialog(c ui.C) {
 // newEnvDialog 新建一个空环境（同名拒绝，不覆盖）。
 func (m *Model) newEnvDialog(c ui.C) {
 	ui.Modal(c, &m.ui.newEnvOpen, "新建环境", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "环境是 environments/<名称>.yml，与客户端同一个位置。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			ui.Text(c, "环境是 environments/<名称>.yml，与客户端同一个位置。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.newEnvName, "环境名", "例如：staging").FillWidth()
 			if m.ui.newEnvErr != "" {
-				ui.Text(c, m.ui.newEnvErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.newEnvErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.newEnvOpen = false
 			}
@@ -1341,15 +1352,15 @@ func (m *Model) newEnvDialog(c ui.C) {
 // openCollectionDialogs 是「打开集合」的三步：手输路径兜底、初始化确认、错误提示。
 func (m *Model) openCollectionDialogs(c ui.C) {
 	ui.Modal(c, &m.ui.pathOpen, "打开集合", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "输入集合目录的绝对路径（目录里应有 opencollection.yml）。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			ui.Text(c, "输入集合目录的绝对路径（目录里应有 opencollection.yml）。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.pathText, "集合目录", "/home/you/collections/demo").FillWidth()
 			if m.ui.openErr != "" {
-				ui.Text(c, m.ui.openErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.openErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.pathOpen = false
 			}
@@ -1360,13 +1371,13 @@ func (m *Model) openCollectionDialogs(c ui.C) {
 	})
 
 	ui.Modal(c, &m.ui.initOpen, "初始化集合", func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, m.ui.pendingDir).FontSize(11).Muted().Mono()
-			ui.Text(c, "这个目录里没有 opencollection.yml。初始化会在目录里写一份清单，").FontSize(12)
-			ui.Text(c, "目录里已有的 .yml 会被识别为本项目的接口。取消则不载入、不写盘。").FontSize(12)
+		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
+			ui.Text(c, m.ui.pendingDir).FontSize(fs(11)).Muted().Mono()
+			ui.Text(c, "这个目录里没有 opencollection.yml。初始化会在目录里写一份清单，").FontSize(fs(12))
+			ui.Text(c, "目录里已有的 .yml 会被识别为本项目的接口。取消则不载入、不写盘。").FontSize(fs(12))
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.initOpen = false
 			}
@@ -1377,15 +1388,15 @@ func (m *Model) openCollectionDialogs(c ui.C) {
 	})
 
 	ui.Modal(c, &m.ui.envRenameOpen, "重命名环境", func() {
-		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			ui.Text(c, "会同时重命名 <名称>.yml 与 <名称>.secrets.yml。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			ui.Text(c, "会同时重命名 <名称>.yml 与 <名称>.secrets.yml。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.envRenameName, "新环境名", "staging").FillWidth()
 			if m.ui.envErr != "" {
-				ui.Text(c, m.ui.envErr).FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, m.ui.envErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.envRenameOpen = false
 			}
@@ -1396,12 +1407,12 @@ func (m *Model) openCollectionDialogs(c ui.C) {
 	})
 
 	ui.Modal(c, &m.ui.envDeleteOpen, "删除环境", func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "环境："+m.ui.envPick).FontSize(12).Bold()
-			ui.Text(c, "主文件与密钥文件都会移进集合的 .trash/，不会直接删除。").FontSize(11).Muted()
+		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
+			ui.Text(c, "环境："+m.ui.envPick).FontSize(fs(12)).Bold()
+			ui.Text(c, "主文件与密钥文件都会移进集合的 .trash/，不会直接删除。").FontSize(fs(11)).Muted()
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
 			if ui.Button(c, "取消").Clicked() {
 				m.ui.envDeleteOpen = false
 			}

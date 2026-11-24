@@ -166,7 +166,7 @@ func (m *Model) examplePicker(c ui.C) {
 	}
 	before := m.exSel
 	// 定宽 + 不增长：它默认会吃掉空出来的宽度，把右边的「保存响应」挤出去。
-	ui.Select(c, &m.exSel, choices, m.exampleLabel).Shrink(0).Grow(0).Width(130)
+	ui.Select(c, &m.exSel, choices, m.exampleLabel).Shrink(0).Grow(0).Width(px(130))
 	if m.exSel != before {
 		picked := m.exSel
 		c.After(func() { m.applyExamplePick(picked) })

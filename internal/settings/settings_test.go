@@ -73,3 +73,13 @@ func TestSavesOpenCollections(t *testing.T) {
 		t.Fatalf("多集合偏好没落盘：%+v", got)
 	}
 }
+
+// TestUIScalePercent 缩放百分比：没设过与越界都按 100，正常值原样返回。
+func TestUIScalePercent(t *testing.T) {
+	cases := map[int]int{0: 100, 80: 80, 125: 125, 20: 100, 500: 100}
+	for in, want := range cases {
+		if got := (Settings{UIScale: in}).UIScalePercent(); got != want {
+			t.Fatalf("UIScale=%d 应得 %d，实际 %d", in, want, got)
+		}
+	}
+}

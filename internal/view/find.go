@@ -117,7 +117,7 @@ func (m *Model) findBar(c ui.C) {
 		view = "raw"
 	}
 	m.refreshFind(m.jsonSel.vis, view)
-	ui.Row(c).FillWidth().Gap(6).Items(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Gap(px(6)).Items(ui.Center).Children(func() {
 		if ui.TextField(c, &m.find.query, "在响应里查找", "查找…").Grow(1).Changed() {
 			m.find.index = 0
 			m.find.jump = -1
@@ -128,7 +128,7 @@ func (m *Model) findBar(c ui.C) {
 		if len(m.find.hits) > 0 {
 			count = strconv.Itoa(m.find.index+1) + "/" + strconv.Itoa(len(m.find.hits))
 		}
-		ui.Text(c, count).FontSize(11).Mono().Muted().Shrink(0)
+		ui.Text(c, count).FontSize(fs(11)).Mono().Muted().Shrink(0)
 		if ui.Button(c, "上一处").Icon(IconChevronUp).Ghost().IconOnly().
 			Tooltip("上一处命中").Clicked() {
 			c.After(func() { m.stepFind(-1) })

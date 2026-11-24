@@ -70,7 +70,7 @@ func (m *Model) openPalette() {
 // commandPalette 是居中的命令面板：搜索框 + 过滤后的命令行（参考 14）。
 func (m *Model) commandPalette(c ui.C) {
 	ui.ModalWith(c, &m.ui.paletteOpen, "命令面板", ui.ModalSpec{Width: 560, Height: 420}, func() {
-		ui.Column(c).FillWidth().Height(340).Gap(6).Children(func() {
+		ui.Column(c).FillWidth().Height(px(340)).Gap(px(6)).Children(func() {
 			ui.TextField(c, &m.ui.paletteQuery, "搜索命令", "输入命令名…").FillWidth()
 			needle := strings.ToLower(strings.TrimSpace(m.ui.paletteQuery))
 			shown := 0
@@ -85,23 +85,23 @@ func (m *Model) commandPalette(c ui.C) {
 				if left == 0 {
 					continue
 				}
-				ui.Text(c, group.name).FontSize(10).Muted().PadX(10).PadY(2)
+				ui.Text(c, group.name).FontSize(fs(10)).Muted().PadX(px(10)).PadY(px(2))
 				for _, command := range group.commands {
 					if needle != "" && !strings.Contains(strings.ToLower(command.name), needle) {
 						continue
 					}
 					shown++
 					cmd := command
-					row := ui.Row(c).FillWidth().PadX(10).PadY(6).Gap(8).Items(ui.Center).
+					row := ui.Row(c).FillWidth().PadX(px(10)).PadY(px(6)).Gap(px(8)).Items(ui.Center).
 						Radius(c.Theme().Metrics.RadiusControl).
 						Hover(ui.Look{}.Background(c.Theme().Hover)).
 						Hit(ui.ID(c), "命令 "+cmd.name)
 					row.Children(func() {
-						ui.Text(c, cmd.name).FontSize(13)
+						ui.Text(c, cmd.name).FontSize(fs(13))
 						ui.Spacer(c)
 						if cmd.hint != "" {
 							// 右侧对齐：定宽 + 右对齐，几行提示不会参差。
-							ui.Text(c, cmd.hint).FontSize(10).Mono().Muted().Width(56).TextEnd()
+							ui.Text(c, cmd.hint).FontSize(fs(10)).Mono().Muted().Width(px(56)).TextEnd()
 						}
 					})
 					if row.Clicked() {
@@ -122,7 +122,7 @@ func (m *Model) commandPalette(c ui.C) {
 						continue
 					}
 					if hits == 0 {
-						ui.Text(c, "打开").FontSize(10).Muted().PadX(10).PadY(2)
+						ui.Text(c, "打开").FontSize(fs(10)).Muted().PadX(px(10)).PadY(px(2))
 					}
 					hits++
 					if hits > 8 {
@@ -133,14 +133,14 @@ func (m *Model) commandPalette(c ui.C) {
 					if entry.Kind == explorer.KindHTTP {
 						label = entry.Method + "  " + entry.Name
 					}
-					row := ui.Row(c).FillWidth().PadX(10).PadY(6).Gap(8).Items(ui.Center).
+					row := ui.Row(c).FillWidth().PadX(px(10)).PadY(px(6)).Gap(px(8)).Items(ui.Center).
 						Radius(c.Theme().Metrics.RadiusControl).
 						Hover(ui.Look{}.Background(c.Theme().Hover)).
 						Hit(ui.ID(c), "打开 "+entry.Name)
 					row.Children(func() {
-						ui.Text(c, label).FontSize(13).Ellipsis()
+						ui.Text(c, label).FontSize(fs(13)).Ellipsis()
 						ui.Spacer(c)
-						ui.Text(c, entryCopy.Group).FontSize(10).Mono().Muted()
+						ui.Text(c, entryCopy.Group).FontSize(fs(10)).Mono().Muted()
 					})
 					if row.Clicked() {
 						c.After(func() {
@@ -152,11 +152,11 @@ func (m *Model) commandPalette(c ui.C) {
 				}
 				if hits > 8 {
 					ui.Text(c, fmt.Sprintf("……还有 %d 条，收窄关键词或去左侧树过滤", hits-8)).
-						FontSize(10).Muted().PadX(10)
+						FontSize(10).Muted().PadX(px(10))
 				}
 			}
 			if shown == 0 && needle != "" && m.col == nil {
-				ui.Text(c, "没有匹配的命令").FontSize(11).Muted()
+				ui.Text(c, "没有匹配的命令").FontSize(fs(11)).Muted()
 			}
 		})
 	}, func() {

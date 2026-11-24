@@ -21,18 +21,18 @@ func (m *Model) fileResponse(c ui.C) {
 	theme := c.Theme()
 	name := m.resp.SuggestedFileName()
 	size := m.resp.Size
-	ui.Column(c).FillWidth().Gap(6).Pad(12).Radius(theme.Metrics.RadiusControl).
+	ui.Column(c).FillWidth().Gap(px(6)).Pad(px(12)).Radius(theme.Metrics.RadiusControl).
 		Background(m.pal.panel).Border(1, m.pal.border).Children(func() {
-		ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-			ui.Icon(c, IconImport).Size(16, 16).Color(m.pal.accent)
-			ui.Text(c, name).FontSize(12).Bold().Ellipsis()
+		ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
+			ui.Icon(c, IconImport).Size(px(16), px(16)).Color(m.pal.accent)
+			ui.Text(c, name).FontSize(fs(12)).Bold().Ellipsis()
 		})
-		ui.Text(c, strings.TrimSpace(m.resp.ContentType)+" · "+humanBytes(size)).FontSize(11).Muted().Mono()
+		ui.Text(c, strings.TrimSpace(m.resp.ContentType)+" · "+humanBytes(size)).FontSize(fs(11)).Muted().Mono()
 		if m.resp.Truncated {
 			ui.Text(c, "正文超过上限，只保存了前 "+humanBytes(m.resp.Size)+"；"+
-				"要完整内容请把上限调大后重发。").FontSize(11).Color(theme.Danger)
+				"要完整内容请把上限调大后重发。").FontSize(fs(11)).Color(theme.Danger)
 		}
-		ui.Row(c).Gap(8).Children(func() {
+		ui.Row(c).Gap(px(8)).Children(func() {
 			if ui.Button(c, "保存为文件").Icon(IconImport).Outline().Clicked() {
 				c.After(m.saveResponseBody)
 			}

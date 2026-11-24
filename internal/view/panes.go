@@ -14,22 +14,22 @@ import (
 // 接口概述排在标题**下方**（取草稿里的 summary，编辑后立刻跟着变）。
 // 不再显示文件路径与分组：页签和集合树已经标明这是哪个条目。
 func (m *Model) requestTitle(c ui.C, entry *explorer.Entry) {
-	ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 		methodBadge(c, entry)
-		ui.Text(c, entry.Name).FontSize(17).Bold()
+		ui.Text(c, entry.Name).FontSize(fs(17)).Bold()
 		ui.Spacer(c)
 		if m.req.note != "" {
-			ui.Text(c, m.req.note).FontSize(11).Muted()
+			ui.Text(c, m.req.note).FontSize(fs(11)).Muted()
 		}
 		if ui.Button(c, "复制 cURL").Icon(IconCopy).Ghost().Small().Clicked() {
 			c.After(func() { m.copyCurl(entry) })
 		}
 		if m.req.dirty {
-			ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
+			ui.Text(c, "未保存").FontSize(fs(11)).Color(c.Theme().Danger)
 		}
 	})
 	if summary := strings.TrimSpace(m.req.summary); summary != "" {
-		ui.Text(c, summary).FontSize(12).Muted().Ellipsis()
+		ui.Text(c, summary).FontSize(fs(12)).Muted().Ellipsis()
 	}
 }
 
@@ -42,8 +42,8 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 	if ui.Shortcut(c, ui.Primary, "enter") && !m.sending {
 		m.start(entry)
 	}
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		if ui.Select(c, &m.req.method, httpMethods, nil).Width(120).Changed() {
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		if ui.Select(c, &m.req.method, httpMethods, nil).Width(px(120)).Changed() {
 			m.markEdited()
 		}
 		if ui.TextField(c, &m.req.url, "地址", "{{host}}/api/users").Grow(1).Changed() {
@@ -97,26 +97,26 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 
 // kvEditor 是表格式键值编辑：表头 + 每行（启用 / 名称 / 值 / 说明 / 删除）+ 底部添加。
 func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Slot(c).Width(24)
-		ui.Text(c, "名称").FontSize(11).Muted().Width(150)
-		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
-		ui.Text(c, "说明").FontSize(11).Muted().Width(160)
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		ui.Slot(c).Width(px(24))
+		ui.Text(c, "名称").FontSize(fs(11)).Muted().Width(px(150))
+		ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(1)
+		ui.Text(c, "说明").FontSize(fs(11)).Muted().Width(px(160))
 		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range *rows {
 		slot := index
-		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.name, "名称", "name").Width(150).Changed() {
+			if ui.TextField(c, &row.name, "名称", "name").Width(px(150)).Changed() {
 				m.markEdited()
 			}
 			if ui.TextField(c, &row.value, "值", "value").Grow(1).Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.desc, "说明", "").Width(160).Changed() {
+			if ui.TextField(c, &row.desc, "说明", "").Width(px(160)).Changed() {
 				m.markEdited()
 			}
 			m.rowMover(c, index, len(*rows), func(from, to int) {
@@ -232,20 +232,20 @@ func respTabLabel(index int) string {
 
 // bodyTab 编辑请求体：类型 + 原文（json/text）或表单行，并只读展示 body.fields。
 func (m *Model) bodyTab(c ui.C) {
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "类型").FontSize(11).Muted()
-		if ui.Select(c, &m.req.bodyType, bodyTypes, nil).Width(140).Changed() {
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		ui.Text(c, "类型").FontSize(fs(11)).Muted()
+		if ui.Select(c, &m.req.bodyType, bodyTypes, nil).Width(px(140)).Changed() {
 			m.markEdited()
 		}
 		ui.Spacer(c)
 	})
 	switch m.req.bodyType {
 	case "", "none":
-		ui.Text(c, "无请求体（空字符串与 `none` 同义）。").FontSize(11).Muted()
+		ui.Text(c, "无请求体（空字符串与 `none` 同义）。").FontSize(fs(11)).Muted()
 	case "form", "multipart":
 		m.formEditor(c, m.req.bodyType == "multipart")
 	default:
-		if ui.TextArea(c, &m.req.bodyRaw, "请求体", `{"name": "value"}`).FillWidth().Height(240).Changed() {
+		if ui.TextArea(c, &m.req.bodyRaw, "请求体", `{"name": "value"}`).FillWidth().Height(px(240)).Changed() {
 			m.markEdited()
 		}
 	}
@@ -254,27 +254,27 @@ func (m *Model) bodyTab(c ui.C) {
 
 // fieldEditor 编辑请求体字段表（body.fields）：字段名 / 类型 / 必填 / 示例 / 说明。
 func (m *Model) fieldEditor(c ui.C) {
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "字段名").FontSize(11).Muted().Width(150)
-		ui.Text(c, "类型").FontSize(11).Muted().Width(100)
-		ui.Text(c, "必填").FontSize(11).Muted().Width(40)
-		ui.Text(c, "示例").FontSize(11).Muted().Width(160)
-		ui.Text(c, "说明").FontSize(11).Muted().Grow(1)
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		ui.Text(c, "字段名").FontSize(fs(11)).Muted().Width(px(150))
+		ui.Text(c, "类型").FontSize(fs(11)).Muted().Width(px(100))
+		ui.Text(c, "必填").FontSize(fs(11)).Muted().Width(px(40))
+		ui.Text(c, "示例").FontSize(fs(11)).Muted().Width(px(160))
+		ui.Text(c, "说明").FontSize(fs(11)).Muted().Grow(1)
 		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range m.req.fields {
 		slot := index
-		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-			if ui.TextField(c, &row.name, "字段名", "id").Width(150).Changed() {
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+			if ui.TextField(c, &row.name, "字段名", "id").Width(px(150)).Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.typ, "类型", "string").Width(100).Changed() {
+			if ui.TextField(c, &row.typ, "类型", "string").Width(px(100)).Changed() {
 				m.markEdited()
 			}
 			if ui.Checkbox(c, &row.required, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.example, "示例", "abc").Width(160).Changed() {
+			if ui.TextField(c, &row.example, "示例", "abc").Width(px(160)).Changed() {
 				m.markEdited()
 			}
 			if ui.TextField(c, &row.desc, "说明", "").Grow(1).Changed() {
@@ -293,7 +293,7 @@ func (m *Model) fieldEditor(c ui.C) {
 			}
 		})
 	}
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 		if ui.Button(c, "添加字段").Icon(IconPlus).Ghost().Clicked() {
 			m.req.fields = append(m.req.fields, &fieldRow{typ: "string"})
 			m.markEdited()
@@ -314,23 +314,23 @@ func (m *Model) fieldEditor(c ui.C) {
 
 // formEditor 编辑 form / multipart 的逐行字段；multipart 多一列「类型」（text 或 file）。
 func (m *Model) formEditor(c ui.C, multipart bool) {
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Slot(c).Width(24)
-		ui.Text(c, "名称").FontSize(11).Muted().Width(150)
-		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		ui.Slot(c).Width(px(24))
+		ui.Text(c, "名称").FontSize(fs(11)).Muted().Width(px(150))
+		ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(1)
 		if multipart {
-			ui.Text(c, "类型").FontSize(11).Muted().Width(96)
+			ui.Text(c, "类型").FontSize(fs(11)).Muted().Width(px(96))
 		}
-		ui.Text(c, "说明").FontSize(11).Muted().Width(140)
+		ui.Text(c, "说明").FontSize(fs(11)).Muted().Width(px(140))
 		ui.Slot(c).Width(rowActionWidth)
 	})
 	for index, row := range m.req.form {
 		slot := index
-		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.name, "名称", "field").Width(150).Changed() {
+			if ui.TextField(c, &row.name, "名称", "field").Width(px(150)).Changed() {
 				m.markEdited()
 			}
 			placeholder := "value"
@@ -341,11 +341,11 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 				m.markEdited()
 			}
 			if multipart {
-				if ui.Select(c, &row.typ, formTypes, nil).Width(96).Changed() {
+				if ui.Select(c, &row.typ, formTypes, nil).Width(px(96)).Changed() {
 					m.markEdited()
 				}
 			}
-			if ui.TextField(c, &row.desc, "说明", "").Width(140).Changed() {
+			if ui.TextField(c, &row.desc, "说明", "").Width(px(140)).Changed() {
 				m.markEdited()
 			}
 			m.rowMover(c, index, len(m.req.form), func(from, to int) {
@@ -371,20 +371,20 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 
 // authTab 编辑认证；none 不写 auth 段，inherit 表示继承集合默认。
 func (m *Model) authTab(c ui.C) {
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "类型").FontSize(11).Muted()
-		if ui.Select(c, &m.req.authType, authTypes, nil).Width(140).Changed() {
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		ui.Text(c, "类型").FontSize(fs(11)).Muted()
+		if ui.Select(c, &m.req.authType, authTypes, nil).Width(px(140)).Changed() {
 			m.markEdited()
 		}
 		ui.Spacer(c)
 	})
 	switch m.req.authType {
 	case "", "none":
-		ui.Text(c, "不发送认证信息。").FontSize(11).Muted()
+		ui.Text(c, "不发送认证信息。").FontSize(fs(11)).Muted()
 	case "inherit":
-		ui.Text(c, "沿用集合清单 defaults.auth（值支持 {{变量}}）。").FontSize(11).Muted()
+		ui.Text(c, "沿用集合清单 defaults.auth（值支持 {{变量}}）。").FontSize(fs(11)).Muted()
 	case "basic":
-		ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			if ui.TextField(c, &m.req.authUser, "用户名", "{{username}}").Grow(1).Changed() {
 				m.markEdited()
 			}
@@ -397,14 +397,14 @@ func (m *Model) authTab(c ui.C) {
 			m.markEdited()
 		}
 	case "apikey":
-		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 			if ui.TextField(c, &m.req.authKey, "Key", "X-API-Key").Grow(1).Changed() {
 				m.markEdited()
 			}
 			if ui.TextField(c, &m.req.authValue, "Value", "{{apiKey}}").Grow(1).Changed() {
 				m.markEdited()
 			}
-			if ui.Select(c, &m.req.authIn, authPlaces, nil).Width(110).Changed() {
+			if ui.Select(c, &m.req.authIn, authPlaces, nil).Width(px(110)).Changed() {
 				m.markEdited()
 			}
 		})
@@ -419,39 +419,39 @@ func (m *Model) docsTab(c ui.C) {
 		m.docsPreview(c)
 		return
 	}
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "概述").FontSize(11).Muted()
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		ui.Text(c, "概述").FontSize(fs(11)).Muted()
 		if ui.TextField(c, &m.req.summary, "概述", "一句话说明这个接口").Grow(1).Changed() {
 			m.markEdited()
 		}
 	})
-	ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "详细说明（Markdown）").FontSize(11).Muted()
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		ui.Text(c, "详细说明（Markdown）").FontSize(fs(11)).Muted()
 		ui.Spacer(c)
 		if ui.Button(c, "预览").Ghost().Small().Tooltip("完成编辑，回到预览").Clicked() {
 			c.After(func() { m.docsEditing = false })
 		}
 	})
 	if ui.TextArea(c, &m.req.docs, "详细说明", "支持标题、列表、表格与代码块").
-		FillWidth().Height(320).Changed() {
+		FillWidth().Height(px(320)).Changed() {
 		m.markEdited()
 	}
 }
 
 // docsPreview 是文档分段的只读视图：整块可点进编辑态，右上角另有「编辑」按钮。
 func (m *Model) docsPreview(c ui.C) {
-	area := ui.Column(c).FillWidth().Gap(6).Pad(2).
+	area := ui.Column(c).FillWidth().Gap(px(6)).Pad(px(2)).
 		Hit(ui.ID(c), "文档预览").Tooltip("点击编辑这个接口的文档")
 	area.Children(func() {
 		ui.Row(c).FillWidth().Items(ui.Center).Children(func() {
-			ui.Text(c, "点击内容或「编辑」修改").FontSize(11).Muted()
+			ui.Text(c, "点击内容或「编辑」修改").FontSize(fs(11)).Muted()
 			ui.Spacer(c)
 			if ui.Button(c, "编辑").Ghost().Small().Tooltip("编辑概述与 Markdown 原文").Clicked() {
 				c.After(func() { m.docsEditing = true })
 			}
 		})
 		if strings.TrimSpace(m.req.docs) == "" {
-			ui.Text(c, "（还没有文档，点击这里开始写）").FontSize(12).Muted()
+			ui.Text(c, "（还没有文档，点击这里开始写）").FontSize(fs(12)).Muted()
 			return
 		}
 		m.previewBlock(c, m.req.docs, m.tables.docsKey, m.paneWidth(c))
@@ -475,15 +475,15 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 	// 窄栏（左右分栏把响应拖窄、或窗口本身就窄）只留最要紧的信息：
 	// 状态码 + 下拉。reason / 耗时 / 体积 / 分段名会让这一行溢出，把下拉顶到窗外。
 	narrow := m.paneWidth(c) < 420
-	ui.Column(c).Fill().Pad(panePadding).Gap(8).Radius(theme.Metrics.RadiusSurface).
+	ui.Column(c).Fill().Pad(panePadding).Gap(px(8)).Radius(theme.Metrics.RadiusSurface).
 		Background(theme.Card).Border(1, m.pal.border).Children(func() {
-		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 			// 状态在最左、且不参与收缩：窄栏（左右分栏把响应拖窄）时宁可裁掉右边的分段控件，
 			// 也不能让 200 被压成 0 宽——那是这一栏最要紧的信息。
-			ui.Text(c, "响应").FontSize(12).Bold().Shrink(0)
+			ui.Text(c, "响应").FontSize(fs(12)).Bold().Shrink(0)
 			switch {
 			case entry.Kind != explorer.KindHTTP:
-				ui.Text(c, "gRPC 只读").FontSize(11).Muted().Shrink(0)
+				ui.Text(c, "gRPC 只读").FontSize(fs(11)).Muted().Shrink(0)
 			case m.sending:
 				ui.Spinner(c)
 			case m.hasResp || m.failText != "":
@@ -492,17 +492,17 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					statusTint = theme.Danger
 				}
 				if m.status != "" {
-					ui.Text(c, m.status).FontSize(12).Bold().Color(statusTint).Shrink(0)
+					ui.Text(c, m.status).FontSize(fs(12)).Bold().Color(statusTint).Shrink(0)
 				}
 				if m.reason != "" && !narrow {
-					ui.Text(c, m.reason).FontSize(11).Muted().Shrink(0)
+					ui.Text(c, m.reason).FontSize(fs(11)).Muted().Shrink(0)
 				}
 				if m.elapsed != "" && !narrow {
-					ui.Text(c, m.elapsed+" · "+m.size).FontSize(11).Muted().Mono().Shrink(0)
+					ui.Text(c, m.elapsed+" · "+m.size).FontSize(fs(11)).Muted().Mono().Shrink(0)
 				}
 				if m.copyNote != "" {
 					// 可收缩 + 省略号：提示再长也不能把右边的两个下拉顶出去。
-					ui.Text(c, m.copyNote).FontSize(11).Muted().Ellipsis()
+					ui.Text(c, m.copyNote).FontSize(fs(11)).Muted().Ellipsis()
 				}
 			}
 			if m.exSel != "" && !narrow {
@@ -516,7 +516,7 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 		})
 		// 第二行：分段在左，格式化/复制在右。分开是因为挤在一行时窄栏会把状态码顶掉。
 		if entry.Kind == explorer.KindHTTP {
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				ui.Tabs(c, &m.respTab, respTabs, respTabLabel).Line().Grow(0)
 				ui.Spacer(c)
 				// 保存放在这一行：第一行被状态与下拉占满，1180 宽时按钮会被挤到窗外。
@@ -537,7 +537,7 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 		// 窄栏用省略号截断即可。
 		if entry.Kind == explorer.KindHTTP && m.hasResp {
 			if info := m.connInfo(false); info != "" {
-				ui.Text(c, info).FontSize(10).Mono().Muted().FillWidth().Ellipsis()
+				ui.Text(c, info).FontSize(fs(10)).Mono().Muted().FillWidth().Ellipsis()
 			}
 		}
 		if m.find.open && entry.Kind == explorer.KindHTTP {
@@ -548,7 +548,7 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 		body.Children(func() {
 			switch {
 			case entry.Kind != explorer.KindHTTP:
-				ui.Text(c, "验证版只读展示 gRPC 元数据，不发起调用。").FontSize(11).Muted()
+				ui.Text(c, "验证版只读展示 gRPC 元数据，不发起调用。").FontSize(fs(11)).Muted()
 			case m.sending:
 				ui.Text(c, "请求中…").Muted()
 			case !m.hasResp:
@@ -556,19 +556,19 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					"发送后可在右上角「当前响应」下拉里把它存成示例（Mock 回放与写文档都用它）。").
 					FontSize(12).Muted().MaxLines(2)
 			case m.failText != "":
-				ui.Text(c, "请求失败："+m.failText).FontSize(11).Color(theme.Danger)
+				ui.Text(c, "请求失败："+m.failText).FontSize(fs(11)).Color(theme.Danger)
 			case m.respTab == 1:
 				m.responseHeaders(c)
 			default:
 				if m.missing != "" {
-					ui.Text(c, m.missing).FontSize(11).Color(theme.Danger)
+					ui.Text(c, m.missing).FontSize(fs(11)).Color(theme.Danger)
 				}
 				if m.resp.Truncated {
-					ui.Text(c, truncationNote(m.resp)).FontSize(11).Color(theme.Danger)
+					ui.Text(c, truncationNote(m.resp)).FontSize(fs(11)).Color(theme.Danger)
 				}
 				if len(m.resp.Body) > rawDisplayLimit {
 					ui.Text(c, "正文较大，这里只渲染前 "+humanBytes(rawDisplayLimit)+
-						"（「复制正文」仍是完整内容）").FontSize(11).Muted()
+						"（「复制正文」仍是完整内容）").FontSize(fs(11)).Muted()
 				}
 				if m.bodyText == "" {
 					ui.Text(c, "响应体为空").Muted()
@@ -661,18 +661,18 @@ func (m *Model) responseHeaders(c ui.C) {
 		ui.Text(c, "没有响应头").Muted()
 		return
 	}
-	ui.Row(c).FillWidth().Gap(12).PadY(4).Children(func() {
-		ui.Text(c, "名称").FontSize(11).Muted().Width(220)
-		ui.Text(c, "值").FontSize(11).Muted().Grow(1)
+	ui.Row(c).FillWidth().Gap(px(12)).PadY(px(4)).Children(func() {
+		ui.Text(c, "名称").FontSize(fs(11)).Muted().Width(px(220))
+		ui.Text(c, "值").FontSize(fs(11)).Muted().Grow(1)
 	})
 	for _, header := range m.tables.respHeaders {
-		row := ui.Row(c).FillWidth().Gap(12).PadY(2).Items(ui.Center).
+		row := ui.Row(c).FillWidth().Gap(px(12)).PadY(px(2)).Items(ui.Center).
 			Hover(ui.Look{}.Background(m.pal.hover)).
 			Hit(ui.ID(c), "响应头 "+header.Name).
 			Tooltip("点击复制这一条")
 		row.Children(func() {
-			ui.Text(c, header.Name).Mono().FontSize(11).Width(220)
-			ui.Text(c, header.Value).Mono().FontSize(11).Grow(1).Ellipsis()
+			ui.Text(c, header.Name).Mono().FontSize(fs(11)).Width(px(220))
+			ui.Text(c, header.Value).Mono().FontSize(fs(11)).Grow(1).Ellipsis()
 		})
 		if row.Clicked() {
 			m.copyValue(header.Name + ": " + header.Value)
@@ -693,13 +693,13 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 	if ui.Shortcut(c, ui.Primary, "enter") && !m.grpcSending {
 		c.After(func() { m.sendGRPC(entry) })
 	}
-	ui.Column(c).FillWidth().Gap(8).Children(func() {
-		ui.Text(c, m.tables.grpcEndpoint).Mono().FontSize(12)
+	ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
+		ui.Text(c, m.tables.grpcEndpoint).Mono().FontSize(fs(12))
 		if m.tables.grpcMeta != "" {
-			ui.Text(c, m.tables.grpcMeta).FontSize(11).Muted()
+			ui.Text(c, m.tables.grpcMeta).FontSize(fs(11)).Muted()
 		}
-		ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-			ui.Text(c, "元数据").FontSize(11).Muted()
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+			ui.Text(c, "元数据").FontSize(fs(11)).Muted()
 			ui.Spacer(c)
 			if ui.Button(c, "添加元数据").Icon(IconPlus).Ghost().XSmall().Clicked() {
 				c.After(func() {
@@ -711,11 +711,11 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 		})
 		for index, row := range m.grpcMetaRows {
 			slot := index
-			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				if ui.Checkbox(c, &row.enabled, "").Changed() {
 					m.grpcDirty = true
 				}
-				if ui.TextField(c, &row.name, "名称", "x-trace-id").Width(200).Changed() {
+				if ui.TextField(c, &row.name, "名称", "x-trace-id").Width(px(200)).Changed() {
 					m.grpcDirty = true
 				}
 				if ui.TextField(c, &row.value, "值", "{{trace}}").Grow(1).Changed() {
@@ -731,8 +731,8 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 				}
 			})
 		}
-		ui.Text(c, "请求消息（protojson）").FontSize(11).Muted()
-		if ui.TextArea(c, &m.grpcMessage, "请求消息", `{"name":"neo"}`).Height(150).FillWidth().Changed() {
+		ui.Text(c, "请求消息（protojson）").FontSize(fs(11)).Muted()
+		if ui.TextArea(c, &m.grpcMessage, "请求消息", `{"name":"neo"}`).Height(px(150)).FillWidth().Changed() {
 			m.grpcDirty = true
 		}
 		if line := m.grpcResultLine(); line != "" {
@@ -740,17 +740,17 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 			if m.grpcStatus != "OK" {
 				tint = c.Theme().Danger
 			}
-			ui.Text(c, line).FontSize(11).Mono().Color(tint)
+			ui.Text(c, line).FontSize(fs(11)).Mono().Color(tint)
 		}
 		if m.grpcNote != "" {
-			ui.Text(c, m.grpcNote).FontSize(11).Muted()
+			ui.Text(c, m.grpcNote).FontSize(fs(11)).Muted()
 		}
 		if strings.TrimSpace(m.grpcBody) != "" {
 			// 外层已经是 Scroll（page.go 的详情区）：这里再套一层会把高度算成 0。
-			ui.Paragraph(c, m.grpcBody, 0).Mono().FontSize(11)
+			ui.Paragraph(c, m.grpcBody, 0).Mono().FontSize(fs(11))
 		}
 		if block.Stream == "client" || block.Stream == "bidi" {
-			ui.Text(c, "客户端流 / 双工暂不支持，调用时会明确报错。").FontSize(11).Muted()
+			ui.Text(c, "客户端流 / 双工暂不支持，调用时会明确报错。").FontSize(fs(11)).Muted()
 		}
 	})
 }
@@ -761,16 +761,16 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 		c.After(m.saveDoc)
 	}
 	dirty := m.docDirty()
-	ui.Column(c).Fill().Pad(20).Gap(12).Children(func() {
-		ui.Row(c).FillWidth().Gap(10).Items(ui.Center).Children(func() {
+	ui.Column(c).Fill().Pad(px(20)).Gap(px(12)).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 			methodBadge(c, entry)
-			ui.Text(c, entry.Name).FontSize(18).Bold()
+			ui.Text(c, entry.Name).FontSize(fs(18)).Bold()
 			ui.Spacer(c)
 			switch {
 			case dirty:
-				ui.Text(c, "未保存").FontSize(11).Color(c.Theme().Danger)
+				ui.Text(c, "未保存").FontSize(fs(11)).Color(c.Theme().Danger)
 			case m.editor.status != "":
-				ui.Text(c, m.editor.status).FontSize(11).Muted()
+				ui.Text(c, m.editor.status).FontSize(fs(11)).Muted()
 			}
 			save := ui.Button(c, "保存")
 			if !dirty {
@@ -780,15 +780,15 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 				c.After(m.saveDoc)
 			}
 		})
-		ui.Text(c, m.editor.metaLine).FontSize(11).Muted().Mono()
-		ui.Row(c).FillWidth().Grow(1).Gap(12).Children(func() {
-			ui.Column(c).Grow(1).Gap(6).Children(func() {
-				ui.Text(c, "源码").FontSize(11).Muted()
+		ui.Text(c, m.editor.metaLine).FontSize(fs(11)).Muted().Mono()
+		ui.Row(c).FillWidth().Grow(1).Gap(px(12)).Children(func() {
+			ui.Column(c).Grow(1).Gap(px(6)).Children(func() {
+				ui.Text(c, "源码").FontSize(fs(11)).Muted()
 				ui.TextArea(c, &m.editor.text, "文档内容", "在此编写 Markdown…").FillWidth().Grow(1)
 			})
 			ui.Divider(c)
-			ui.Column(c).Grow(1).Gap(6).Children(func() {
-				ui.Text(c, "预览").FontSize(11).Muted()
+			ui.Column(c).Grow(1).Gap(px(6)).Children(func() {
+				ui.Text(c, "预览").FontSize(fs(11)).Muted()
 				if strings.TrimSpace(m.editor.text) == "" {
 					ui.Text(c, "（空文档）").Muted()
 					return
@@ -815,7 +815,7 @@ func (m *Model) previewBlock(c ui.C, source, key string, width float32) {
 
 // codeCard 是等宽长文卡片（请求体原文与响应体共用）。
 func (m *Model) codeCard(c ui.C, text string) {
-	ui.Column(c).FillWidth().Pad(12).Draw(cardDraw).Children(func() {
-		ui.Paragraph(c, text, 0).Mono().FontSize(11)
+	ui.Column(c).FillWidth().Pad(px(12)).Draw(cardDraw).Children(func() {
+		ui.Paragraph(c, text, 0).Mono().FontSize(fs(11))
 	})
 }

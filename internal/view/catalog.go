@@ -18,14 +18,14 @@ const badgeWidth = 56
 func methodBadge(c ui.C, entry *explorer.Entry) ui.Box {
 	label := methodLabel(entry)
 	variant := methodVariant(entry)
-	return ui.Slot(c).Width(badgeWidth).Height(20).Label(label).Draw(func(d *ui.DrawContext) {
+	return ui.Slot(c).Width(badgeWidth).Height(px(20)).Label(label).Draw(func(d *ui.DrawContext) {
 		components.PaintBadge(d.Canvas, *d.Theme, d.Rect, label, variant)
 	})
 }
 
 // emptyBox 是组件目录的空状态：标题 + 说明居中，垂直居中需要给定高度。
 func emptyBox(c ui.C, title, description string) ui.Box {
-	return ui.Column(c).FillWidth().MinHeight(180).Draw(func(d *ui.DrawContext) {
+	return ui.Column(c).FillWidth().MinHeight(px(180)).Draw(func(d *ui.DrawContext) {
 		components.Empty(d.Canvas, *d.Theme, d.Rect, components.EmptyData{
 			Title:       title,
 			Description: description,

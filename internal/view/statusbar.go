@@ -15,15 +15,15 @@ const statusBarHeight = 28
 // 右侧是全局入口（回收站 / MCP / 设置）与集合规模计数。
 func (m *Model) statusBar(c ui.C) {
 	ui.Divider(c)
-	ui.Row(c).FillWidth().Height(statusBarHeight).PadX(12).Gap(10).Items(ui.Center).
+	ui.Row(c).FillWidth().Height(statusBarHeight).PadX(px(12)).Gap(px(10)).Items(ui.Center).
 		Background(m.pal.bg).Children(func() {
-		ui.Text(c, "离线优先 · 纯文本存储").FontSize(11).Muted().Mono()
+		ui.Text(c, "离线优先 · 纯文本存储").FontSize(fs(11)).Muted().Mono()
 		if m.ui.exportNote != "" {
-			ui.Text(c, m.ui.exportNote).FontSize(11).Muted()
+			ui.Text(c, m.ui.exportNote).FontSize(fs(11)).Muted()
 		}
 		ui.Spacer(c)
 		m.statusActions(c)
-		ui.Text(c, m.statusCounts()).FontSize(11).Muted().Mono()
+		ui.Text(c, m.statusCounts()).FontSize(fs(11)).Muted().Mono()
 	})
 }
 
@@ -52,7 +52,7 @@ func (m *Model) statusActions(c ui.C) {
 	} else if m.mock.err != "" {
 		mockDot = c.Theme().Danger
 	}
-	ui.Slot(c).Width(6).Height(6).Radius(3).Background(mockDot).Hit(ui.ID(c), mockLabel)
+	ui.Slot(c).Width(px(6)).Height(px(6)).Radius(px(3)).Background(mockDot).Hit(ui.ID(c), mockLabel)
 
 	if ui.Button(c, "历史").Icon(IconClock).Ghost().XSmall().Tooltip("查看请求历史").Clicked() {
 		m.openHistory()
@@ -80,7 +80,7 @@ func (m *Model) statusActions(c ui.C) {
 	} else if m.mcp.err != "" {
 		dot = c.Theme().Danger
 	}
-	ui.Slot(c).Width(6).Height(6).Radius(3).Background(dot).Hit(ui.ID(c), label)
+	ui.Slot(c).Width(px(6)).Height(px(6)).Radius(px(3)).Background(dot).Hit(ui.ID(c), label)
 
 	if ui.Button(c, "设置").Icon(IconSliders).Ghost().XSmall().Tooltip("打开设置").Clicked() {
 		m.openSettings()

@@ -46,7 +46,39 @@ var (
 	themeNames   = []string{"深色", "浅色"}
 	splitOptions = []int{0, 1}
 	splitNames   = []string{"上下", "左右"}
+	// 界面缩放：百分数，100 是设计稿大小。
+	scaleOptions = []int{80, 90, 100, 110, 125}
+	scaleNames   = []string{"80%", "90%", "100%", "110%", "125%"}
 )
+
+// scaleIndex 把百分比换算成 scaleOptions 的下标（未知值取最接近的一档）。
+func scaleIndex(pct int) int {
+	best := 2
+	for i, v := range scaleOptions {
+		if v == pct {
+			return i
+		}
+		if absInt(v-pct) < absInt(scaleOptions[best]-pct) {
+			best = i
+		}
+	}
+	return best
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// scaleLabel 给选项值（百分比）配显示名；夹过范围的取值也能显示。
+func scaleLabel(pct int) string {
+	if i := scaleIndex(pct); scaleOptions[i] == pct {
+		return scaleNames[i]
+	}
+	return strconv.Itoa(pct) + "%"
+}
 
 // 主色取 Wails 客户端的绿色令牌（frontend/src/styles/base.css）：
 // 浅色 --app-accent/#18a058，暗色 --app-accent/#36ad6a，按钮文字白色。
@@ -69,6 +101,7 @@ func (m *Model) applyTheme() {
 		m.theme.Selection = ui.RGBA(0x36, 0xad, 0x6a, 0.4) // --app-selection
 		m.theme.SelectionForeground = ui.RGB(0xfa, 0xfa, 0xfa)
 	}
+	m.theme.Metrics = scaleMetrics(m.theme.Metrics)
 	m.theme.PrimaryForeground = accentText
 	m.theme.Ring = m.theme.Primary
 	m.pal = paletteFor(m.settings.Theme == settings.ThemeLight)
@@ -80,6 +113,31 @@ func (m *Model) applyTheme() {
 
 // isLight 报告当前是不是浅色主题。
 func (m *Model) isLight() bool { return m.settings.Theme == settings.ThemeLight }
+
+// setUIScale 换界面缩放：重算布局常量与主题度量，按比例搬三处分隔条，落盘。
+//
+// 分隔条位置是像素值，不跟着乘就会在放大后挤成一条缝（或把右栏撑出去）。
+func (m *Model) setUIScale(pct int) {
+	pct = scaleOptions[scaleIndex(pct)]
+	old := uiScale
+	applyUIScale(pct)
+	if old > 0 && uiScale != old {
+		k := uiScale / old
+		m.split.Pos *= k
+		m.rsplit.Pos *= k
+		m.hsplit.Pos *= k
+	}
+	m.settings.UIScale = pct
+	m.ui.scalePick = pct
+	m.tree.RowHeight = px(30)
+	m.tree.Indent = px(16)
+	m.applyTheme()
+	m.docs.key = "" // 字号变了，Markdown 要重排
+	m.shownOnce = false
+	m.treeDirty = true
+	_ = settings.Save(m.settings)
+	m.invalidator.Invalidate()
+}
 
 // setTheme 切换并持久化主题；偏好写失败不影响界面（下次启动回默认值）。
 func (m *Model) setTheme(light bool) {
@@ -1765,6 +1823,7 @@ func (m *Model) syncSettingsUI() {
 	m.ui.persistCookies = m.settings.PersistCookies()
 	m.ui.closeToTray = m.settings.CloseToTray
 	m.ui.sealSecrets = m.settings.SealSecrets()
+	m.ui.scalePick = m.settings.UIScalePercent()
 	m.ui.autoSave = m.settings.AutoSave()
 	m.ui.autoSaveSec = strconv.Itoa(int(m.settings.AutoSaveInterval().Seconds()))
 	m.ui.updateRepo = m.settings.UpdateRepo
