@@ -4001,6 +4001,53 @@ func TestDocOpensAsPreviewAndCanSplit(t *testing.T) {
 	}
 }
 
+// TestDocSourceIsEditable 文档源码区点进去就能打字，改动写回 m.editor.text。
+func TestDocSourceIsEditable(t *testing.T) {
+	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "docs"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	t.Cleanup(func() { model.setDocSplit(false) })
+
+	var doc *explorer.Entry
+	for _, entry := range col.Entries {
+		if entry.IsDoc() {
+			doc = entry
+			break
+		}
+	}
+	if doc == nil {
+		t.Fatal("夹子里没有文档")
+	}
+	model.openEntry(doc)
+	model.setDocSplit(true)
+	model.invalidator.Invalidate()
+	pump(t, driver)
+
+	before := model.editor.text
+	click(t, driver, "文档内容")
+	pump(t, driver)
+	if snap := driver.Snapshot(); snap.Editor == nil {
+		t.Fatalf("点了源码区却没建立原生文本编辑：焦点=%v", snap.Focused)
+	}
+	if err := driver.Type("补"); err != nil {
+		t.Fatalf("Type: %v", err)
+	}
+	for range 3 {
+		pump(t, driver)
+	}
+	if model.editor.text == before {
+		snap := driver.Snapshot()
+		t.Fatalf("源码区没收到输入：聚焦=%v 原生编辑=%v 正文=%q",
+			snap.Focused, snap.Editor != nil, model.editor.text)
+	}
+	if !strings.Contains(model.editor.text, "补") {
+		t.Fatalf("输入没写进正文：%q", model.editor.text)
+	}
+}
+
 // TestRecentCollectionsListAndClear 最近打开：去重、最新在前、可清除；下拉里有清除项。
 func TestRecentCollectionsListAndClear(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
