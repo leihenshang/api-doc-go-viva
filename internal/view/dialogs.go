@@ -613,6 +613,9 @@ func (m *Model) mcpDialog(c ui.C) {
 					m.copyValue(m.mcpConfigJSON())
 				}
 			})
+			// 复制的就是下面这段：面板里直接给全文，省得先粘贴到别处才知道是什么。
+			ui.Text(c, "客户端配置（复制内容）").FontSize(fs(11)).Muted()
+			m.codeCard(c, m.mcpConfigJSON())
 			ui.Text(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。").
 				FontSize(11).Muted()
 			ui.Text(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。").

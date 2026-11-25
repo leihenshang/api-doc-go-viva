@@ -4085,3 +4085,19 @@ func TestRecentCollectionsListAndClear(t *testing.T) {
 		t.Fatalf("清除没生效：%v", model.settings.RecentCollections)
 	}
 }
+
+// TestMCPConfigShown 设置里的 MCP 分区直接展示要复制的 JSON 全文。
+func TestMCPConfigShown(t *testing.T) {
+	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "docs"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.ui.mcpOpen = true
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	if !shows(driver, "mcpServers") || !shows(driver, "Authorization") {
+		t.Fatalf("MCP 设置里应展示配置 JSON：%v", painted(driver))
+	}
+}
