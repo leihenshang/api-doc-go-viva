@@ -527,6 +527,49 @@ func Resolve(text string, vars map[string]string) (string, []string) {
 	return out, exp.missing
 }
 
+// Placeholder 是文本里的一处 {{变量}}：名字，以及它在原文里的字节区间（半开）。
+type Placeholder struct {
+	Name  string
+	Start int
+	End   int
+}
+
+// Placeholders 按出现顺序列出文本里的 {{变量}}，同一名字出现多次就列多次。
+//
+// 界面用它把「悬停显示变量值」落到具体的一段文本上；真正替换仍走 Resolve，
+// 两处共用同一个 placeholderPattern，免得识别规则分叉。
+func Placeholders(text string) []Placeholder {
+	indexes := placeholderPattern.FindAllStringSubmatchIndex(text, -1)
+	if len(indexes) == 0 {
+		return nil
+	}
+	out := make([]Placeholder, 0, len(indexes))
+	for _, index := range indexes {
+		out = append(out, Placeholder{
+			Name:  strings.TrimSpace(text[index[2]:index[3]]),
+			Start: index[0],
+			End:   index[1],
+		})
+	}
+	return out
+}
+
+// VarNames 是文本里出现过的变量名，按出现顺序去重；界面悬停提示用它列清单。
+func VarNames(texts ...string) []string {
+	var names []string
+	seen := make(map[string]bool, 4)
+	for _, text := range texts {
+		for _, placeholder := range Placeholders(text) {
+			if placeholder.Name == "" || seen[placeholder.Name] {
+				continue
+			}
+			seen[placeholder.Name] = true
+			names = append(names, placeholder.Name)
+		}
+	}
+	return names
+}
+
 // tlsLabel 把协商到的 TLS 版本翻成人看的字；明文响应返回空串。
 func tlsLabel(resp *http.Response) string {
 	if resp == nil || resp.TLS == nil {

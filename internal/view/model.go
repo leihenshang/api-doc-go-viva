@@ -625,6 +625,9 @@ type Model struct {
 	// 响应正文的查找条状态（见 find.go）。
 	find findState
 
+	// 指针位置与含变量的输入框区域（见 varhover.go）。
+	hover varHover
+
 	// 撤销 / 重做：整份草稿的快照栈（见 undo.go）。
 	undoStack []requestDraft
 	redoStack []requestDraft
@@ -730,6 +733,8 @@ func (m *Model) windowConfig() app.Config {
 		WindowControls: m.windowControls,
 		Invalidator:    &m.invalidator,
 		OnWake:         m.collect,
+		// 变量悬停要知道指针在哪：输入框自己不会把移动事件交出来（见 varhover.go）。
+		OnPointer: m.trackPointer,
 		// 任务栏 / Alt+Tab 的图标：与托盘同一张画，画在代码里，少一份资源文件。
 		Icon: appIcon(256),
 		// 关到托盘：不调 allow 就等于「窗口不关」；托盘没挂上时照常关。

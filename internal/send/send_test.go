@@ -282,3 +282,34 @@ func TestCollectionDefaultsApply(t *testing.T) {
 		t.Fatalf("请求自己的认证应覆盖 inherit，实际 %q", seen.auth)
 	}
 }
+
+// TestPlaceholders 列出 {{变量}} 的名字与字节区间：切片必须原样落在占位符上。
+func TestPlaceholders(t *testing.T) {
+	text := "{{ host }}/api/{{token}}/{{host}}"
+	got := Placeholders(text)
+	if len(got) != 3 {
+		t.Fatalf("应有 3 处占位符，实际 %d: %+v", len(got), got)
+	}
+	for index, want := range []string{"host", "token", "host"} {
+		if got[index].Name != want {
+			t.Fatalf("第 %d 个变量名应为 %q，实际 %q", index, want, got[index].Name)
+		}
+		if span := text[got[index].Start:got[index].End]; !strings.HasPrefix(span, "{{") || !strings.HasSuffix(span, "}}") {
+			t.Fatalf("第 %d 处区间没框住占位符：%q", index, span)
+		}
+	}
+	if Placeholders("没有变量") != nil {
+		t.Fatal("没有变量时应返回 nil")
+	}
+}
+
+// TestVarNames 变量名去重且保持出现顺序：界面提示按这个顺序列。
+func TestVarNames(t *testing.T) {
+	got := VarNames("{{a}} {{b}}", "{{b}} {{c}}")
+	if strings.Join(got, ",") != "a,b,c" {
+		t.Fatalf("变量名应为 a,b,c，实际 %v", got)
+	}
+	if VarNames("plain", "") != nil {
+		t.Fatal("没有变量时应返回 nil")
+	}
+}

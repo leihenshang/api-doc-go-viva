@@ -11,6 +11,9 @@ import (
 // Page 声明整窗：工具条 + （集合树 | 分隔条 | 详情）。
 // 搜索框在 sidebar 里先声明、当帧写入过滤词，随后重建树，避免一帧延迟。
 func (m *Model) Page(c ui.C) {
+	// 含变量的输入框每帧重新登记：几何要到绘制期才定，指针移动也要靠它判断要不要重绘。
+	m.hover.zones = m.hover.zones[:0]
+	m.hover.fields = m.hover.fields[:0]
 	m.drainMCP()
 	m.drainRun()
 	m.drainGRPC()
@@ -69,6 +72,8 @@ func (m *Model) Page(c ui.C) {
 			}
 		})
 	})
+	// 变量热区最后声明：几何已定，热区也压在输入框之上（见 varhover.go）。
+	m.varHotzones(c)
 	m.statusBar(c)
 	m.dialogs(c)
 }

@@ -48,7 +48,8 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 		if ui.Select(c, &m.req.method, httpMethods, nil).Width(px(120)).Changed() {
 			m.markEdited()
 		}
-		if ui.TextField(c, &m.req.url, "地址", "{{host}}/api/users").Grow(1).Changed() {
+		address := ui.TextField(c, &m.req.url, "地址", "{{host}}/api/users").Grow(1)
+		if m.varTipField(address, m.req.url).Changed() {
 			m.markEdited()
 		}
 		saveLabel := "保存请求"
@@ -113,10 +114,12 @@ func (m *Model) kvEditor(c ui.C, rows *[]*kvRow, addLabel string) {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.name, "名称", "name").Grow(2).MinWidth(0).Changed() {
+			name := ui.TextField(c, &row.name, "名称", "name").Grow(2).MinWidth(0)
+			if m.varTipField(name, row.name).Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.value, "值", "value").Grow(3).MinWidth(0).Changed() {
+			value := ui.TextField(c, &row.value, "值", "value").Grow(3).MinWidth(0)
+			if m.varTipField(value, row.value).Changed() {
 				m.markEdited()
 			}
 			if ui.TextField(c, &row.desc, "说明", "").Grow(2).MinWidth(0).Changed() {
@@ -248,7 +251,8 @@ func (m *Model) bodyTab(c ui.C) {
 	case "form", "multipart":
 		m.formEditor(c, m.req.bodyType == "multipart")
 	default:
-		if ui.TextArea(c, &m.req.bodyRaw, "请求体", `{"name": "value"}`).FillWidth().Height(px(240)).Changed() {
+		body := ui.TextArea(c, &m.req.bodyRaw, "请求体", `{"name": "value"}`).FillWidth().Height(px(240))
+		if m.varTipBox(body, m.req.bodyRaw).Changed() {
 			m.markEdited()
 		}
 	}
@@ -277,7 +281,8 @@ func (m *Model) fieldEditor(c ui.C) {
 			if ui.Checkbox(c, &row.required, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.example, "示例", "abc").Width(px(160)).Changed() {
+			example := ui.TextField(c, &row.example, "示例", "abc").Width(px(160))
+			if m.varTipField(example, row.example).Changed() {
 				m.markEdited()
 			}
 			if ui.TextField(c, &row.desc, "说明", "").Grow(1).Changed() {
@@ -333,14 +338,16 @@ func (m *Model) formEditor(c ui.C, multipart bool) {
 			if ui.Checkbox(c, &row.enabled, "").Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &row.name, "名称", "field").Grow(2).MinWidth(0).Changed() {
+			name := ui.TextField(c, &row.name, "名称", "field").Grow(2).MinWidth(0)
+			if m.varTipField(name, row.name).Changed() {
 				m.markEdited()
 			}
 			placeholder := "value"
 			if multipart && row.typ == "file" {
 				placeholder = "相对集合根的文件路径"
 			}
-			if ui.TextField(c, &row.value, "值", placeholder).Grow(3).MinWidth(0).Changed() {
+			value := ui.TextField(c, &row.value, "值", placeholder).Grow(3).MinWidth(0)
+			if m.varTipField(value, row.value).Changed() {
 				m.markEdited()
 			}
 			if multipart {
@@ -388,23 +395,28 @@ func (m *Model) authTab(c ui.C) {
 		ui.Text(c, "沿用集合清单 defaults.auth（值支持 {{变量}}）。").FontSize(fs(11)).Muted()
 	case "basic":
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
-			if ui.TextField(c, &m.req.authUser, "用户名", "{{username}}").Grow(1).Changed() {
+			user := ui.TextField(c, &m.req.authUser, "用户名", "{{username}}").Grow(1)
+			if m.varTipField(user, m.req.authUser).Changed() {
 				m.markEdited()
 			}
+			// 口令是密文控件，悬停不显示取值，避免把密码摆到屏幕上。
 			if ui.TextField(c, &m.req.authPass, "口令", "{{password}}").Grow(1).Secure().Changed() {
 				m.markEdited()
 			}
 		})
 	case "bearer":
-		if ui.TextField(c, &m.req.authToken, "Token", "{{token}}").Grow(1).Changed() {
+		token := ui.TextField(c, &m.req.authToken, "Token", "{{token}}").Grow(1)
+		if m.varTipField(token, m.req.authToken).Changed() {
 			m.markEdited()
 		}
 	case "apikey":
 		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-			if ui.TextField(c, &m.req.authKey, "Key", "X-API-Key").Grow(1).Changed() {
+			key := ui.TextField(c, &m.req.authKey, "Key", "X-API-Key").Grow(1)
+			if m.varTipField(key, m.req.authKey).Changed() {
 				m.markEdited()
 			}
-			if ui.TextField(c, &m.req.authValue, "Value", "{{apiKey}}").Grow(1).Changed() {
+			value := ui.TextField(c, &m.req.authValue, "Value", "{{apiKey}}").Grow(1)
+			if m.varTipField(value, m.req.authValue).Changed() {
 				m.markEdited()
 			}
 			if ui.Select(c, &m.req.authIn, authPlaces, nil).Width(px(110)).Changed() {
@@ -721,7 +733,8 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 				if ui.TextField(c, &row.name, "名称", "x-trace-id").Width(px(200)).Changed() {
 					m.grpcDirty = true
 				}
-				if ui.TextField(c, &row.value, "值", "{{trace}}").Grow(1).Changed() {
+				metaValue := ui.TextField(c, &row.value, "值", "{{trace}}").Grow(1)
+				if m.varTipField(metaValue, row.value).Changed() {
 					m.grpcDirty = true
 				}
 				if ui.Button(c, "删除元数据").Icon(IconTrash).Ghost().IconOnly().
@@ -735,7 +748,8 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 			})
 		}
 		ui.Text(c, "请求消息（protojson）").FontSize(fs(11)).Muted()
-		if ui.TextArea(c, &m.grpcMessage, "请求消息", `{"name":"neo"}`).Height(px(150)).FillWidth().Changed() {
+		grpcMessage := ui.TextArea(c, &m.grpcMessage, "请求消息", `{"name":"neo"}`).Height(px(150)).FillWidth()
+		if m.varTipBox(grpcMessage, m.grpcMessage).Changed() {
 			m.grpcDirty = true
 		}
 		if line := m.grpcResultLine(); line != "" {

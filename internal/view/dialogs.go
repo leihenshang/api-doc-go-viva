@@ -54,7 +54,8 @@ func (m *Model) newRequestDialog(c ui.C) {
 				ui.Text(c, "方法").FontSize(fs(11)).Muted()
 				ui.Select(c, &m.ui.newMethod, httpMethods, nil).Width(px(120))
 			})
-			ui.TextField(c, &m.ui.newURL, "地址", "{{host}}/api/users").FillWidth()
+			newURL := ui.TextField(c, &m.ui.newURL, "地址", "{{host}}/api/users").FillWidth()
+			m.varTipField(newURL, m.ui.newURL)
 			if m.ui.newErr != "" {
 				ui.Text(c, m.ui.newErr).FontSize(fs(11)).Color(c.Theme().Danger)
 			}
@@ -1041,7 +1042,8 @@ func (m *Model) importDialog(c ui.C) {
 					FontSize(11).Muted()
 				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					ui.Text(c, "地址前缀").FontSize(fs(11)).Muted().Width(px(64))
-					ui.TextField(c, &m.ui.importBase, "地址前缀", "{{host}}").Width(px(260))
+					base := ui.TextField(c, &m.ui.importBase, "地址前缀", "{{host}}").Width(px(260))
+					m.varTipField(base, m.ui.importBase)
 					ui.Text(c, "留空则只写路径").FontSize(fs(11)).Muted()
 					ui.Spacer(c)
 					if ui.Button(c, "选择 JSON 文件…").Icon(IconFilePlus).Outline().Clicked() {

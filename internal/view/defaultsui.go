@@ -95,7 +95,8 @@ func (m *Model) defaultsDialog(c ui.C) {
 					ui.Row(c).FillWidth().Gap(px(8)).PadY(px(2)).Items(ui.Center).Children(func() {
 						ui.Checkbox(c, &row.enabled, "").Changed()
 						ui.TextField(c, &row.name, "名称", "X-Team").Width(px(200)).Changed()
-						ui.TextField(c, &row.value, "值", "{{team}}").Grow(1).Changed()
+						defValue := ui.TextField(c, &row.value, "值", "{{team}}").Grow(1)
+						m.varTipField(defValue, row.value).Changed()
 						if ui.Button(c, "删除头").Icon(IconTrash).Ghost().IconOnly().
 							Tooltip("删除这一行").Clicked() {
 							c.After(func() {
@@ -140,15 +141,20 @@ func (m *Model) defaultsAuthFields(c ui.C) {
 	switch m.ui.defAuthType {
 	case "basic":
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
-			ui.TextField(c, &m.ui.defAuthUser, "用户名", "{{username}}").Grow(1).Changed()
+			user := ui.TextField(c, &m.ui.defAuthUser, "用户名", "{{username}}").Grow(1)
+			m.varTipField(user, m.ui.defAuthUser).Changed()
+			// 口令是密文控件，悬停不显示取值。
 			ui.TextField(c, &m.ui.defAuthPass, "口令", "{{password}}").Grow(1).Secure().Changed()
 		})
 	case "bearer":
-		ui.TextField(c, &m.ui.defAuthToken, "Token", "{{token}}").Grow(1).Changed()
+		token := ui.TextField(c, &m.ui.defAuthToken, "Token", "{{token}}").Grow(1)
+		m.varTipField(token, m.ui.defAuthToken).Changed()
 	case "apikey":
 		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-			ui.TextField(c, &m.ui.defAuthKey, "Key", "X-API-Key").Grow(1).Changed()
-			ui.TextField(c, &m.ui.defAuthValue, "Value", "{{apiKey}}").Grow(1).Changed()
+			key := ui.TextField(c, &m.ui.defAuthKey, "Key", "X-API-Key").Grow(1)
+			m.varTipField(key, m.ui.defAuthKey).Changed()
+			value := ui.TextField(c, &m.ui.defAuthValue, "Value", "{{apiKey}}").Grow(1)
+			m.varTipField(value, m.ui.defAuthValue).Changed()
 			ui.Select(c, &m.ui.defAuthIn, authPlaces, nil).Width(px(110)).Changed()
 		})
 	default:
