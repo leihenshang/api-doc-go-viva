@@ -197,7 +197,7 @@ func (m *Model) iconToggle(c ui.C, icon gfx.Icon, label string, active bool, onC
 
 // searchBox 是顶栏的全局搜索入口
 func (m *Model) searchBox(c ui.C) {
-	box := ui.Row(c).Height(px(28)).Width(px(240)).Shrink(0).
+	box := ui.Row(c).Height(px(28)).Width(px(240)).MinWidth(px(150)).Shrink(1).
 		PadX(px(8)).Gap(px(6)).Items(ui.Center).Border(1, m.pal.border).Radius(px(6)).Background(m.pal.panel).
 		Transition().Hover(ui.Look{}.Background(m.pal.hover)).Hit(ui.ID(c), "全局搜索")
 	box.Children(func() {
@@ -332,14 +332,22 @@ func (m *Model) collectionLabel(index int) string {
 // envPicker 是环境下拉：只有环境列表与「环境设置…」。
 // 放在标签栏右侧，与请求页同在内容区，不再是标题栏的一部分。
 func (m *Model) envPicker(c ui.C) {
-	if len(m.ui.envs) == 0 {
-		return
-	}
+	// 名字取自这一份环境列表：切集合后旧环境名不该还挂在按钮上。
 	label := "无环境"
-	if m.envName != "" {
-		label = m.envName
+	for _, name := range m.ui.envs {
+		if name == m.envName {
+			label = m.envName
+		}
 	}
-	envButton := ui.Button(c, "环境 "+label).Icon(IconGlobe).Outline().Weight(gfx.WeightRegular).Tooltip("切换环境")
+	text := label
+	if len(m.ui.envs) > 0 {
+		text = "环境 " + label
+	}
+	envButton := ui.Button(c, text).Icon(IconGlobe).Outline().Weight(gfx.WeightRegular).Tooltip("切换环境")
+	if len(m.ui.envs) == 0 {
+		// 没有环境时也留着这个控件：它还是「去建一个」的入口，只把文字置灰。
+		envButton = envButton.Muted()
+	}
 	if envButton.Clicked() {
 		c.After(func() { m.envMenuOpen = !m.envMenuOpen })
 	}
@@ -356,7 +364,7 @@ func (m *Model) envPicker(c ui.C) {
 				}
 			}
 			menu.Separator()
-			if menu.Item("环境设置…").Icon(IconSliders).Clicked() {
+			if menu.Item("环境设置…").Icon(IconGear).Clicked() {
 				c.After(func() { m.openEnvEditorFor(m.envName) })
 			}
 		})
@@ -381,7 +389,7 @@ func (m *Model) sidebar(c ui.C) {
 			if ui.Button(c, "导入 cURL").Icon(IconImport).Outline().IconOnly().Tooltip("导入 cURL").Clicked() {
 				m.openCurlImport("")
 			}
-			sortBtn := ui.Button(c, "排序").Icon(IconSliders).Outline().IconOnly().
+			sortBtn := ui.Button(c, "排序").Icon(IconSort).Outline().IconOnly().
 				Tooltip("排序：" + sortLabel(m.sortMode))
 			if sortBtn.Clicked() {
 				m.sortMenuOpen = !m.sortMenuOpen

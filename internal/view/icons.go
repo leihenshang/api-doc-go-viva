@@ -519,3 +519,52 @@ var IconInfo = gfx.Icon{
 		gfx.LineTo(12.0, 16.21),
 	},
 }
+
+// icon-gear is a compiled vector icon.
+var IconGear = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(12.0, 2.0),
+		gfx.LineTo(15.0, 4.7),
+		gfx.LineTo(19.1, 4.9),
+		gfx.LineTo(19.3, 9.0),
+		gfx.LineTo(22.0, 12.0),
+		gfx.LineTo(19.3, 15.0),
+		gfx.LineTo(19.1, 19.1),
+		gfx.LineTo(15.0, 19.3),
+		gfx.LineTo(12.0, 22.0),
+		gfx.LineTo(9.0, 19.3),
+		gfx.LineTo(4.9, 19.1),
+		gfx.LineTo(4.7, 15.0),
+		gfx.LineTo(2.0, 12.0),
+		gfx.LineTo(4.7, 9.0),
+		gfx.LineTo(4.9, 4.9),
+		gfx.LineTo(9.0, 4.7),
+		gfx.ClosePath(),
+		gfx.MoveTo(15.4, 12.0),
+		gfx.CubicTo(15.4, 13.9, 13.9, 15.4, 12.0, 15.4),
+		gfx.CubicTo(10.1, 15.4, 8.6, 13.9, 8.6, 12.0),
+		gfx.CubicTo(8.6, 10.1, 10.1, 8.6, 12.0, 8.6),
+		gfx.CubicTo(13.9, 8.6, 15.4, 10.1, 15.4, 12.0),
+		gfx.ClosePath(),
+	},
+}
+
+// icon-sort is a compiled vector icon.
+var IconSort = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(4.0, 6.0),
+		gfx.LineTo(20.0, 6.0),
+		gfx.MoveTo(4.0, 12.0),
+		gfx.LineTo(14.0, 12.0),
+		gfx.MoveTo(4.0, 18.0),
+		gfx.LineTo(9.0, 18.0),
+	},
+}

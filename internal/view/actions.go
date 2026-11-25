@@ -97,11 +97,17 @@ func (m *Model) applyTheme() {
 		m.theme.Primary = accentLight
 		m.theme.Selection = ui.RGB(0xe8, 0xf5, 0xee) // --app-accent-tint
 		m.theme.SelectionForeground = ui.RGB(0x20, 0x21, 0x24)
+		// 与 Wails 版（--app-text: #202124）对齐：默认前景接近纯黑，看着又粗又黑。
+		m.theme.Foreground = ui.RGB(0x20, 0x21, 0x24)
+		m.theme.CardForeground = m.theme.Foreground
 	} else {
 		m.theme = ui.DarkTheme()
 		m.theme.Primary = accentDark
 		m.theme.Selection = ui.RGBA(0x36, 0xad, 0x6a, 0.4) // --app-selection
 		m.theme.SelectionForeground = ui.RGB(0xfa, 0xfa, 0xfa)
+		// 同上：深色也用 Wails 的 #e6e7e9，比纯白柔和。
+		m.theme.Foreground = ui.RGB(0xe6, 0xe7, 0xe9)
+		m.theme.CardForeground = m.theme.Foreground
 	}
 	m.theme.Metrics = scaleMetrics(m.theme.Metrics)
 	m.theme.PrimaryForeground = accentText
@@ -1384,6 +1390,7 @@ func (m *Model) applyEnv(name string) {
 func (m *Model) refreshEnvs() {
 	if m.col.Dir == "" {
 		m.ui.envs = nil
+		m.syncEnvName()
 		return
 	}
 	names, err := explorer.ListEnvs(m.col.Dir)
@@ -1392,6 +1399,26 @@ func (m *Model) refreshEnvs() {
 		return
 	}
 	m.ui.envs = names
+}
+
+// syncEnvName 让「当前环境」始终属于刚刷新的这份列表。
+//
+// 删光环境、或者切到一个没有同名环境的集合之后，旧名字不该还挂着：
+// 留着会让按钮显示别处的环境名，发送时还会拿旧变量去替换。
+func (m *Model) syncEnvName() {
+	if m.envName == "" {
+		return
+	}
+	for _, name := range m.ui.envs {
+		if name == m.envName {
+			return
+		}
+	}
+	next := ""
+	if len(m.ui.envs) > 0 {
+		next = m.ui.envs[0]
+	}
+	m.applyEnv(next)
 }
 
 // openEnvEditor 打开环境变量弹窗：默认编辑当前环境。

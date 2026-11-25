@@ -63,12 +63,12 @@ func (m *Model) statusActions(c ui.C) {
 	if n := len(send.Cookies()); n > 0 {
 		cookieHint = fmt.Sprintf("Cookie Jar 里有 %d 条", n)
 	}
-	if ui.Button(c, "Cookie").Icon(IconCookie).Ghost().XSmall().Tooltip(cookieHint).Clicked() {
+	if ui.Button(c, "Cookie").Icon(IconCookie).Ghost().XSmall().Weight(gfx.WeightRegular).Tooltip(cookieHint).Clicked() {
 		m.openCookies()
 	}
 
 	label, hint := m.mcpLabel()
-	mcp := ui.Button(c, "MCP").Icon(IconCode).Ghost().XSmall().Tooltip(hint)
+	mcp := ui.Button(c, "MCP").Icon(IconCode).Ghost().XSmall().Weight(gfx.WeightRegular).Tooltip(hint)
 	if !hasCollection {
 		mcp.Disabled(true)
 	}
@@ -83,7 +83,7 @@ func (m *Model) statusActions(c ui.C) {
 	}
 	ui.Slot(c).Width(px(6)).Height(px(6)).Radius(px(3)).Background(dot).Hit(ui.ID(c), label)
 
-	if ui.Button(c, "设置").Icon(IconSliders).Ghost().XSmall().Tooltip("打开设置").Clicked() {
+	if ui.Button(c, "设置").Icon(IconGear).Ghost().XSmall().Weight(gfx.WeightRegular).Tooltip("打开设置").Clicked() {
 		m.openSettings()
 	}
 }

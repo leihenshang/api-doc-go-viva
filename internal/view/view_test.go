@@ -4101,3 +4101,17 @@ func TestMCPConfigShown(t *testing.T) {
 		t.Fatalf("MCP 设置里应展示配置 JSON：%v", painted(driver))
 	}
 }
+
+// TestEnvPickerWithoutEnvs 集合没有环境时，顶栏仍留着下拉，文字是「无环境」。
+func TestEnvPickerWithoutEnvs(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	pump(t, driver)
+	if !hasControl(driver, "无环境") {
+		t.Fatalf("无环境时也该有下拉：%v", painted(driver))
+	}
+}

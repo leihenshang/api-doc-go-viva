@@ -3,6 +3,7 @@ package view
 import (
 	"strconv"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -18,20 +19,20 @@ func (m *Model) overviewPage(c ui.C) {
 			m.statCard(c, "存储格式", "纯文本 YAML")
 		})
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
-			if ui.Button(c, "新建请求").Icon(IconPlus).Clicked() {
+			if ui.Button(c, "新建请求").Icon(IconPlus).Weight(gfx.WeightRegular).Clicked() {
 				m.openNewRequest()
 			}
-			if ui.Button(c, "新建文档").Icon(IconFilePlus).Secondary().Clicked() {
+			if ui.Button(c, "新建文档").Icon(IconFilePlus).Secondary().Weight(gfx.WeightRegular).Clicked() {
 				c.After(m.createDoc)
 			}
-			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Secondary().Clicked() {
+			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Secondary().Weight(gfx.WeightRegular).Clicked() {
 				c.After(m.chooseCollection)
 			}
-			if ui.Button(c, "公共参数").Icon(IconSliders).Secondary().
+			if ui.Button(c, "公共参数").Icon(IconGear).Secondary().Weight(gfx.WeightRegular).
 				Tooltip("集合级默认请求头与认证").Clicked() {
 				c.After(m.openDefaults)
 			}
-			if ui.Button(c, "设置").Icon(IconSliders).Secondary().Clicked() {
+			if ui.Button(c, "设置").Icon(IconGear).Secondary().Weight(gfx.WeightRegular).Clicked() {
 				m.openSettings()
 			}
 		})
