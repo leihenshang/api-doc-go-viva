@@ -54,7 +54,7 @@ func hover(t *testing.T, driver *app.Driver, label string) {
 	t.Fatalf("画面上没有可悬停的 %q：%v", label, painted(driver))
 }
 
-// TestVarTipURL 指针停在地址栏上，提示里给出 {{host}} 在当前环境的取值。
+// TestVarTipURL 指针停在地址栏的 {{host}} 上，提示里给出它在当前环境的取值。
 func TestVarTipURL(t *testing.T) {
 	dir := writeVarCollection(t, "{{host}}/healthz", "")
 	col, err := explorer.Load(dir)
@@ -67,7 +67,7 @@ func TestVarTipURL(t *testing.T) {
 	model.invalidator.Invalidate()
 	pump(t, driver)
 
-	hover(t, driver, "地址")
+	hoverFieldVar(t, driver, hitBoundsOf(t, driver, "地址"))
 	if !shows(driver, "host = http://127.0.0.1:8080") {
 		t.Fatalf("地址栏悬停应显示变量取值：%v", painted(driver))
 	}
@@ -86,13 +86,13 @@ func TestVarTipUndefined(t *testing.T) {
 	model.invalidator.Invalidate()
 	pump(t, driver)
 
-	hover(t, driver, "地址")
+	hoverFieldVar(t, driver, hitBoundsOf(t, driver, "地址"))
 	if !shows(driver, "host = 未定义") {
 		t.Fatalf("没定义的变量应提示未定义：%v", painted(driver))
 	}
 }
 
-// TestVarTipHeaderRow 请求头的值也能悬停：切到请求头页签后停在值上。
+// TestVarTipHeaderRow 请求头的值也能悬停：切到请求头页签后停在 {{token}} 上。
 func TestVarTipHeaderRow(t *testing.T) {
 	dir := writeVarCollection(t, "http://127.0.0.1:8080/healthz", "{{token}}")
 	col, err := explorer.Load(dir)
@@ -107,7 +107,7 @@ func TestVarTipHeaderRow(t *testing.T) {
 
 	click(t, driver, "请求头")
 	pump(t, driver)
-	hover(t, driver, "值")
+	hoverFieldVar(t, driver, hitBoundsOf(t, driver, "值"))
 	if !shows(driver, "token = s3cret") {
 		t.Fatalf("请求头的值悬停应显示变量取值：%v", painted(driver))
 	}
@@ -142,8 +142,20 @@ func tipRect(driver *app.Driver, want string) (gfx.Rect, bool) {
 	return gfx.Rect{}, false
 }
 
-// TestVarTipFollowsText 提示跟着变量走：停在 {{host}} 上时贴在左边，
-// 停在同一条框的空白处时退回整框居中。
+// hoverFieldVar 把指针移到输入框里第一个变量的位置：文字从左边起算，
+// 首个 {{变量}} 落在框左端的几十像素内。
+func hoverFieldVar(t *testing.T, driver *app.Driver, box gfx.Rect) {
+	t.Helper()
+	if err := driver.Move(box.X+20, box.Y+box.Height/2); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if err := driver.Advance(600 * time.Millisecond); err != nil {
+		t.Fatalf("Advance: %v", err)
+	}
+}
+
+// TestVarTipFollowsText 提示只跟着变量走：停在 {{host}} 上时贴在左边，
+// 停在同一条框的空白处一个提示都不弹。
 func TestVarTipFollowsText(t *testing.T) {
 	dir := writeVarCollection(t, "{{host}}/api/users", "")
 	col, err := explorer.Load(dir)
@@ -175,20 +187,16 @@ func TestVarTipFollowsText(t *testing.T) {
 			center, field.X, field.X+field.Width)
 	}
 
-	// 2) 停在同一条框的空白处：退回整框提示，居中在框下。
+	// 2) 停在同一条框的空白处：不该有任何提示。
 	if err := driver.Move(field.X+field.Width-40, middle); err != nil {
 		t.Fatalf("Move: %v", err)
 	}
 	if err := driver.Advance(600 * time.Millisecond); err != nil {
 		t.Fatalf("Advance: %v", err)
 	}
-	onBlank, ok := tipRect(driver, "host = ")
-	if !ok {
-		t.Fatalf("整框提示没有出现：%v", painted(driver))
-	}
-	center := onBlank.X + onBlank.Width/2
-	if want := field.X + field.Width/2; center < want-40 || center > want+40 {
-		t.Fatalf("整框提示应居中在 %.0f 附近，实际 %.0f", want, center)
+	if blank, ok := tipRect(driver, "host = "); ok {
+		t.Fatalf("空白处不该弹提示，实际画在 (%.0f,%.0f %.0fx%.0f)",
+			blank.X, blank.Y, blank.Width, blank.Height)
 	}
 }
 
@@ -237,5 +245,22 @@ func TestVarHotzoneKeepsEditing(t *testing.T) {
 	}
 	if !strings.Contains(model.req.url, "Z") {
 		t.Fatalf("地址里没有刚输入的字符：%q", model.req.url)
+	}
+
+	// 框里空白处被一条无声热区盖着（用来挡提示），按下同样要落进地址栏。
+	if err := driver.Click(field.X+field.Width-40, field.Y+field.Height/2); err != nil {
+		t.Fatalf("Click: %v", err)
+	}
+	if err := driver.Pump(); err != nil {
+		t.Fatalf("Pump: %v", err)
+	}
+	if err := driver.Type("Y"); err != nil {
+		t.Fatalf("Type: %v", err)
+	}
+	if err := driver.Pump(); err != nil {
+		t.Fatalf("Pump: %v", err)
+	}
+	if !strings.Contains(model.req.url, "Y") {
+		t.Fatalf("空白处按下后打字没进地址栏：%q", model.req.url)
 	}
 }

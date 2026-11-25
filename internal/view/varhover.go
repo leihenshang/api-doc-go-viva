@@ -17,8 +17,9 @@ import (
 //	d.Canvas.HintSince(mark, fieldID, 提示文字)       // 给这条热区补 Hint，提示仍由框架画
 //
 // 提示的锚点就是热区的矩形，所以落在变量那一小段上；按下仍是输入框的按下，
-// 光标定位与打字都不受影响。输入框自己还挂一条整框的 Tooltip：HasTooltip 认的是
-// 节点而不是热区，而且指针不在变量上时由它兜底。
+// 光标定位与打字都不受影响。输入框自己还挂一条 Tooltip：HasTooltip 认的是节点而不是
+// 热区，不挂的话 paintTooltip 直接返回；但那条提示永远不显示——指针在框里别的位置时，
+// 我们压一条不带 Hint 的标签热区把它盖掉（同一个 ID 取最上层那条热区）。
 //
 // 三处边界：
 //   - 布局在绘制期才定：声明当场 Box.Rect() 还是零，所以几何一律在 Slot.Draw 里算；
@@ -119,14 +120,15 @@ func (m *Model) varTipBox(box ui.Box, texts ...string) ui.Box {
 	return box
 }
 
-// varTipField 给单行输入框挂提示：整框一条兜底，指针落到某个变量上时
-// 再把提示挪到那一小段文字上（见 page.go 末尾那一个 Slot）。
+// varTipField 给单行输入框挂提示：提示只在指针落到某个 {{变量}} 上时出现
+// （由 page.go 末尾那一个 Slot 声明热区）。
 func (m *Model) varTipField(field ui.Box, text string) ui.Box {
 	tip := m.varTip(text)
 	if tip == "" {
 		return field
 	}
 	m.hover.fields = append(m.hover.fields, varField{id: field.N().ID, text: text, tip: tip})
+	// 这条 Tooltip 只为满足 HasTooltip（它认节点不认热区），显示与否由热区决定。
 	return field.Tooltip(tip)
 }
 
@@ -138,8 +140,9 @@ func (m *Model) varHotzones(c ui.C) {
 	ui.Slot(c).Absolute().Left(0).Top(0).Size(1, 1).Draw(m.paintVarHotzones)
 }
 
-// paintVarHotzones 逐个登记过的输入框量位置，指针落在某个 {{变量}} 上时给那一小段声明热区。
-// 指针不在变量上就什么都不声明——否则会盖住整框的兜底提示（同一 ID 取最后一条热区）。
+// paintVarHotzones 逐个登记过的输入框量位置：指针落在某个 {{变量}} 上时才弹提示，
+// 落在框里的其他地方一律压一条不带 Hint 的标签热区，把整框那条兜底提示挡掉——
+// paintTooltip 取的是同一个 ID 最上层那条热区，空 Hint 就等于「这条不弹」。
 func (m *Model) paintVarHotzones(d *ui.DrawContext) {
 	canvas := d.Canvas
 	for _, field := range m.hover.fields {
@@ -153,36 +156,39 @@ func (m *Model) paintVarHotzones(d *ui.DrawContext) {
 			m.hover.y < box.Y || m.hover.y >= box.Y+box.Height {
 			continue
 		}
-		m.paintVarHotzone(d, field, box)
+		if hot, ok := m.variableRect(canvas, field, box); ok {
+			mark := canvas.Mark()
+			canvas.HitLabel(field.id, hot, "", false)
+			canvas.HintSince(mark, field.id, field.tip)
+			continue
+		}
+		// 不在变量上：1×1 的无声热区，只为了盖住字段自己的那条提示。
+		// 用标签语义声明，按下仍然按字段的点击处理，光标定位不受影响。
+		canvas.HitLabel(field.id, gfx.Rect{X: m.hover.x, Y: m.hover.y, Width: 1, Height: 1}, "", false)
 	}
 }
 
-// paintVarHotzone 算出指针底下那个变量占的矩形，并把它声明成字段的标签热区。
-func (m *Model) paintVarHotzone(d *ui.DrawContext, field varField, box gfx.Rect) {
-	canvas := d.Canvas
+// variableRect 是指针底下那个 {{变量}} 在屏幕上的矩形；指针不在变量上返回 false。
+func (m *Model) variableRect(canvas *gfx.Canvas, field varField, box gfx.Rect) (gfx.Rect, bool) {
 	origin, style, ok := paintedFieldText(canvas, box, field.text)
 	if !ok {
-		return
+		return gfx.Rect{}, false
 	}
 	// 聚焦且文字超宽：平台在横向滚动，canvas 上的文本却留在原位，算出来会漂。
 	if canvas.Focused() == field.id && canvas.TextWidthStyle(field.text, style) > origin.Width {
-		return
+		return gfx.Rect{}, false
 	}
 	if m.hover.y < origin.Y || m.hover.y >= origin.Y+origin.Height {
-		return
+		return gfx.Rect{}, false
 	}
 	for _, placeholder := range send.Placeholders(field.text) {
 		x0 := origin.X + canvas.TextWidthStyle(field.text[:placeholder.Start], style)
 		x1 := x0 + canvas.TextWidthStyle(field.text[placeholder.Start:placeholder.End], style)
-		if m.hover.x < x0 || m.hover.x >= x1 {
-			continue
+		if m.hover.x >= x0 && m.hover.x < x1 {
+			return gfx.Rect{X: x0, Y: origin.Y, Width: x1 - x0, Height: origin.Height}, true
 		}
-		hot := gfx.Rect{X: x0, Y: origin.Y, Width: x1 - x0, Height: origin.Height}
-		mark := canvas.Mark()
-		canvas.HitLabel(field.id, hot, "", false)
-		canvas.HintSince(mark, field.id, field.tip)
-		return
 	}
+	return gfx.Rect{}, false
 }
 
 // hitRect 是某个控件这一帧的命中矩形（标签热区不算）。
