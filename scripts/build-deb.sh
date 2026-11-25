@@ -134,6 +134,11 @@ done
 if [[ -f README.md ]]; then
 	install -m 0644 README.md "$STAGE/usr/share/doc/$PKG_NAME/README.md"
 fi
+# README 只是入口，细节都在 doc/：一并装进去，离线也能查。
+if [[ -d doc ]]; then
+	mkdir -p "$STAGE/usr/share/doc/$PKG_NAME/doc"
+	install -m 0644 doc/*.md "$STAGE/usr/share/doc/$PKG_NAME/doc/"
+fi
 
 INSTALLED_SIZE="$(du -sk --exclude=DEBIAN "$STAGE" | cut -f1)"
 
