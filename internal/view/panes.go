@@ -9,7 +9,6 @@ import (
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
-	"github.com/vivaui/viva/ui/codeeditor"
 )
 
 // requestTitle 是请求标题行：方法角标、名称、脏状态与「复制 cURL」；
@@ -469,7 +468,7 @@ func (m *Model) docsPreview(c ui.C) {
 			ui.Text(c, "（还没有文档，点击这里开始写）").FontSize(fs(12)).Muted()
 			return
 		}
-		m.previewBlock(c, m.req.docs, m.tables.docsKey, m.paneWidth(c))
+		m.previewBlock(c, m.req.docs, m.tables.docsKey, docBase(m.req.file), m.paneWidth(c))
 	})
 	if area.Clicked() {
 		c.After(func() { m.docsEditing = true })
@@ -777,6 +776,12 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 	if ui.Shortcut(c, ui.Primary, "s") {
 		c.After(m.saveDoc)
 	}
+	// 源码区拿着焦点时接管粘贴：剪贴板里是截图就存成 assets 里的图，
+	// 否则按文本插入（见 docimage.go）。只管这一个控件，别抢别的输入框。
+	if m.ui.docSplit && !m.docCodeID.IsZero() && c.Canvas().Focused() == m.docCodeID &&
+		ui.Shortcut(c, ui.Primary, "v") {
+		c.After(m.pasteDocClipboard)
+	}
 	dirty := m.docDirty()
 	ui.Column(c).Fill().Pad(px(20)).Gap(px(12)).Children(func() {
 		ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
@@ -784,6 +789,9 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 			ui.Text(c, entry.Name).FontSize(fs(18)).Bold()
 			ui.Spacer(c)
 			switch {
+			case dirty && m.editor.status != "":
+				// 有改动时也要能看到「已插入图片」这类提示，不能只显示「未保存」。
+				ui.Text(c, m.editor.status+" · 未保存").FontSize(fs(11)).Color(c.Theme().Danger)
 			case dirty:
 				ui.Text(c, "未保存").FontSize(fs(11)).Color(c.Theme().Danger)
 			case m.editor.status != "":
@@ -823,12 +831,17 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 
 // docSourcePane 是源码编辑栏：用 viva 的 codeeditor——行号栏、当前行高亮、
 // 选区与滚动条都由组件自带；正文真源仍是 m.editor.text（见 docode.go）。
+//
+// 这里没有用 ui/codeeditor.View 的 wrapper，而是自己声明控件、自己调
+// components.CodeEditor.Paint，原因是 wrapper 的控件命中会把文本框的角色抢在你前面：
+// 它先以 RoleTextField 声明了一个**没有文本几何**的命中（Multiline=false、
+// Placement=nil），而 interaction.TextInputHit 取的是「第一个 RoleTextField 命中」。
+// 于是平台文本层把这份多行 Markdown 当单行：按下只按 x 换算插入符（点哪都跑到开头几行）、
+// 还会把整篇的第一行另画一遍。把控件的角色让成 RoleGroup，命中里就只剩组件自己那一个
+// （Multiline=true、Placement=CodeEditor），平台既不抢指针、也不抢插入符。
 func (m *Model) docSourcePane(c ui.C) {
-	doc := m.docCodeDocument()
+	m.docCodeDocument()
 	ui.Column(c).Grow(1).FillHeight().Children(func() {
-		m.docCode.Document = doc
-		m.docCode.Key = m.docCodeKey
-		m.docCode.Text = m.docCodeInput
 		snap := &m.docCode.Snapshot
 		snap.Placeholder = "在此编写 Markdown…"
 		snap.LineNumbers = true
@@ -837,11 +850,45 @@ func (m *Model) docSourcePane(c ui.C) {
 		snap.Wrap = true
 		snap.ShowCaret = true
 		snap.TabWidth = 4
-		// 占位：wrapper 在绘制时换成组件自己的滚动条身份（parts.At(0)）。
+		// 占位：docCodeDraw 在绘制时换成组件自己的滚动条身份（parts.At(0)）。
 		snap.ScrollbarID = gfx.Item(1)
-		codeeditor.View(c, "文档内容", &m.docCode).Fill()
+		// 角色是 RoleGroup：文本服务由页面级 TextInput 按控件身份回答（见 model.config）。
+		m.docHandlers.Role = gfx.RoleGroup
+		m.docHandlers.Key = m.docCodeKey
+		m.docHandlers.Pointer = m.docCodePointer
+		m.docCodeID = ui.Control(c, "文档内容", &m.docHandlers).Fill().Draw(m.docCodeDraw).N().ID
 		m.syncDocTextFromCode()
 	})
+}
+
+// docCodeDraw 把正文与光标交给 components.CodeEditor 画：这一步本来在
+// ui/codeeditor 的 wrapper 里做（它从 d.Node 取身份、把滚动条换成 Part 身份）。
+func (m *Model) docCodeDraw(d *ui.DrawContext) {
+	snap := m.docCode.Snapshot
+	if m.docText != nil {
+		snap.Value = m.docText.String()
+		snap.Caret = m.docText.ByteOffset(m.docText.Caret())
+		selection := m.docText.Selection()
+		snap.SelectionStart = m.docText.ByteOffset(selection.Start)
+		snap.SelectionEnd = m.docText.ByteOffset(selection.End)
+		snap.CompositionStart, snap.CompositionEnd = 0, 0
+		if composition, ok := m.docText.Composition(); ok {
+			snap.CompositionStart = m.docText.ByteOffset(composition.Start)
+			snap.CompositionEnd = m.docText.ByteOffset(composition.End)
+		}
+	}
+	// 记下编辑器的实拍矩形：平台文本层要按它裁剪自己那一份文字（见 docCodeInput）。
+	m.docCodeRect = d.Rect
+	snap.ID = d.Node.ID
+	snap.Label = d.Label
+	parts := m.docHandlers.Parts()
+	if !snap.ScrollbarID.IsZero() {
+		snap.ScrollbarID = parts.At(0)
+	}
+	if !snap.HorizontalScrollbarID.IsZero() {
+		snap.HorizontalScrollbarID = parts.At(1)
+	}
+	m.docCode.Code.Paint(d.Canvas, *d.Theme, d.Rect, snap)
 }
 
 // docPreviewPane 是预览栏：卡片外框 + 可滚动正文。
@@ -852,14 +899,15 @@ func (m *Model) docPreviewPane(c ui.C, textWidth float32) {
 			return
 		}
 		ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
-			m.previewBlock(c, m.editor.text, m.editor.previewKey, textWidth)
+			m.previewBlock(c, m.editor.text, m.editor.previewKey, docBase(m.editor.file), textWidth)
 		})
 	})
 }
 
 // previewBlock 把一段 Markdown 排好版画进当前布局（不加滚动容器，由调用方决定）。
-func (m *Model) previewBlock(c ui.C, source, key string, width float32) {
-	height := m.previewHeight(c, key, source, width)
+// base 是源文本所在目录：图片的相对路径按它解析。
+func (m *Model) previewBlock(c ui.C, source, key, base string, width float32) {
+	height := m.previewHeight(c, key, source, base, width)
 	ui.Slot(c).FillWidth().Height(height).Draw(func(d *ui.DrawContext) {
 		m.docs.view.Paint(d.Canvas, components.MarkdownPaint{
 			Look: m.docs.look,

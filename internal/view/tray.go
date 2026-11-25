@@ -35,7 +35,7 @@ type statusItem interface {
 //
 // 顺序很重要：先确认托盘真的挂上了，再允许「关到托盘」；反过来会丢窗口。
 func (m *Model) installTray(application *app.Application) {
-	if application == nil {
+	if application == nil || m.trayItem != nil {
 		return
 	}
 	item, err := application.AddStatusItem(app.StatusItemConfig{
@@ -147,6 +147,15 @@ func (m *Model) quitApp() {
 // 三个条件缺一不可：用户选了「关到托盘」、托盘真的挂上了、窗口还在。
 func (m *Model) shouldHideOnClose() bool {
 	return m.ui.closeToTray && m.trayEnabled && m.trayItem != nil && m.window != nil
+}
+
+// removeTray 卸掉托盘图标：关掉「关到托盘」后托盘区不该留图标。
+func (m *Model) removeTray() {
+	if m.trayItem != nil {
+		m.trayItem.Remove()
+	}
+	m.trayItem, m.trayEnabled = nil, false
+	m.trayNote = ""
 }
 
 // trayHint 是设置面板里那一行说明：托盘可用性要说清楚，不能让人猜。

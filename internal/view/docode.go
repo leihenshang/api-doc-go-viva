@@ -88,11 +88,52 @@ func (m *Model) docCodeKey(event gfx.KeyEvent) gfx.EventResult {
 	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
+// docCodePointer 只把组件自己的滚动条拖动交给它。
+//
+// 文本区的按下不用在这里换算：组件声明了 Placement，框架的 placeCaret 会按
+// Code.OffsetAt 落插入符（双击选词、三击选行、拖动拉选区都是它做的）。
+// 前提是控件命中里的文本几何能被平台选到——见 docSourcePane 的注释。
+func (m *Model) docCodePointer(event gfx.PointerEvent) gfx.EventResult {
+	return m.docCode.Code.Pointer(event)
+}
+
+// docTextService 回答文档源码区的文本服务。
+//
+// 控件本身声明为 RoleGroup（见 docSourcePane），ui.Configure 只把控件级
+// handlers.Text 交给 RoleTextField / RoleTerminal，所以这里要在页面级回答。
+// 其它身份一律返回 nil：它们要么是 ui.TextField（自己带 Text），要么不该有。
+func (m *Model) docTextService(context window.TextInputContext) *window.TextInput {
+	if m.docCodeID.IsZero() || context.ID != m.docCodeID {
+		return nil
+	}
+	return m.docCodeInput(context)
+}
+
 // docCodeInput 把平台的文本服务接到 text.Editor 上：打字、输入法组合、粘贴
 // 都写进同一份模型；插入符与选区由 codeeditor 自己画，所以隐藏原生浮层。
+//
+// 交出的必须是 Editor 而不是 State + OnEvent：State 提供者拿不到 painter 的收尾
+// （组合、撤销组都归应用自己管）。
+//
+// 另外两个字段是为平台文本层的副作用准备的：它除了收字，还会自己把「光标所在行」
+// 再画一遍（text_input_linux.go 的 rebuild：Value 取 TextLine，Origin 取输入域原点，
+// 并且裁到输入域矩形里），而 codeeditor 已经把每个字形画过一遍，叠起来就是压在
+// 正文上的灰白一层。
+//
+//   - Bounds 缩成编辑器右下角 1×1：那块裁剪矩形跟着缩成 1 像素，画出来的字就看不见了。
+//     插入符位置和输入法候选窗走的是 Placed 的 CaretX/CaretY（见 painter 的
+//     HitPresenceRect / placement.CaretBounds），不依赖这里。
+//   - Color 给面板底色：万一某个后端不认 Clip，画的也是底色而不是黑字。
 func (m *Model) docCodeInput(window.TextInputContext) *window.TextInput {
 	if m.docText == nil {
 		return nil
 	}
-	return &window.TextInput{Editor: m.docText, HideNativeOverlays: true}
+	input := &window.TextInput{Editor: m.docText, HideNativeOverlays: true, Color: m.pal.panel}
+	if bounds := m.docCodeRect; bounds.Width > 1 && bounds.Height > 1 {
+		input.Bounds = gfx.Rect{
+			X: bounds.X + bounds.Width - 1, Y: bounds.Y + bounds.Height - 1,
+			Width: 1, Height: 1,
+		}
+	}
+	return input
 }

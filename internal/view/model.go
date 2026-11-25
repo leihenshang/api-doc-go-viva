@@ -82,6 +82,7 @@ func tabLabel(tab detailTab) string {
 type docState struct {
 	key    string
 	source string
+	base   string // 源文本所在目录（相对集合根），图片按它解析相对路径
 	width  float32
 	height float32
 	doc    markdown.Document
@@ -548,13 +549,22 @@ type Model struct {
 	// docsEditing 是请求「文档」分段是否处于编辑态：默认预览，点一下才编辑（按标签记忆）。
 	docsEditing bool
 
-	docs   docState
-	editor docEditor
+	docs docState
+	// 文档预览用到的图片：按路径缓存解码结果（见 docimage.go）。
+	docImages map[string]docImageEntry
+	// 文档源码区的控件身份：Ctrl/Cmd+V 只在它拿着焦点时接管（见 docimage.go）。
+	docCodeID gfx.ID
+	editor    docEditor
 	// 文档源码区的代码编辑器（行号 + 当前行高亮）；正文真源仍是 m.editor.text。
 	docCode     codeeditor.Editor
 	docText     *text.Editor
 	docCodeFile string
 	docMirror   string
+	// docHandlers 是源码区自己声明的控件（按键、指针、身份）；不用
+	// ui/codeeditor.View 的 wrapper，原因见 docSourcePane。
+	docHandlers ui.Handlers
+	// docCodeRect 是源码区上一帧的实拍矩形（平台文本层按它裁剪，见 docCodeInput）。
+	docCodeRect gfx.Rect
 	drafts      map[string]string
 	req         requestDraft
 	scratch     bool // 当前标签是不是未落盘的临时请求
@@ -735,6 +745,8 @@ func (m *Model) windowConfig() app.Config {
 		OnWake:         m.collect,
 		// 变量悬停要知道指针在哪：输入框自己不会把移动事件交出来（见 varhover.go）。
 		OnPointer: m.trackPointer,
+		// 文档源码区的控件是 RoleGroup（见 docSourcePane），页面级 provider 才会被问到。
+		TextInput: m.docTextService,
 		// 任务栏 / Alt+Tab 的图标：与托盘同一张画，画在代码里，少一份资源文件。
 		Icon: appIcon(256),
 		// 关到托盘：不调 allow 就等于「窗口不关」；托盘没挂上时照常关。
@@ -775,7 +787,9 @@ func (m *Model) Run() error {
 			return err
 		}
 		m.window = window
-		m.installTray(application)
+		if m.ui.closeToTray {
+			m.installTray(application)
+		}
 		return nil
 	})
 }
@@ -1274,16 +1288,22 @@ func (m *Model) showOutcome(out send.Outcome) {
 	}
 }
 
-// previewHeight 返回一段 Markdown 在 width 下的高度；源文本或宽度变了才重新排版。
-func (m *Model) previewHeight(c ui.C, key, source string, width float32) float32 {
+// previewHeight 返回一段 Markdown 在 width 下的高度；源文本、目录或宽度变了才重新排版。
+//
+// base 是这段文本所在目录（相对集合根）：图片按它解析相对路径，所以它也是缓存键的一部分。
+func (m *Model) previewHeight(c ui.C, key, source, base string, width float32) float32 {
 	width = max(width, 80)
-	if m.docs.key == key && m.docs.source == source && m.docs.width == width {
+	if m.docs.key == key && m.docs.source == source && m.docs.base == base && m.docs.width == width {
 		return m.docs.height
 	}
-	m.docs.key, m.docs.source, m.docs.width = key, source, width
+	m.docs.key, m.docs.source, m.docs.base, m.docs.width = key, source, base, width
 	m.docs.doc.Parse(source)
 	m.docs.height = m.docs.view.Layout(c.Canvas(), components.MarkdownStyle{
 		Size: m.theme.Metrics.FontSizeM - 1,
+		// 图片由应用解析文件，视图自己从不读盘（见 docimage.go）。
+		Image: func(destination string) (gfx.Bitmap, bool) {
+			return m.docImage(base, destination)
+		},
 	}, &m.docs.doc, width)
 	return m.docs.height
 }

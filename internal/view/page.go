@@ -130,6 +130,7 @@ func (m *Model) toolbar(c ui.C) {
 		ui.Row(c).Grow(1).Height(titlebarHeight).PadLeft(6).PadRight(trailing + 12).Gap(px(8)).Items(ui.Center).Children(func() {
 			m.collectionPicker(c)
 			m.envPicker(c)
+			m.searchBox(c)
 			ui.Spacer(c)
 			m.splitToggle(c)
 			m.themeToggle(c)
@@ -192,6 +193,22 @@ func (m *Model) iconToggle(c ui.C, icon gfx.Icon, label string, active bool, onC
 			glyph.StateFrom(box).Hover(ui.Look{}.Color(m.theme.Foreground))
 		}
 	})
+}
+
+// searchBox 是顶栏的全局搜索入口
+func (m *Model) searchBox(c ui.C) {
+	box := ui.Row(c).Height(px(28)).Width(px(240)).Shrink(0).
+		PadX(px(8)).Gap(px(6)).Items(ui.Center).Border(1, m.pal.border).Radius(px(6)).Background(m.pal.panel).
+		Transition().Hover(ui.Look{}.Background(m.pal.hover)).Hit(ui.ID(c), "全局搜索")
+	box.Children(func() {
+		ui.Icon(c, IconSearch).Size(px(14), px(14)).Color(m.theme.MutedForeground)
+		ui.Text(c, "搜索请求、命令…").FontSize(fs(12)).Color(m.theme.MutedForeground)
+		ui.Spacer(c)
+		ui.Text(c, primaryName()+" K").FontSize(fs(10)).Mono().Color(m.theme.MutedForeground)
+	})
+	if box.Clicked() {
+		c.After(m.openPalette)
+	}
 }
 
 // collectionPicker 是集合切换下拉：已打开的集合根、打开另一个集合、关闭当前集合。

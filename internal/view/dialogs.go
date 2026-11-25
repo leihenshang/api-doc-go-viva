@@ -299,7 +299,14 @@ func (m *Model) settingsAppearance(c ui.C) {
 	})
 	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "关闭窗口")
-		ui.Switch(c, &m.ui.closeToTray, "关闭窗口时收到托盘").Changed()
+		if ui.Switch(c, &m.ui.closeToTray, "关闭窗口时收到托盘").Changed() {
+			// 开关就是图标的开关：关掉时把托盘图标摘掉，不留一个点不开的图标。
+			if m.ui.closeToTray {
+				m.installTray(m.app)
+			} else {
+				m.removeTray()
+			}
+		}
 		ui.Spacer(c)
 		hintTip(c, "开着时点关闭只把窗口收到托盘，进程继续跑；托盘不可用的桌面会自动退回「关窗即退出」。")
 	})
