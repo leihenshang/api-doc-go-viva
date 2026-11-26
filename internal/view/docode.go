@@ -109,6 +109,12 @@ func (m *Model) docTextService(context window.TextInputContext) *window.TextInpu
 	return m.docCodeInput(context)
 }
 
+// docCodeScroll 把滚轮交给组件：行数多时由它滚动自己的视口。
+// 组件不吃的（滚到头）返回未处理，页面还能接管。
+func (m *Model) docCodeScroll(event gfx.ScrollEvent) gfx.EventResult {
+	return m.docCode.Code.Scroll(event)
+}
+
 // docCodeInput 把平台的文本服务接到 text.Editor 上：打字、输入法组合、粘贴
 // 都写进同一份模型；插入符与选区由 codeeditor 自己画，所以隐藏原生浮层。
 //

@@ -144,3 +144,45 @@ func TestDocCodeHitIsPlaced(t *testing.T) {
 	}
 	t.Fatal("源码区没有可编辑的文本命中")
 }
+
+// TestDocCodeWheelScrolls 源码区的滚轮要能滚动：控件是我们自己声明的，
+// 不接 Scroll 回调就没人转给组件。
+func TestDocCodeWheelScrolls(t *testing.T) {
+	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "docs"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var doc *explorer.Entry
+	for _, entry := range col.Entries {
+		if entry.IsDoc() {
+			doc = entry
+			break
+		}
+	}
+	if doc == nil {
+		t.Fatal("夹子里没有文档")
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	t.Cleanup(func() { model.setDocSplit(false) })
+
+	long := ""
+	for line := 1; line <= 60; line++ {
+		long += "第 " + strconv.Itoa(line) + " 行\n"
+	}
+	model.openEntry(doc)
+	model.editor.text = long
+	model.setDocSplit(true)
+	model.invalidator.Invalidate()
+	pump(t, driver)
+
+	before := model.docCode.Code.ScrollY()
+	field := hitBoundsOf(t, driver, "文档内容")
+	if err := driver.Scroll(gfx.ScrollEvent{X: field.X + field.Width/2, Y: field.Y + field.Height/2, DeltaY: -120}); err != nil {
+		t.Fatalf("Scroll: %v", err)
+	}
+	pump(t, driver)
+	if model.docCode.Code.ScrollY() == before {
+		t.Fatalf("滚轮没滚动编辑器：before=%.1f after=%.1f", before, model.docCode.Code.ScrollY())
+	}
+}

@@ -856,6 +856,7 @@ func (m *Model) docSourcePane(c ui.C) {
 		m.docHandlers.Role = gfx.RoleGroup
 		m.docHandlers.Key = m.docCodeKey
 		m.docHandlers.Pointer = m.docCodePointer
+		m.docHandlers.Scroll = m.docCodeScroll
 		m.docCodeID = ui.Control(c, "文档内容", &m.docHandlers).Fill().Draw(m.docCodeDraw).N().ID
 		m.syncDocTextFromCode()
 	})
