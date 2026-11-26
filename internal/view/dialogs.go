@@ -673,10 +673,10 @@ func (m *Model) mcpDialog(c ui.C) {
 					})
 					ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).
 						Width(px(150)).Changed()
+					hintTip(c, "地址留空或只写端口时按回环 127.0.0.1 监听。")
 					ui.Spacer(c)
 				})
-				// 地址说明紧跟这一行（它讲的是监听地址），浏览器来源紧随其后。
-				m.mcpNote(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。")
+				// 浏览器来源紧跟在「启用服务 / 监听地址」这一栏下面。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "浏览器来源")
 					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源", "留空 = 拒绝浏览器").
@@ -719,8 +719,10 @@ func (m *Model) mcpDialog(c ui.C) {
 
 				// 四、客户端接入：令牌 + 配置 JSON（都指向同一个客户端）。
 				m.mcpSectionTitle(c, "客户端接入")
+				// 这一栏从内容区最左排（与上面的集合列表、下面的客户端配置一致），
+				// 不再缩进到 90px 标签列后面。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "访问令牌")
+					ui.Text(c, "访问令牌").FontSize(fs(11)).Muted()
 					ui.TextField(c, &m.ui.mcpToken, "访问令牌", "首次启用时自动生成").
 						Mono().Width(px(300)).Changed()
 					if ui.Button(c, "生成").Outline().Small().
