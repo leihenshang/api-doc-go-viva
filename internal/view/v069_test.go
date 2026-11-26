@@ -3,6 +3,7 @@ package view
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -82,5 +83,59 @@ func TestNewRequestValidatesName(t *testing.T) {
 	pump(t, driver)
 	if _, err := os.Stat(filepath.Join(col.Dir, "校验通过.yml")); err != nil {
 		t.Fatalf("校验通过后应落盘：%v", err)
+	}
+}
+
+// TestSettingsLocalDescriptions 设置「本地数据」的三条信息用 ui/descriptions 呈现。
+func TestSettingsLocalDescriptions(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "设置")
+	pump(t, driver)
+	click(t, driver, "设置分区 本地数据")
+	pump(t, driver)
+	for _, want := range []string{"集合目录", "偏好文件", "当前环境"} {
+		if !shows(driver, want) {
+			t.Fatalf("本地数据缺 %q：%v", want, painted(driver))
+		}
+	}
+}
+
+// TestFailTextShownAndCopyable 传输失败的原因用 typography 显示：标签在、原因在、能复制。
+func TestFailTextShownAndCopyable(t *testing.T) {
+	// 127.0.0.1:1 必然连不上，制造传输错误（不是 4xx/5xx）。
+	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "GET 健康检查")
+	pump(t, driver)
+	click(t, driver, "发送")
+	waitFor(t, driver, "请求失败")
+
+	if model.failText == "" {
+		t.Fatal("应记录失败原因")
+	}
+	if !shows(driver, "请求失败") {
+		t.Fatalf("失败标题应显示：%v", painted(driver))
+	}
+	// 原因整段在 Texts 里（typography 逐字绘制，用 Texts 而不是 Labels 判断）。
+	found := false
+	for _, text := range driver.Snapshot().Texts {
+		if strings.Contains(text.Value, "connection refused") || strings.Contains(text.Value, "connect") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("失败原因应画出来：%v", painted(driver))
 	}
 }

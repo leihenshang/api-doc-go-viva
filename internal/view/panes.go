@@ -6,11 +6,12 @@ import (
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
-	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 	"github.com/vivaui/viva/ui/card"
+	"github.com/vivaui/viva/ui/descriptions"
+	"github.com/vivaui/viva/ui/typography"
 )
 
 // requestTitle 是请求标题行：方法角标、名称、脏状态与「复制 cURL」；
@@ -584,7 +585,20 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 					"发送后可在右上角「当前响应」下拉里把它存成示例（Mock 回放与写文档都用它）。").
 					FontSize(12).Muted().MaxLines(2)
 			case m.failText != "":
-				ui.Text(c, "请求失败："+m.failText).FontSize(fs(11)).Color(theme.Danger)
+				// 失败原因常常很长（TLS 握手、DNS、超时链）：用 typography 截断到 3 行，
+				// 需要时展开，或一键复制整段给同事看。typography 只有 Muted、没有危险色，
+				// 所以警示色留在「请求失败：」这个前缀上，原因用正文色更好读。
+				// 前缀单独一行：右侧列宽很窄，挤在同一行会把「请求失败」折成两三行。
+				ui.Column(c).FillWidth().Gap(px(2)).Children(func() {
+					ui.Text(c, "请求失败").FontSize(fs(11)).Color(theme.Danger)
+					m.ui.failView.View(c, m.failText, typography.Spec{
+						Rows: 3, Expandable: true, Copyable: true,
+						Labels: typography.Labels{More: "展开", Less: "收起", Copy: "复制"},
+					}).FillWidth()
+				})
+				if m.ui.failView.Copied() {
+					m.copyNote = "已复制失败原因"
+				}
 			case m.respTab == 1:
 				m.responseHeaders(c)
 			default:
@@ -724,7 +738,7 @@ func (m *Model) copyResponse() { m.copyValue(m.resp.Body) }
 
 // copyValue 把任意响应片段写进剪贴板：整段正文、某一行 JSON 或某条响应头。
 func (m *Model) copyValue(value string) {
-	if err := app.SetClipboardText(value); err != nil {
+	if err := ui.SetClipboardText(value); err != nil {
 		m.copyNote = "复制失败：" + err.Error()
 	} else {
 		m.copyNote = "已复制"
@@ -772,10 +786,18 @@ func (m *Model) grpcTab(c ui.C, entry *explorer.Entry) {
 		c.After(func() { m.sendGRPC(entry) })
 	}
 	ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
-		ui.Text(c, m.tables.grpcEndpoint).Mono().FontSize(fs(12))
+		// 连接信息是两条只读的「标签-值」，用 ui/descriptions 排（地址保留等宽）。
+		info := m.ui.grpcInfo[:0]
+		info = append(info, descriptions.Item{Label: "地址", Content: func(c ui.C) {
+			ui.Text(c, m.tables.grpcEndpoint).Mono().FontSize(fs(12))
+		}})
 		if m.tables.grpcMeta != "" {
-			ui.Text(c, m.tables.grpcMeta).FontSize(fs(11)).Muted()
+			info = append(info, descriptions.Item{Label: "说明", Value: m.tables.grpcMeta})
 		}
+		m.ui.grpcInfo = info
+		descriptions.View(c, "", descriptions.Spec{
+			Items: info, Columns: 1, LabelWidth: px(48), Size: descriptions.Small,
+		}).FillWidth()
 		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 			ui.Text(c, "元数据").FontSize(fs(11)).Muted()
 			ui.Spacer(c)

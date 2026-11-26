@@ -490,7 +490,7 @@ func (m *Model) importCurl() {
 
 // copyText 把一段文本写进剪贴板（标签菜单复制路径用）。
 func (m *Model) copyText(text string) {
-	_ = app.SetClipboardText(text)
+	_ = ui.SetClipboardText(text)
 	m.invalidator.Invalidate()
 }
 
@@ -499,7 +499,7 @@ func (m *Model) copyCurl(entry *explorer.Entry) {
 	if entry == nil || entry.Payload == nil {
 		return
 	}
-	if err := app.SetClipboardText(curlc.Generate(entry.Payload)); err != nil {
+	if err := ui.SetClipboardText(curlc.Generate(entry.Payload)); err != nil {
 		m.req.note = "导出失败：" + err.Error()
 	} else {
 		m.req.note = "cURL 已复制"
@@ -1883,7 +1883,7 @@ func (m *Model) exportCurl() {
 		m.invalidator.Invalidate()
 		return
 	}
-	if err := app.SetClipboardText(text); err != nil {
+	if err := ui.SetClipboardText(text); err != nil {
 		m.copyNote = "复制失败：" + err.Error()
 	} else {
 		m.copyNote = "已复制 cURL"

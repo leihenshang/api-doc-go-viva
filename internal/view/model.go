@@ -30,7 +30,9 @@ import (
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/ui"
 	"github.com/vivaui/viva/ui/codeeditor"
+	"github.com/vivaui/viva/ui/descriptions"
 	"github.com/vivaui/viva/ui/popconfirm"
+	"github.com/vivaui/viva/ui/typography"
 	"github.com/vivaui/viva/ui/validate"
 )
 
@@ -336,6 +338,13 @@ type workspaceUI struct {
 	newNameRules []validate.Rule
 
 	// 集合公共参数弹窗：默认请求头与默认认证的表单。
+	// settingsLocalItems 是「本地数据」那三条的重用切片（见 settingsLocal）。
+	localItems []descriptions.Item
+	// grpcInfo 是 gRPC 页连接信息那两条的重用切片。
+	grpcInfo []descriptions.Item
+	// failView 是「请求失败」那段长错误的展开状态（typography）。
+	failView *typography.Text
+
 	defaultsOpen bool
 	defHeaders   []*kvRow
 	defAuthType  string
@@ -752,6 +761,7 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 	// 破坏性小操作就地确认（v0.6.9 的 popconfirm）：比再开一个弹窗轻，
 	// 比直接执行安全。状态放 model，打开与确认都由这里管。
 	m.cookieConfirm = popconfirm.New()
+	m.ui.failView = typography.New()
 	m.historyConfirm = popconfirm.New()
 	m.auditConfirm = popconfirm.New()
 	// 请求名的规则只建一次（闭包），提交与输入变化时复用。

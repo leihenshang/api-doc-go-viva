@@ -14,6 +14,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/updater"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/descriptions"
 	"github.com/vivaui/viva/ui/popconfirm"
 	"github.com/vivaui/viva/ui/validate"
 )
@@ -389,11 +390,26 @@ func (m *Model) settingsNetwork(c ui.C) {
 // settingsLocal 是本地数据分区：集合路径、配置文件与当前环境。
 func (m *Model) settingsLocal(c ui.C) {
 	ui.Text(c, "本地数据").FontSize(fs(12)).Bold().Muted()
-	ui.Wrap(c, m.ui.dirLine).Width(settingsBodyWidth).FontSize(fs(11)).Muted().Mono()
+	// 三条只读信息用 ui/descriptions（v0.6.9）：标签列对齐、带边框，比四行 Wrap 好读。
+	// 切片复用 model 里的底层数组，绘制期不分配。
+	// 值用 Content + Wrap：路径可能比值列宽，description 的纯文本 Value 会被裁掉；
+	// 标签已经写明是什么，值里的「集合：」「环境：」前缀去掉，别重复。
+	items := m.ui.localItems[:0]
+	items = append(items, descriptions.Item{Label: "集合目录", Content: func(c ui.C) {
+		ui.Wrap(c, strings.TrimPrefix(m.ui.dirLine, "集合：")).FontSize(fs(11)).Muted().Mono().FillWidth()
+	}})
 	if dir, err := settings.Dir(); err == nil {
-		ui.Wrap(c, "偏好文件："+dir).Width(settingsBodyWidth).FontSize(fs(11)).Muted().Mono()
+		items = append(items, descriptions.Item{Label: "偏好文件", Content: func(c ui.C) {
+			ui.Wrap(c, dir).FontSize(fs(11)).Muted().Mono().FillWidth()
+		}})
 	}
-	ui.Wrap(c, m.ui.envLine).Width(settingsBodyWidth).FontSize(fs(11)).Muted()
+	items = append(items, descriptions.Item{Label: "当前环境", Content: func(c ui.C) {
+		ui.Wrap(c, strings.TrimPrefix(m.ui.envLine, "环境：")).FontSize(fs(11)).Muted().FillWidth()
+	}})
+	m.ui.localItems = items
+	descriptions.View(c, "", descriptions.Spec{
+		Items: items, Columns: 1, Bordered: true, LabelWidth: px(76), Size: descriptions.Small,
+	}).FillWidth()
 	ui.Wrap(c, "集合是纯文本真相源，本机偏好（主题 / 超时 / 上次环境）不写进集合。").
 		Width(settingsBodyWidth).FontSize(fs(11)).Muted()
 	if ui.Button(c, "打开回收站").Icon(IconTrash).Secondary().Clicked() {
