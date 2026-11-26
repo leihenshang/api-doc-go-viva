@@ -30,12 +30,18 @@ func (m *Model) splitHandle(c ui.C, state *ui.SplitterState, minFirst, minSecond
 		if d.Canvas == nil {
 			return
 		}
-		if !m.dragSplit.Dragging() {
+		// 平时不画；指针进来或正在拖才浮出提示，告诉用户这里可以拖。
+		inside := insideAnyRect([]gfx.Rect{d.Rect}, m.hover.x, m.hover.y)
+		if !m.dragSplit.Dragging() && !inside {
 			return
 		}
 		line := gfx.Rect{X: d.Rect.X + d.Rect.Width/2 - 0.5, Y: d.Rect.Y + px(8),
 			Width: 1, Height: d.Rect.Height - px(16)}
 		d.Canvas.Rounded(line, 0.5, d.Theme.Border)
+		// 中间一个小把手：两根短横线，看得出是抓握点。
+		knob := gfx.Rect{X: d.Rect.X + d.Rect.Width/2 - 2, Y: d.Rect.Y + d.Rect.Height/2 - 12,
+			Width: 4, Height: 24}
+		d.Canvas.Rounded(knob, 2, d.Theme.Border)
 	})
 
 	if !m.dragSplit.Dragging() || m.dragSplit.Source() != id {
@@ -53,6 +59,55 @@ func (m *Model) splitHandle(c ui.C, state *ui.SplitterState, minFirst, minSecond
 	// 右侧至少留 minSecond：页面右缘减去分隔条右缘，就是响应列还能让出多少。
 	right := bounds.X + bounds.Width - handle.Rect().Right()
 	if maxPos := state.Pos + right - minSecond; next > maxPos {
+		next = maxPos
+	}
+	if next < minFirst {
+		next = minFirst
+	}
+	if next != state.Pos {
+		state.Pos = next
+		m.invalidator.Invalidate()
+	}
+}
+
+// splitHandleH 是自绘的横向分隔条（上下分栏时用）：平时不画线，
+// 指针移上来或正在拖才浮出提示线与中间把手。
+func (m *Model) splitHandleH(c ui.C, state *ui.SplitterState, minFirst, minSecond float32) {
+	bounds := c.Bounds()
+	id := ui.ID(c)
+	handle := ui.Row(c).FillWidth().Height(px(12)).
+		Hit(id, "拖动调整请求与响应的高度").
+		DragSource(&m.dragSplit)
+
+	handle.Draw(func(d *ui.DrawContext) {
+		if d.Canvas == nil {
+			return
+		}
+		inside := insideAnyRect([]gfx.Rect{d.Rect}, m.hover.x, m.hover.y)
+		if !m.dragSplit.Dragging() && !inside {
+			return
+		}
+		line := gfx.Rect{X: d.Rect.X + px(8), Y: d.Rect.Y + d.Rect.Height/2 - 0.5,
+			Width: d.Rect.Width - px(16), Height: 1}
+		d.Canvas.Rounded(line, 0.5, d.Theme.Border)
+		knob := gfx.Rect{X: d.Rect.X + d.Rect.Width/2 - 12, Y: d.Rect.Y + d.Rect.Height/2 - 2,
+			Width: 24, Height: 4}
+		d.Canvas.Rounded(knob, 2, d.Theme.Border)
+	})
+
+	if !m.dragSplit.Dragging() || m.dragSplit.Source() != id {
+		m.splitDrag.active = false
+		return
+	}
+	at := m.dragSplit.At()
+	if !m.splitDrag.active {
+		m.splitDrag = splitDrag{active: true, startPointer: at.Y, startPos: state.Pos}
+		m.invalidator.Invalidate()
+		return
+	}
+	next := m.splitDrag.startPos + at.Y - m.splitDrag.startPointer
+	bottom := bounds.Y + bounds.Height - handle.Rect().Bottom()
+	if maxPos := state.Pos + bottom - minSecond; next > maxPos {
 		next = maxPos
 	}
 	if next < minFirst {

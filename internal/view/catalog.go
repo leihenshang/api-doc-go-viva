@@ -45,5 +45,5 @@ func table(c ui.C, state *ui.TableState, source ui.TableSource, headers []string
 		Headers: headers,
 		Source:  source,
 		Striped: true,
-	}).FillWidth()
+	}).FillWidth().Border(1, c.Theme().Border).Radius(px(6))
 }

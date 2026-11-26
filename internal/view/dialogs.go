@@ -568,61 +568,70 @@ func formatDuration(ms int64) string {
 // （对齐 Wails 版：MCP 是状态栏入口自带的面板，不属于软件设置）。
 func (m *Model) mcpDialog(c ui.C) {
 	ui.ModalWith(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: px(680), Height: px(560)}, func() {
-		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
-			ui.Text(c, "把当前打开的集合以工具的形式提供给 AI（Claude Desktop / Cursor 等 MCP 客户端）。").
-				FontSize(11).Muted()
-			ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
-				formLabel(c, "启用服务")
-				ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
-			})
-			ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
-				formLabel(c, "监听地址")
-				ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(px(200)).Changed()
-			})
-			ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
-				formLabel(c, "只读模式")
-				ui.Switch(c, &m.ui.mcpReadOnly, "只读：不暴露发请求与写磁盘的工具").Changed()
-				ui.Spacer(c)
-			})
-			ui.Row(c).Width(formRowWidth).Gap(px(10)).Items(ui.Center).Children(func() {
-				formLabel(c, "工具组")
-				for index, name := range appmcp.Groups {
-					slot := index
-					ui.Checkbox(c, &m.ui.mcpGroupOn[slot], mcpGroupLabels[name]).Changed()
+		// 整个内容放进定高滚动区：表单 + 工作区 + JSON 加起来超过弹窗高度，
+		// 让它内部滚动，而不是撑破外框跑到窗口上。
+		ui.Scroll(c).Height(px(430)).FillWidth().Scrollbars().Children(func() {
+			ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+				ui.Text(c, "把当前打开的集合以工具的形式提供给 AI（Claude Desktop / Cursor 等 MCP 客户端）。").
+					FontSize(11).Muted()
+				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+					formLabel(c, "启用服务")
+					ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
+				})
+				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+					formLabel(c, "监听地址")
+					ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(px(200)).Changed()
+				})
+				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+					formLabel(c, "只读模式")
+					ui.Switch(c, &m.ui.mcpReadOnly, "只读：不暴露发请求与写磁盘的工具").Changed()
+					ui.Spacer(c)
+				})
+				ui.Row(c).Width(formRowWidth).Gap(px(10)).Items(ui.Center).Children(func() {
+					formLabel(c, "工具组")
+					for index, name := range appmcp.Groups {
+						slot := index
+						ui.Checkbox(c, &m.ui.mcpGroupOn[slot], mcpGroupLabels[name]).Changed()
+					}
+				})
+				switch {
+				case m.mcp.running:
+					ui.Text(c, "运行中："+m.mcp.addr).FontSize(fs(11)).Mono().Color(c.Theme().Success)
+				case m.mcp.err != "":
+					ui.Text(c, "启动失败："+m.mcp.err).FontSize(fs(11)).Color(c.Theme().Danger)
+				default:
+					ui.Text(c, "未启用").FontSize(fs(11)).Muted()
+				}
+				m.mcpAllowList(c)
+				if token := m.ui.mcpToken; token != "" {
+					ui.Text(c, "访问令牌：").FontSize(fs(11)).Muted()
+					ui.Text(c, token).FontSize(fs(11)).Mono().Ellipsis()
+				}
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+					ui.Text(c, "客户端连接："+mcpURL(m.ui.mcpAddr)).
+						FontSize(11).Muted().Ellipsis()
+					ui.Spacer(c)
+					if ui.Button(c, "复制配置").Icon(IconCopy).Outline().Small().
+						Tooltip("复制 MCP 客户端配置（含监听地址与令牌）").Clicked() {
+						m.copyValue(m.mcpConfigJSON())
+					}
+				})
+				// 复制的就是下面这段：面板里直接给全文，省得先粘贴到别处才知道是什么。
+				ui.Text(c, "客户端配置（复制内容）").FontSize(fs(11)).Muted()
+				// 定高滚动：JSON 有十来行，撑开会把「完成」顶出弹窗。
+				// 底色用 Box 的 Background 而不是 codeCard 的 Draw：Draw 直接往画布上画，
+				// 不会被滚动区的裁剪rect 收住，卡片就会溢出到弹窗外面。
+				ui.Column(c).FillWidth().Pad(px(8)).Radius(px(6)).Background(m.pal.hover).Children(func() {
+					ui.Paragraph(c, m.mcpConfigJSON(), 0).Mono().FontSize(fs(10))
+				})
+				ui.Text(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。").
+					FontSize(11).Muted()
+				ui.Text(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。").
+					FontSize(11).Muted()
+				if m.copyNote != "" {
+					ui.Text(c, m.copyNote).FontSize(fs(11)).Muted()
 				}
 			})
-			switch {
-			case m.mcp.running:
-				ui.Text(c, "运行中："+m.mcp.addr).FontSize(fs(11)).Mono().Color(c.Theme().Success)
-			case m.mcp.err != "":
-				ui.Text(c, "启动失败："+m.mcp.err).FontSize(fs(11)).Color(c.Theme().Danger)
-			default:
-				ui.Text(c, "未启用").FontSize(fs(11)).Muted()
-			}
-			m.mcpAllowList(c)
-			if token := m.ui.mcpToken; token != "" {
-				ui.Text(c, "访问令牌：").FontSize(fs(11)).Muted()
-				ui.Text(c, token).FontSize(fs(11)).Mono().Ellipsis()
-			}
-			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-				ui.Text(c, "客户端连接："+mcpURL(m.ui.mcpAddr)).
-					FontSize(11).Muted().Ellipsis()
-				ui.Spacer(c)
-				if ui.Button(c, "复制配置").Icon(IconCopy).Outline().Small().
-					Tooltip("复制 MCP 客户端配置（含监听地址与令牌）").Clicked() {
-					m.copyValue(m.mcpConfigJSON())
-				}
-			})
-			// 复制的就是下面这段：面板里直接给全文，省得先粘贴到别处才知道是什么。
-			ui.Text(c, "客户端配置（复制内容）").FontSize(fs(11)).Muted()
-			m.codeCard(c, m.mcpConfigJSON())
-			ui.Text(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。").
-				FontSize(11).Muted()
-			ui.Text(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。").
-				FontSize(11).Muted()
-			if m.copyNote != "" {
-				ui.Text(c, m.copyNote).FontSize(fs(11)).Muted()
-			}
 		})
 	}, func() {
 		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {

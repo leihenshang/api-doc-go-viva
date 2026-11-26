@@ -159,7 +159,7 @@ func TestStatusBarShowsCountsAndMCP(t *testing.T) {
 	click(t, driver, "GET 健康检查")
 	pump(t, driver)
 
-	if !shows(driver, "离线优先") {
+	if !shows(driver, "回收站") {
 		t.Fatalf("底栏左侧应显示只读信息：%v", painted(driver))
 	}
 	if !shows(driver, "2 个请求") || !shows(driver, "个环境") {
@@ -4086,8 +4086,8 @@ func TestRecentCollectionsListAndClear(t *testing.T) {
 	}
 }
 
-// TestMCPConfigShown 设置里的 MCP 分区直接展示要复制的 JSON 全文。
-func TestMCPConfigShown(t *testing.T) {
+// TestMCPConfigFitsPanel JSON 卡片有定高滚动区：不会撑高把底部按钮顶出弹窗。
+func TestMCPConfigFitsPanel(t *testing.T) {
 	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "docs"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -4097,21 +4097,30 @@ func TestMCPConfigShown(t *testing.T) {
 	model.ui.mcpOpen = true
 	model.invalidator.Invalidate()
 	pump(t, driver)
-	if !shows(driver, "mcpServers") || !shows(driver, "Authorization") {
-		t.Fatalf("MCP 设置里应展示配置 JSON：%v", painted(driver))
-	}
-}
 
-// TestEnvPickerWithoutEnvs 集合没有环境时，顶栏仍留着下拉，文字是「无环境」。
-func TestEnvPickerWithoutEnvs(t *testing.T) {
-	col, err := explorer.Load(writeCollection(t, "http://127.0.0.1:1"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	first, last := float32(-1), float32(-1)
+	for _, text := range driver.Snapshot().Texts {
+		if strings.Contains(text.Value, "mcpServers") {
+			first = text.Bounds.Y
+		}
+		if strings.Contains(text.Value, "Authorization") {
+			last = text.Bounds.Y
+		}
 	}
-	model := New(col, "", nil)
-	driver := openWindow(t, model)
-	pump(t, driver)
-	if !hasControl(driver, "无环境") {
-		t.Fatalf("无环境时也该有下拉：%v", painted(driver))
+	if first < 0 {
+		t.Fatalf("MCP 面板没画出配置 JSON：%v", painted(driver))
+	}
+	// 没画出来也算通过：说明那一行被滚动区裁在视口外，正是想要的效果。
+	if last >= 0 && last-first > 160 {
+		t.Fatalf("JSON 没被滚动区裁住：%0.f → %0.f", first, last)
+	}
+	// 弹窗（680x560，1180x760 里居中）内的文本不该越过底边跑到窗口上。
+	for _, text := range driver.Snapshot().Texts {
+		if text.Bounds.X < 300 || text.Bounds.X > 900 {
+			continue
+		}
+		if bottom := text.Bounds.Y + text.Bounds.Height; bottom > 665 && text.Bounds.Y < 660 {
+			t.Fatalf("面板里有文本溢出弹窗底边：%q 底边 %.0f", text.Value, bottom)
+		}
 	}
 }

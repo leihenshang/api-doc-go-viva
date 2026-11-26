@@ -18,7 +18,7 @@ func (m *Model) statusBar(c ui.C) {
 	ui.Divider(c)
 	ui.Row(c).FillWidth().Height(statusBarHeight).PadX(px(12)).Gap(px(10)).Items(ui.Center).
 		Background(m.pal.bg).Children(func() {
-		ui.Text(c, "离线优先 · 纯文本存储").FontSize(fs(11)).Muted().Mono()
+		ui.Spacer(c)
 		if m.ui.exportNote != "" {
 			ui.Text(c, m.ui.exportNote).FontSize(fs(11)).Muted()
 		}

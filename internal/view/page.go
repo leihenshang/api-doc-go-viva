@@ -758,7 +758,8 @@ func (m *Model) requestResponsePanes(c ui.C, entry *explorer.Entry) {
 	ui.Column(c).FillWidth().Height(m.rsplit.Pos).Children(func() {
 		m.requestPane(c)
 	})
-	ui.Splitter(c, &m.rsplit).Mins(px(200), px(120))
+	// 上下分栏同样不画常驻横线：透明把手自己拖。
+	m.splitHandleH(c, &m.rsplit, px(200), px(120))
 	ui.Column(c).Grow(1).FillWidth().Children(func() {
 		m.responsePanel(c, entry)
 	})

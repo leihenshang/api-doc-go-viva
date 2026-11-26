@@ -41,6 +41,7 @@ COLLECTION=../api-doc-go-proj ENV_NAME= bin/dev start   # 换集合 / 关环境
 | [`doc/测试与验证.md`](doc/测试与验证.md) | 无头用例怎么证明它真的通了、实测数据、框架层面的发现、明确没做的 |
 | [`doc/任务清单.md`](doc/任务清单.md) | 未做项（N 编号）、上游待办、明确不做 |
 | [`doc/执行计划.md`](doc/执行计划.md) | 各批次的完成表（T 编号）与验收口径 |
+| [`doc/mermaid.md`](doc/mermaid.md) | 文档预览里渲染 Mermaid 的方案探索（未实施）：四个方案、缓存与导出注意点、落地顺序 |
 | [`doc/环境与崩溃.md`](doc/环境与崩溃.md) | 本机踩过的崩溃、软件 Vulkan 规定、xdotool 截图规则 |
 | [`doc/ime-linux.md`](doc/ime-linux.md) | Linux 下系统输入法打不出中文的原因与证据 |
 | [`ui_reference/README.md`](ui_reference/README.md) | Wails 版 UI 参考：截图、metrics、令牌 |
