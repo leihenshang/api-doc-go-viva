@@ -6,8 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"errors"
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	appmcp "github.com/leihenshang/api-doc-go-viva/internal/mcp"
 	"github.com/vivaui/viva/gfx"
+	"time"
 )
 
 // TestEmptyStateClearsSearch 树没有匹配项时用 v0.6.9 的 ui/empty，并在原地给出「清空搜索」。
@@ -310,5 +313,36 @@ func TestMCPConsentDialogShows(t *testing.T) {
 	pump(t, driver)
 	if shows(driver, "MCP 写操作确认") {
 		t.Fatalf("答过之后确认框应收起：%v", painted(driver))
+	}
+}
+
+// TestMCPPanelRefreshesAuditOnOpen 打开面板就该看到最新的调用记录，
+// 不需要先点「刷新」（AI 的调用都发生在面板关着的时候）。
+func TestMCPPanelRefreshesAuditOnOpen(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	// 预置两条审计（模拟 AI 在面板关着时调过工具）。
+	audit := appmcp.NewAudit(mcpAuditPath())
+	audit.Record("list_requests", false, map[string]any{"workspace": "ws_1"}, time.Now().Add(-2*time.Minute), nil)
+	audit.Record("create_request", true, map[string]any{"name": "x"}, time.Now().Add(-time.Minute), errors.New("用户拒绝"))
+
+	model.OpenMCPSettings()
+	pump(t, driver)
+	if len(model.ui.mcpAuditRows) != 2 {
+		t.Fatalf("打开面板应载入 2 条审计，实际 %d", len(model.ui.mcpAuditRows))
+	}
+	// 记录在滚动区底部，滚下去看得见（顺序：最新在前）。
+	if err := driver.Scroll(gfx.ScrollEvent{X: 590, Y: 380, DeltaY: 2000}); err != nil {
+		t.Fatalf("Scroll: %v", err)
+	}
+	pump(t, driver)
+	if !shows(driver, "create_request") {
+		t.Fatalf("面板应显示最新那条记录：%v", painted(driver))
 	}
 }

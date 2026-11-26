@@ -2016,6 +2016,9 @@ func (m *Model) openMCPSettings() {
 	m.ui.mcpAddr = m.settings.MCPAddr
 	m.ui.mcpToken = m.settings.MCPToken
 	m.refreshMCPAllowRows()
+	// 每次打开都重新读一遍调用审计：AI 的调用发生在面板关着的时候，
+	// 只在打开时载入一次快照的话，用户看到的是上一轮的旧记录。
+	m.ui.mcpAuditRows = m.loadMCPAudit()
 	m.ui.mcpOpen = true
 	m.invalidator.Invalidate()
 }
