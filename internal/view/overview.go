@@ -5,6 +5,7 @@ import (
 
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/card"
 )
 
 // overviewPage 是固定「集合」页：四个数字卡 + 常用动作，尺寸对齐参考图。
@@ -52,10 +53,12 @@ func (m *Model) overviewPage(c ui.C) {
 // overviewHints 是概览页的快捷键提示（包级切片，避免每帧分配）。
 var overviewHints = []string{"Ctrl+K 命令面板", "Ctrl+S 保存", "Ctrl+Enter 发送"}
 
-// statCard 是一张数字卡：标签在上、值在下，卡片底用组件目录的 Card。
+// statCard 是一张数字卡：标签作卡片标题、值作正文。
+//
+// v0.6.9 起用页面级的 `ui/card`（原来是 components.Card 的 canvas 钩子 + 手写内边距）：
+// Small 是紧凑尺寸，卡片的底色、圆角、内边距与阴影都跟主题走，不用再自己对一遍。
 func (m *Model) statCard(c ui.C, label, value string) {
-	ui.Column(c).Width(0).Grow(1).Height(px(64)).Pad(px(12)).Gap(px(6)).Draw(cardDraw).Children(func() {
-		ui.Text(c, label).FontSize(fs(11)).Muted()
+	card.View(c, card.Spec{Title: label, Size: card.Small}, func() {
 		ui.Text(c, value).FontSize(fs(13)).Ellipsis().MaxLines(1)
-	})
+	}).Width(0).Grow(1)
 }

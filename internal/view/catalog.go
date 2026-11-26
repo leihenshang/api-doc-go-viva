@@ -40,8 +40,3 @@ func emptyBoxActions(c ui.C, title, description string, actions func()) ui.Box {
 	}
 	return empty.View(c, spec, actions).FillWidth().MinHeight(px(180))
 }
-
-// cardDraw 是卡片底的绘制回调（背景 + 边框 + 阴影），给 ui.Box.Draw 用。
-func cardDraw(d *ui.DrawContext) {
-	components.Card(d.Canvas, *d.Theme, d.Rect)
-}

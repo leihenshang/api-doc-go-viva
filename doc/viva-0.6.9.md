@@ -27,12 +27,12 @@ skill（`.claude/skills/building-with-viva`、`.agents/skills/building-with-viva
 | 请求名无长度约束 | `ui.MaxLength(60)` + `ui.ShowCount()` | `view/dialogs.go` | 文件名取请求名，撞上长度上限之前就能看见 |
 | 「清空 Cookie / 历史 / 审计」一点就执行 | `ui/popconfirm`（按钮旁问一句） | `view/dialogs.go` | 不可撤销的动作先问一句；三处按钮都从 footer / 行尾挪到行首（原因见下），触发的确认气泡才不越出弹窗 |
 | 请求名只有底部一行通用错误 | `ui/FormField` + `ui/validate` | `view/dialogs.go` / `view/actions.go` | 错误画在字段下方、标题与边框一起变红；规则是 `Required` + `MaxLength(60)`，输入变化与提交时各校验一次 |
+| 卡片底用 `components.Card` 的 canvas 钩子 + 手写内边距（概览统计卡、文档预览栏） | `ui/card`（页眉 / 页脚 / Small / Flat） | `view/overview.go` / `view/panes.go` | 统计卡的标签成了卡片标题（`Size: card.Small` 紧凑尺寸），文档预览卡加了带分隔线的页脚「共 N 行 · M 字」（行数口径与状态栏一致）；顺带删掉没有调用点的 `codeCard` 与 `cardDraw` |
 
 ## 3. viva 有了、但这次没换的自有实现（含原因）
 
 | viva 能力 | 本项目现状 | 不换的原因 |
 |---|---|---|
-| `ui/card`（页眉 / 页脚 / 紧凑 / flat） | `components.Card` 的 canvas 钩子（地址块 / 正文块 / 文档块） | 能换，但三块卡片的内部布局与截图都要跟着调；收益是外观统一，优先级低于功能项 |
 | `ui/alert`（状态图标 + 标题 + 说明 + 动作 + 关闭） | 一次性错误文本（危险色 `ui.Text`） | `alert` 需要 model 持有 `alert.New()` 实例（它记住「用户关掉了」）；本项目的提示跟着状态消失，换成 Alert 反而多一份状态 |
 | `ui/editabletabs`（按标题宽度、关闭 / 新增、超出滚动） | 自绘标签条（拖拽换位、右键菜单、横向滚动、溢出「⋯」列表） | 换过去会**丢功能**：拖拽排序与右键菜单 editabletabs 没有 |
 | `ui.Table`（列标题 + 排序 + 筛选 + 勾选） | 参数 / 请求头 / 字段表是「行内带输入框的可编辑表格」；运行器结果表带行尾「规则」按钮 | `Table` 的 Cell 只能是字符串，放不下输入框与按钮 |

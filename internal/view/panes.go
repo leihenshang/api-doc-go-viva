@@ -10,6 +10,7 @@ import (
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/card"
 )
 
 // requestTitle 是请求标题行：方法角标、名称、脏状态与「复制 cURL」；
@@ -955,9 +956,16 @@ func (m *Model) docCodeDraw(d *ui.DrawContext) {
 	m.docCode.Code.Paint(d.Canvas, *d.Theme, d.Rect, snap)
 }
 
-// docPreviewPane 是预览栏：卡片外框 + 可滚动正文。
+// docPreviewPane 是预览栏：卡片外框 + 可滚动正文（v0.6.9 的 ui/card）。
 func (m *Model) docPreviewPane(c ui.C, textWidth float32) {
-	ui.Column(c).Grow(1).FillWidth().FillHeight().Pad(px(12)).Draw(cardDraw).Children(func() {
+	card.View(c, card.Spec{
+		FooterBorder: true,
+		// 页脚给一眼规模：行数口径与状态栏的行号一致（只数逻辑行）。
+		Footer: func() {
+			ui.Text(c, "共 "+strconv.Itoa(lineCount(m.editor.text))+" 行 · "+
+				strconv.Itoa(len([]rune(m.editor.text)))+" 字").FontSize(fs(10)).Muted()
+		},
+	}, func() {
 		if strings.TrimSpace(m.editor.text) == "" {
 			ui.Text(c, "（空文档）").Muted()
 			return
@@ -965,7 +973,7 @@ func (m *Model) docPreviewPane(c ui.C, textWidth float32) {
 		ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
 			m.previewBlock(c, m.editor.text, m.editor.previewKey, docBase(m.editor.file), textWidth)
 		})
-	})
+	}).Grow(1).FillWidth().FillHeight()
 }
 
 // previewBlock 把一段 Markdown 排好版画进当前布局（不加滚动容器，由调用方决定）。
@@ -978,12 +986,5 @@ func (m *Model) previewBlock(c ui.C, source, key, base string, width float32) {
 			X:    d.Rect.X,
 			Y:    d.Rect.Y,
 		})
-	})
-}
-
-// codeCard 是等宽长文卡片（请求体原文与响应体共用）。
-func (m *Model) codeCard(c ui.C, text string) {
-	ui.Column(c).FillWidth().Pad(px(12)).Draw(cardDraw).Children(func() {
-		ui.Paragraph(c, text, 0).Mono().FontSize(fs(11))
 	})
 }
