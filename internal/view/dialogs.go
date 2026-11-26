@@ -255,6 +255,10 @@ var formLabelWidth float32 = 90
 // 留白是固定值，所以滚动条显示或隐藏时布局都不跳。
 const scrollbarGutter float32 = 14
 
+// mcpWorkspaceNameWidth 是 MCP 工作区列表里「集合名」列的固定宽度：
+// 勾选框的名字宽度随内容变，不钉住的话后面的路径起点会漂。
+const mcpWorkspaceNameWidth float32 = 170
+
 // formRowWidth 是设置表单行的宽度：每行同宽，标签列才会在同一条竖线上。
 var formRowWidth float32 = 360
 
@@ -682,9 +686,11 @@ func (m *Model) mcpDialog(c ui.C) {
 					ui.Spacer(c)
 				})
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "浏览器")
-					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源",
-						"留空 = 拒绝浏览器；多个用逗号分隔").Width(px(320)).Changed()
+					formLabel(c, "浏览器来源")
+					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源", "留空 = 拒绝浏览器").
+						Width(px(320)).Changed()
+					hintTip(c, "浏览器里的 MCP 客户端发请求会带 Origin 头：这里列出允许的来源（逗号分隔），"+
+						"留空则一律拒绝。命令行客户端不带 Origin，不受影响。")
 				})
 				// 只有真的起不来才占一行；正常运行时不再有状态条（需求 1）。
 				if m.mcp.err != "" {
@@ -724,34 +730,21 @@ func (m *Model) mcpDialog(c ui.C) {
 					}
 				})
 
-				// 四、客户端接入：JSON 默认收起，点标题展开（参考设计同款折叠块）。
+				// 四、客户端接入：配置 JSON 常显（不再折叠），行尾一个复制按钮。
 				m.mcpSectionTitle(c, "客户端接入")
 				ui.Row(c).FillWidth().Gap(px(6)).Items(ui.Center).Children(func() {
-					arrow := "▸"
-					if m.ui.mcpJSONOpen {
-						arrow = "▾"
-					}
-					ui.Text(c, arrow).FontSize(fs(11)).Muted()
-					if ui.Button(c, "客户端配置（复制内容）").Ghost().XSmall().
-						Tooltip("展开 / 收起客户端配置 JSON").Clicked() {
-						c.After(func() {
-							m.ui.mcpJSONOpen = !m.ui.mcpJSONOpen
-							m.invalidator.Invalidate()
-						})
-					}
+					ui.Text(c, "客户端配置（复制内容）").FontSize(fs(11)).Muted()
 					ui.Spacer(c)
 					if ui.Button(c, "复制配置").Icon(IconCopy).Outline().Small().
 						Tooltip("复制 MCP 客户端配置（含监听地址与令牌）").Clicked() {
 						m.copyValue(m.mcpConfigJSON())
 					}
 				})
-				if m.ui.mcpJSONOpen {
-					// 底色用 Box 的 Background 而不是 codeCard 的 Draw：Draw 直接往画布上画，
-					// 不会被滚动区的裁剪 rect 收住，卡片就会溢出到弹窗外面。
-					ui.Column(c).FillWidth().Pad(px(8)).Radius(px(6)).Background(m.pal.hover).Children(func() {
-						ui.Paragraph(c, m.mcpConfigJSON(), 0).Mono().FontSize(fs(10))
-					})
-				}
+				// 底色用 Box 的 Background 而不是 codeCard 的 Draw：Draw 直接往画布上画，
+				// 不会被滚动区的裁剪 rect 收住，卡片就会溢出到弹窗外面。
+				ui.Column(c).FillWidth().Pad(px(8)).Radius(px(6)).Background(m.pal.hover).Children(func() {
+					ui.Paragraph(c, m.mcpConfigJSON(), 0).Mono().FontSize(fs(10))
+				})
 
 				// 五、最近调用：标题与操作按钮同一行（省一块高度，也和参考设计一致）。
 				ui.Column(c).FillWidth().Gap(px(4)).Children(func() {
@@ -857,9 +850,12 @@ func (m *Model) mcpAllowList(c ui.C) {
 				// 后续行留空同宽标签列，勾选框才排在同一条竖线上。
 				ui.Slot(c).Width(formLabelWidth)
 			}
-			ui.Checkbox(c, &row.Allowed, row.Name).Changed()
-			ui.Text(c, row.Dir).FontSize(fs(10)).Mono().Muted().Ellipsis()
-			ui.Spacer(c)
+			// 名称列定宽：勾选框自带名字，宽度随名字长短变，路径起点会跟着漂。
+			// 用固定宽度的容器兜住它（不要给 Checkbox 本身 Width+Ellipsis，那会把控件压没）。
+			ui.Row(c).Width(px(mcpWorkspaceNameWidth)).Items(ui.Center).Children(func() {
+				ui.Checkbox(c, &row.Allowed, row.Name).Changed()
+			})
+			ui.Text(c, row.Dir).FontSize(fs(10)).Mono().Muted().Grow(1).Ellipsis()
 			writable := ui.Checkbox(c, &row.Writable, "可写")
 			if !row.Allowed {
 				writable.Disabled(true)

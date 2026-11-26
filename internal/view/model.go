@@ -338,8 +338,6 @@ type workspaceUI struct {
 	newNameRules []validate.Rule
 
 	// 集合公共参数弹窗：默认请求头与默认认证的表单。
-	// mcpJSONOpen 控制 MCP 弹窗里「客户端配置」的展开（默认收起，参考设计就是这么紧凑的）。
-	mcpJSONOpen bool
 	// settingsLocalItems 是「本地数据」那三条的重用切片（见 settingsLocal）。
 	localItems []descriptions.Item
 	// grpcInfo 是 gRPC 页连接信息那两条的重用切片。

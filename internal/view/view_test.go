@@ -4124,10 +4124,7 @@ func TestMCPConfigFitsPanel(t *testing.T) {
 	driver := openWindow(t, model)
 	model.OpenMCPSettings()
 	pump(t, driver)
-	// 客户端配置默认收起：先展开，这段 JSON 才会进滚动区。
-	click(t, driver, "客户端配置（复制内容）")
-	pump(t, driver)
-
+	// 客户端配置常显（不再折叠），JSON 直接进滚动区。
 	first, last := float32(-1), float32(-1)
 	for _, text := range driver.Snapshot().Texts {
 		if strings.Contains(text.Value, "mcpServers") {

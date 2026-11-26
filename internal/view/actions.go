@@ -2016,7 +2016,6 @@ func (m *Model) openMCPSettings() {
 	m.ui.mcpAddr = m.settings.MCPAddr
 	m.ui.mcpToken = m.settings.MCPToken
 	m.refreshMCPAllowRows()
-	m.ui.mcpJSONOpen = false
 	m.ui.mcpOpen = true
 	m.invalidator.Invalidate()
 }
