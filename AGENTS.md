@@ -6,7 +6,7 @@
 ## 项目概览
 
 `api-doc-go-viva` 是 api-doc-go 桌面客户端的 **Viva 原生 GPU 绘制验证版**：复用
-`api-doc-go-share/collection` 的集合文件与发送逻辑，界面用 `github.com/vivaui/viva@v0.6.8` 重写。
+`api-doc-go-share/collection` 的集合文件与发送逻辑，界面用 `github.com/vivaui/viva@v0.6.9` 重写。
 
 - 入口：`main.go`（`-collection A,B` 一次可开多个集合根，`-env` 选环境）
 - 界面：`internal/view/`（`model` 状态 / `tree` 集合树 / `page` 布局 / `panes` 分段 /

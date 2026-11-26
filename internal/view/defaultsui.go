@@ -83,7 +83,7 @@ func (m *Model) saveDefaults() {
 
 // defaultsDialog 是「公共参数」弹窗。
 func (m *Model) defaultsDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.defaultsOpen, "集合公共参数", ui.ModalSpec{Width: 720, Height: 520}, func() {
+	ui.Modal(c, &m.ui.defaultsOpen, "集合公共参数", ui.ModalSpec{Width: 720, Height: 520}, func() {
 		ui.Column(c).FillWidth().Height(px(440)).Gap(px(8)).Children(func() {
 			ui.Text(c, "下面的请求头每条请求都会带上；同名时以请求自己的为准。"+
 				"认证要生效，请把请求的认证类型选成「继承集合」。").

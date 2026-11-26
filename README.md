@@ -43,10 +43,11 @@ COLLECTION=../api-doc-go-proj ENV_NAME= bin/dev start   # 换集合 / 关环境
 | [`doc/执行计划.md`](doc/执行计划.md) | 各批次的完成表（T 编号）与验收口径 |
 | [`doc/mermaid.md`](doc/mermaid.md) | 文档预览里渲染 Mermaid 的方案探索（未实施）：四个方案、缓存与导出注意点、落地顺序 |
 | [`doc/环境与崩溃.md`](doc/环境与崩溃.md) | 本机踩过的崩溃、软件 Vulkan 规定、xdotool 截图规则 |
+| [`doc/viva-0.6.9.md`](doc/viva-0.6.9.md) | 升级 v0.6.9 的破坏性变更迁移、已替换的自有实现、没换的项与原因、复查清单 |
 | [`doc/ime-linux.md`](doc/ime-linux.md) | Linux 下系统输入法打不出中文的原因与证据 |
 | [`ui_reference/README.md`](ui_reference/README.md) | Wails 版 UI 参考：截图、metrics、令牌 |
 
 ## AI 助手
 
 仓库带 Viva 官方的 `building-with-viva` skill（`.claude/skills/` 与 `.agents/skills/` 各一份只读拷贝，
-对应 v0.6.8）：写界面、改交互之前先读它。项目约定、硬规则与提交前检查见 [`AGENTS.md`](AGENTS.md)。
+对应 v0.6.9）：写界面、改交互之前先读它。项目约定、硬规则与提交前检查见 [`AGENTS.md`](AGENTS.md)。

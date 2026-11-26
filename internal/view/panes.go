@@ -90,9 +90,10 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 				}
 			})
 		}
-		if m.sending {
-			ui.Button(c, "发送中…").Disabled(true)
-		} else if ui.Button(c, "发送").Icon(IconSend).Tooltip("发送（Ctrl/Cmd+Enter）").Clicked() {
+		// 忙碌态用 viva 的 Loading：它期间不派发按下（第二次点不会重复发）、也不翻转绑定值，
+		// 外观保持不变，只在图标位换成指示器——比换成「发送中…」的禁用按钮稳（宽度不跳）。
+		send := ui.Button(c, "发送").Icon(IconSend).Tooltip("发送（Ctrl/Cmd+Enter）").Loading(m.sending)
+		if send.Clicked() {
 			m.start(entry)
 		}
 	})

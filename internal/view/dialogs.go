@@ -47,10 +47,12 @@ func (m *Model) dialogs(c ui.C) {
 
 // newRequestDialog 是「新建请求」：请求名、方法、地址，创建后写进集合并被选中。
 func (m *Model) newRequestDialog(c ui.C) {
-	ui.Modal(c, &m.ui.newReqOpen, "新建请求", func() {
+	ui.Modal(c, &m.ui.newReqOpen, "新建请求", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "请求会写进集合目录，文件名取请求名；重名自动加 -2。").FontSize(fs(11)).Muted()
-			ui.TextField(c, &m.ui.newName, "请求名", "例如：获取用户列表").FillWidth()
+			// 文件名取请求名：限长 60 并显示字数，免得撞上文件名长度上限才发现。
+			ui.TextField(c, &m.ui.newName, "请求名", "例如：获取用户列表", ui.MaxLength(60), ui.ShowCount()).
+				FillWidth()
 			ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
 				ui.Text(c, "方法").FontSize(fs(11)).Muted()
 				ui.Select(c, &m.ui.newMethod, httpMethods, nil).Width(px(120))
@@ -75,7 +77,7 @@ func (m *Model) newRequestDialog(c ui.C) {
 
 // newFolderDialog 是「新建分组」：只填名字，落在右键的那个分组里（或集合根）。
 func (m *Model) newFolderDialog(c ui.C) {
-	ui.Modal(c, &m.ui.folderOpen, "新建分组", func() {
+	ui.Modal(c, &m.ui.folderOpen, "新建分组", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "分组会建在当前层级下；重名自动加 -2。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.folderName, "分组名", "例如：用户").FillWidth()
@@ -97,7 +99,7 @@ func (m *Model) newFolderDialog(c ui.C) {
 
 // codeDialog 展示当前请求的代码片段：cURL / fetch / axios / Go / Python。
 func (m *Model) codeDialog(c ui.C) {
-	ui.ModalWith(c, &m.codeOpen, "代码生成", ui.ModalSpec{Width: px(760), Height: px(520)}, func() {
+	ui.Modal(c, &m.codeOpen, "代码生成", ui.ModalSpec{Width: px(760), Height: px(520)}, func() {
 		ui.Column(c).FillWidth().Height(px(380)).Gap(px(10)).Children(func() {
 			ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
 				ui.Text(c, "语言").FontSize(fs(11)).Muted()
@@ -126,8 +128,13 @@ func (m *Model) codeDialog(c ui.C) {
 }
 
 // deleteFolderDialog 确认删除分组：整棵子树进回收站，之后可从回收站恢复。
+//
+// 曾试过换成 v0.6.9 的 `ui.AlertDialog`（焦点范围、Escape 取消都是现成的），但它由
+// components 直接画在 widget 层：headless 的 Snapshot 里既没有文字也没有命中区，
+// 「每个交互都要有无头用例」这条约定就守不住了。自建 Modal 的按钮是普通 ui.Button，
+// 标签可点、可断言，所以保留。
 func (m *Model) deleteFolderDialog(c ui.C) {
-	ui.Modal(c, &m.ui.folderDeleteOpen, "删除分组", func() {
+	ui.Modal(c, &m.ui.folderDeleteOpen, "删除分组", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "「"+m.ui.folderDeleteName+"」及里面的请求 / 文档会一起移进回收站。").FontSize(fs(12))
 			ui.Text(c, "需要时可从「回收站」恢复（回到集合根）。").FontSize(fs(11)).Muted()
@@ -146,7 +153,7 @@ func (m *Model) deleteFolderDialog(c ui.C) {
 
 // renameDialog 是「重命名」：只改显示名，文件名不动（与客户端一致）。
 func (m *Model) renameDialog(c ui.C) {
-	ui.Modal(c, &m.ui.renameOpen, "重命名", func() {
+	ui.Modal(c, &m.ui.renameOpen, "重命名", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "只改显示名，文件名保持不变。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.renameName, "名称", "新的显示名").FillWidth()
@@ -169,7 +176,7 @@ func (m *Model) renameDialog(c ui.C) {
 // settingsDialog 是设置：左侧分区导航（外观 / 网络与安全 / 本地数据 / 关于），
 // 右侧是当前分区的表单，尺寸与布局对齐参考图 15-17。
 func (m *Model) settingsDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.settingsOpen, "设置", ui.ModalSpec{Width: px(780), Height: px(520)}, func() {
+	ui.Modal(c, &m.ui.settingsOpen, "设置", ui.ModalSpec{Width: px(780), Height: px(520)}, func() {
 		ui.Row(c).FillWidth().Height(px(420)).Gap(px(16)).Children(func() {
 			ui.Column(c).Width(px(160)).Gap(px(4)).Children(func() {
 				for index, name := range settingsSections {
@@ -405,7 +412,7 @@ func (m *Model) settingsLocal(c ui.C) {
 // cookieDialog 是 Cookie Jar：发过的请求种下的 cookie 都在这儿，可查看与清空。
 // 它与「请求历史」分开：历史是发过什么，这里是这台机器现在持有什么会话。
 func (m *Model) cookieDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.cookieOpen, "Cookie Jar", ui.ModalSpec{Width: px(700), Height: px(460)}, func() {
+	ui.Modal(c, &m.ui.cookieOpen, "Cookie Jar", ui.ModalSpec{Width: px(700), Height: px(460)}, func() {
 		ui.Column(c).FillWidth().Height(px(360)).Gap(px(6)).Children(func() {
 			ui.Text(c, "发送请求时自动带上；集合运行器也用同一份 jar，所以「先登录再跑」是成立的。").
 				FontSize(11).Muted()
@@ -456,7 +463,7 @@ func (m *Model) cookieDialog(c ui.C) {
 // historyDialog 是「请求历史」：每次真实发送都记一条，点一行回到那条请求。
 // 记录只在本机（history.jsonl），不写进集合。
 func (m *Model) historyDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.historyOpen, "请求历史", ui.ModalSpec{Width: px(760), Height: px(500)}, func() {
+	ui.Modal(c, &m.ui.historyOpen, "请求历史", ui.ModalSpec{Width: px(760), Height: px(500)}, func() {
 		ui.Column(c).FillWidth().Height(px(400)).Gap(px(6)).Children(func() {
 			ui.TextField(c, &m.ui.historyQuery, "搜索历史", "按地址或请求名过滤…").FillWidth()
 			needle := strings.ToLower(strings.TrimSpace(m.ui.historyQuery))
@@ -568,7 +575,7 @@ func formatDuration(ms int64) string {
 // mcpDialog 是内嵌 MCP 服务的**独立**设置弹窗：与软件设置分开，没有左侧分区菜单
 // （对齐 Wails 版：MCP 是状态栏入口自带的面板，不属于软件设置）。
 func (m *Model) mcpDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: px(680), Height: px(560)}, func() {
+	ui.Modal(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: px(680), Height: px(560)}, func() {
 		// 整个内容放进定高滚动区：表单 + 工作区 + JSON 加起来超过弹窗高度，
 		// 让它内部滚动，而不是撑破外框跑到窗口上。
 		ui.Scroll(c).Height(px(430)).FillWidth().Scrollbars().Children(func() {
@@ -729,7 +736,7 @@ func (m *Model) settingsAbout(c ui.C) {
 
 // mockRuleDialog 编辑一条请求的桩规则：状态码、延迟与整段响应体覆盖。
 func (m *Model) mockRuleDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.mockRuleOpen, "桩规则 · "+m.ui.mockRuleName, ui.ModalSpec{Width: px(720), Height: px(520)}, func() {
+	ui.Modal(c, &m.ui.mockRuleOpen, "桩规则 · "+m.ui.mockRuleName, ui.ModalSpec{Width: px(720), Height: px(520)}, func() {
 		ui.Column(c).FillWidth().Height(px(420)).Gap(px(8)).Children(func() {
 			ui.Text(c, "只影响本地桩服务；留空表示用默认值（200 / 不延迟 / 由字段表生成）。").
 				FontSize(11).Muted()
@@ -768,7 +775,7 @@ func (m *Model) exportDialog(c ui.C) {
 	if m.ui.exportFormat == "html" {
 		title = "导出 HTML"
 	}
-	ui.ModalWith(c, &m.ui.exportOpen, title, ui.ModalSpec{Width: px(760), Height: px(560)}, func() {
+	ui.Modal(c, &m.ui.exportOpen, title, ui.ModalSpec{Width: px(760), Height: px(560)}, func() {
 		ui.Column(c).FillWidth().Height(px(460)).Gap(px(6)).Children(func() {
 			requests, files := m.exportCounts()
 			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
@@ -826,7 +833,7 @@ func (m *Model) exportDialog(c ui.C) {
 // runRulesDialog 编辑一条请求的运行规则：提取（写进变量袋）与断言（判定成败）。
 // 规则存进请求文件的顶层 run: 键，随集合走，不塞进本机偏好。
 func (m *Model) runRulesDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.rulesOpen, "运行规则 · "+m.ui.rulesName, ui.ModalSpec{Width: px(820), Height: px(580)}, func() {
+	ui.Modal(c, &m.ui.rulesOpen, "运行规则 · "+m.ui.rulesName, ui.ModalSpec{Width: px(820), Height: px(580)}, func() {
 		ui.Column(c).FillWidth().Height(px(480)).Gap(px(6)).Children(func() {
 			ui.Text(c, "规则写在请求文件的 run: 键里；提取到的变量供本次运行后面的请求用 {{名字}} 引用。").
 				FontSize(11).Muted()
@@ -901,7 +908,7 @@ var (
 
 // runnerDialog 是集合运行器：勾一批请求顺序跑，右边是逐条结果。
 func (m *Model) runnerDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.runOpen, "运行集合", ui.ModalSpec{Width: px(820), Height: px(620)}, func() {
+	ui.Modal(c, &m.ui.runOpen, "运行集合", ui.ModalSpec{Width: px(820), Height: px(620)}, func() {
 		ui.Column(c).FillWidth().Height(px(520)).Gap(px(8)).Children(func() {
 			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 				ui.Text(c, "顺序执行勾选的请求；状态码 ≥ 400 或连不上算失败。").FontSize(fs(11)).Muted()
@@ -1010,7 +1017,7 @@ func (m *Model) runnerDialog(c ui.C) {
 // mockDialog 是本地 Mock 服务：开关、监听地址与当前注册的路由表。
 // 桩只回示例数据，不转发、不执行脚本，用于前端联调。
 func (m *Model) mockDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.mockOpen, "本地 Mock 服务", ui.ModalSpec{Width: px(760), Height: px(560)}, func() {
+	ui.Modal(c, &m.ui.mockOpen, "本地 Mock 服务", ui.ModalSpec{Width: px(760), Height: px(560)}, func() {
 		ui.Column(c).FillWidth().Height(px(460)).Gap(px(8)).Children(func() {
 			ui.Text(c, "按当前打开集合里的请求假回复：方法与路径取自请求文件，"+
 				"响应体按请求体字段表生成示例值（没字段表就回 {\"mock\":true}）。").FontSize(fs(11)).Muted()
@@ -1075,7 +1082,7 @@ func (m *Model) mockDialog(c ui.C) {
 // 集合包、Bruno 与另一个 OpenCollection 目录都从这一个弹窗进来。
 // 各来源落到同一个落点分组，导完就重扫，同名一律加 -2。
 func (m *Model) importDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.importOpen, "导入集合", ui.ModalSpec{Width: px(720), Height: px(520)}, func() {
+	ui.Modal(c, &m.ui.importOpen, "导入集合", ui.ModalSpec{Width: px(720), Height: px(520)}, func() {
 		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 				ui.Text(c, "来源").FontSize(fs(11)).Muted().Width(px(48))
@@ -1222,7 +1229,7 @@ var (
 
 // curlImportDialog 是「导入 cURL」：粘贴命令，解析成一条新请求（参考 19）。
 func (m *Model) curlImportDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.curlOpen, "导入 cURL", ui.ModalSpec{Width: px(720), Height: px(460)}, func() {
+	ui.Modal(c, &m.ui.curlOpen, "导入 cURL", ui.ModalSpec{Width: px(720), Height: px(460)}, func() {
 		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Text(c, "支持 Chrome / Firefox / Postman 的 Copy as cURL；-d/-F/-H/-u/-b/-A/-k/-m 会映射到请求。").
 				FontSize(11).Muted()
@@ -1264,7 +1271,7 @@ func (m *Model) curlImportDialog(c ui.C) {
 
 // trashDialog 是回收站：列出 .trash 里的文件，可逐个恢复（参考 22）。
 func (m *Model) trashDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.trashOpen, "回收站", ui.ModalSpec{Width: px(720), Height: px(460)}, func() {
+	ui.Modal(c, &m.ui.trashOpen, "回收站", ui.ModalSpec{Width: px(720), Height: px(460)}, func() {
 		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Text(c, "恢复的文件会回到集合根；同名时自动补「-恢复2」后缀，不覆盖。").
 				FontSize(11).Muted()
@@ -1325,7 +1332,7 @@ func (m *Model) trashDialog(c ui.C) {
 // envDialog 是「环境变量」：左侧环境列表，右侧变量表；敏感值单独写 *.secrets.yml。
 func (m *Model) envDialog(c ui.C) {
 	theme := c.Theme()
-	ui.ModalWith(c, &m.ui.envOpen, "环境变量", ui.ModalSpec{Width: px(880), Height: px(520)}, func() {
+	ui.Modal(c, &m.ui.envOpen, "环境变量", ui.ModalSpec{Width: px(880), Height: px(520)}, func() {
 		ui.Row(c).FillWidth().Gap(px(16)).Children(func() {
 			ui.Column(c).Width(px(180)).Gap(px(6)).Children(func() {
 				for _, name := range m.ui.envs {
@@ -1431,7 +1438,7 @@ func (m *Model) envDialog(c ui.C) {
 
 // newEnvDialog 新建一个空环境（同名拒绝，不覆盖）。
 func (m *Model) newEnvDialog(c ui.C) {
-	ui.Modal(c, &m.ui.newEnvOpen, "新建环境", func() {
+	ui.Modal(c, &m.ui.newEnvOpen, "新建环境", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "环境是 environments/<名称>.yml，与客户端同一个位置。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.newEnvName, "环境名", "例如：staging").FillWidth()
@@ -1453,7 +1460,7 @@ func (m *Model) newEnvDialog(c ui.C) {
 
 // openCollectionDialogs 是「打开集合」的三步：手输路径兜底、初始化确认、错误提示。
 func (m *Model) openCollectionDialogs(c ui.C) {
-	ui.Modal(c, &m.ui.pathOpen, "打开集合", func() {
+	ui.Modal(c, &m.ui.pathOpen, "打开集合", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "输入集合目录的绝对路径（目录里应有 opencollection.yml）。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.pathText, "集合目录", "/home/you/collections/demo").FillWidth()
@@ -1472,7 +1479,7 @@ func (m *Model) openCollectionDialogs(c ui.C) {
 		})
 	})
 
-	ui.Modal(c, &m.ui.initOpen, "初始化集合", func() {
+	ui.Modal(c, &m.ui.initOpen, "初始化集合", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Text(c, m.ui.pendingDir).FontSize(fs(11)).Muted().Mono()
 			ui.Text(c, "这个目录里没有 opencollection.yml。初始化会在目录里写一份清单，").FontSize(fs(12))
@@ -1489,7 +1496,7 @@ func (m *Model) openCollectionDialogs(c ui.C) {
 		})
 	})
 
-	ui.Modal(c, &m.ui.envRenameOpen, "重命名环境", func() {
+	ui.Modal(c, &m.ui.envRenameOpen, "重命名环境", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "会同时重命名 <名称>.yml 与 <名称>.secrets.yml。").FontSize(fs(11)).Muted()
 			ui.TextField(c, &m.ui.envRenameName, "新环境名", "staging").FillWidth()
@@ -1508,7 +1515,7 @@ func (m *Model) openCollectionDialogs(c ui.C) {
 		})
 	})
 
-	ui.Modal(c, &m.ui.envDeleteOpen, "删除环境", func() {
+	ui.Modal(c, &m.ui.envDeleteOpen, "删除环境", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Text(c, "环境："+m.ui.envPick).FontSize(fs(12)).Bold()
 			ui.Text(c, "主文件与密钥文件都会移进集合的 .trash/，不会直接删除。").FontSize(fs(11)).Muted()

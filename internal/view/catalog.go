@@ -4,6 +4,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/empty"
 )
 
 // 本文件只做一件事：把 Viva 组件目录（components）接进声明式页面。
@@ -23,27 +24,24 @@ func methodBadge(c ui.C, entry *explorer.Entry) ui.Box {
 	})
 }
 
-// emptyBox 是组件目录的空状态：标题 + 说明居中，垂直居中需要给定高度。
+// emptyBox 是空状态：标题 + 说明居中。
+//
+// v0.6.9 起用页面级的 `ui/empty`（原来走 components.Empty 的 canvas 钩子）：
+// 它按页面自己的排版组件搭，跟随主题与密度，还能在说明下面放「下一步」的按钮。
 func emptyBox(c ui.C, title, description string) ui.Box {
-	return ui.Column(c).FillWidth().MinHeight(px(180)).Draw(func(d *ui.DrawContext) {
-		components.Empty(d.Canvas, *d.Theme, d.Rect, components.EmptyData{
-			Title:       title,
-			Description: description,
-		})
-	})
+	return emptyBoxActions(c, title, description, nil)
+}
+
+// emptyBoxActions 是带「下一步」动作的空状态（actions 为 nil 时就是普通空状态）。
+func emptyBoxActions(c ui.C, title, description string, actions func()) ui.Box {
+	spec := empty.Spec{Title: title, Description: description}
+	if actions == nil {
+		actions = func() {}
+	}
+	return empty.View(c, spec, actions).FillWidth().MinHeight(px(180))
 }
 
 // cardDraw 是卡片底的绘制回调（背景 + 边框 + 阴影），给 ui.Box.Draw 用。
 func cardDraw(d *ui.DrawContext) {
 	components.Card(d.Canvas, *d.Theme, d.Rect)
-}
-
-// table 是 ui.Table（可选中、可排序、行虚拟化）的薄封装；列与表头由调用方给。
-func table(c ui.C, state *ui.TableState, source ui.TableSource, headers []string, columns []components.TableColumn) ui.Box {
-	return ui.Table(c, state, ui.TableSpec{
-		Columns: columns,
-		Headers: headers,
-		Source:  source,
-		Striped: true,
-	}).FillWidth().Border(1, c.Theme().Border).Radius(px(6))
 }

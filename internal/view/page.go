@@ -422,7 +422,16 @@ func (m *Model) sidebar(c ui.C) {
 			ui.Text(c, m.createErr).FontSize(fs(11)).Color(c.Theme().Danger)
 		}
 		if len(m.rows) == 0 {
-			emptyBox(c, "没有匹配的请求", "换个关键字，或清空搜索框")
+			// 空状态带「下一步」：清空搜索就在原地，不用再回顶部找输入框。
+			emptyBoxActions(c, "没有匹配的请求", "换个关键字，或清空搜索框", func() {
+				if ui.Button(c, "清空搜索").Outline().Clicked() {
+					c.After(func() {
+						m.filter = ""
+						m.shownOnce = false
+						m.invalidator.Invalidate()
+					})
+				}
+			})
 			return
 		}
 		ui.Tree(c, &m.tree, len(m.rows), m.treeLabel, m.treeContent).Grow(1)

@@ -56,7 +56,7 @@ func (m *Model) openShortcuts() {
 
 // shortcutsDialog 是 Ctrl+/ 打开的快捷键卡。
 func (m *Model) shortcutsDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.shortcutsOpen, "快捷键", ui.ModalSpec{Width: 560, Height: 520}, func() {
+	ui.Modal(c, &m.ui.shortcutsOpen, "快捷键", ui.ModalSpec{Width: 560, Height: 520}, func() {
 		primary := primaryName()
 		ui.Column(c).FillWidth().Height(px(430)).Gap(px(2)).Children(func() {
 			for _, group := range shortcutGroups {

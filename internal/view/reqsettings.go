@@ -139,7 +139,7 @@ func optionalSeconds(text string, low, high int) (int, string) {
 
 // reqSettingsDialog 是「请求设置」弹窗。
 func (m *Model) reqSettingsDialog(c ui.C) {
-	ui.ModalWith(c, &m.ui.reqSetOpen, "请求设置", ui.ModalSpec{Width: 520, Height: 460}, func() {
+	ui.Modal(c, &m.ui.reqSetOpen, "请求设置", ui.ModalSpec{Width: 520, Height: 460}, func() {
 		ui.Column(c).FillWidth().Height(px(340)).Gap(px(10)).Children(func() {
 			ui.Text(c, "这些值只作用于当前请求，留空或「跟随全局」就不写进文件——"+
 				"以后改设置面板里的全局值仍然生效。").FontSize(fs(11)).Muted()

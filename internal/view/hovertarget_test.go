@@ -26,7 +26,7 @@ func TestVariableHotzoneKeepsFieldEditing(t *testing.T) {
 		ui.Column(c).Fill().Pad(20).Gap(10).Children(func() {
 			id := ui.ID(c)
 			fieldID = id
-			ui.TextFieldID(c, id, &address, "地址", "{{host}}/api/users").FillWidth().
+			ui.TextField(c, &address, "地址", "{{host}}/api/users", ui.WithID(id)).FillWidth().
 				Tooltip("整条：host = http://127.0.0.1:8080")
 			// 变量那一小段：压在地址栏内部，指针停上去时由它接管提示。
 			ui.Slot(c).Absolute().Left(30).Top(26).Size(120, 20).Draw(func(d *ui.DrawContext) {

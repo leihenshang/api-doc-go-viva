@@ -69,7 +69,7 @@ func (m *Model) openPalette() {
 
 // commandPalette 是居中的命令面板：搜索框 + 过滤后的命令行（参考 14）。
 func (m *Model) commandPalette(c ui.C) {
-	ui.ModalWith(c, &m.ui.paletteOpen, "命令面板", ui.ModalSpec{Width: 560, Height: 420}, func() {
+	ui.Modal(c, &m.ui.paletteOpen, "命令面板", ui.ModalSpec{Width: 560, Height: 420}, func() {
 		ui.Column(c).FillWidth().Height(px(340)).Gap(px(6)).Children(func() {
 			ui.TextField(c, &m.ui.paletteQuery, "搜索命令", "输入命令名…").FillWidth()
 			// 结果多到超出弹窗时给一条滚动条：列表本身不再被底边裁掉。

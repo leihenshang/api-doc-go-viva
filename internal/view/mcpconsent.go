@@ -103,7 +103,7 @@ func (m *Model) mcpConsentDialog(c ui.C) {
 	if req == nil {
 		return
 	}
-	ui.ModalWith(c, &m.ui.mcpConsentOpen, "MCP 写操作确认", ui.ModalSpec{Width: px(520), Height: px(240)}, func() {
+	ui.Modal(c, &m.ui.mcpConsentOpen, "MCP 写操作确认", ui.ModalSpec{Width: px(520), Height: px(240)}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "AI 想执行写操作："+req.tool).FontSize(fs(13)).Bold()
 			ui.Text(c, "参数："+req.args).FontSize(fs(11)).Mono().Muted().MaxLines(3)

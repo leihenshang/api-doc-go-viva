@@ -590,7 +590,14 @@ func (m *Model) pickImportFile() {
 
 // pickImportDir 选一个要被导入的 OpenCollection 集合目录。
 func (m *Model) pickImportDir() {
-	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "选择要导入的集合目录"})
+	// 有已打开的集合就从它的上一级开始找：导入的通常是与它并排的另一个目录。
+	start := ""
+	if m.col != nil {
+		start = filepath.Dir(m.col.Dir)
+	}
+	path, err := app.OpenDirectory(app.OpenDirectoryOptions{
+		Title: "选择要导入的集合目录", InitialDirectory: start,
+	})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
 			m.ui.importErr = err.Error()
@@ -921,7 +928,11 @@ func (m *Model) toggleAllTrash(on bool) {
 // chooseCollection 打开系统目录选择框；失败（没有可用的对话框后端）就退回手输路径。
 // 用户点「取消」不算失败：直接什么都不做 —— 不要再弹一个「请输入路径」的框。
 func (m *Model) chooseCollection() {
-	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "打开集合目录"})
+	start := ""
+	if m.col != nil {
+		start = filepath.Dir(m.col.Dir)
+	}
+	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "打开集合目录", InitialDirectory: start})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
