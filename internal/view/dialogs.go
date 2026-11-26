@@ -248,6 +248,13 @@ var settingsSections = []string{"外观", "网络与安全", "本地数据", "�
 // formLabelWidth 是设置表单里标签列的宽度：各分区共用，右侧控件才对得齐。
 var formLabelWidth float32 = 90
 
+// scrollbarGutter 是带框架滚动条的滚动区给内容留的右侧空隙。
+//
+// viva 的 Scrollbars() 是覆盖式的（base.ScrollAreaBarSize = 10）：条子画在滚动区
+// 右边缘之上，内容不留白就会被压住右端——文字被截、右对齐的按钮被盖一半。
+// 留白是固定值，所以滚动条显示或隐藏时布局都不跳。
+const scrollbarGutter float32 = 14
+
 // formRowWidth 是设置表单行的宽度：每行同宽，标签列才会在同一条竖线上。
 var formRowWidth float32 = 360
 
@@ -646,7 +653,8 @@ func (m *Model) mcpDialog(c ui.C) {
 		// 整个内容放进定高滚动区：表单 + 工作区 + JSON 加起来超过弹窗高度，
 		// 让它内部滚动，而不是撑破外框跑到窗口上。
 		ui.Scroll(c).Grow(1).FillWidth().Scrollbars().Children(func() {
-			ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
+			// 右侧留出滚动条的位置，否则它压在「复制配置」「可写」这些右端控件上。
+			ui.Column(c).FillWidth().PadRight(px(scrollbarGutter)).Gap(px(10)).Children(func() {
 				// 一、服务配置
 				m.mcpSectionTitle(c, "服务配置")
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {

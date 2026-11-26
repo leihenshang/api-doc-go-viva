@@ -54,6 +54,12 @@ for d in .claude .agents; do install -m 444 "$SRC/SKILL.md" "$SRC/recipes.md" "$
   禁止手写 `"dir:"+dir` / `"entry:"+file`。两个集合根有同名相对路径又同时展开时会
   `panic: ui: two siblings have the key …`。回归用例 `TestTwoRootsWithSamePathsShareNoTreeKeys`；
   现象、根因与 `remapKey` 的改法见 [`doc/环境与崩溃.md`](doc/环境与崩溃.md)。
+- **带框架滚动条的滚动区要留白**：`ui.Scroll(...).Scrollbars()` 的条子是**覆盖式**的
+  （`base.ScrollAreaBarSize = 10`，画在滚动区右边缘之上），内容容器必须
+  `PadRight(px(scrollbarGutter))`（`scrollbarGutter = 14`，见 `dialogs.go`），
+  否则右端文字与右对齐按钮被压住。留白是固定值，滚动条显隐时布局不跳。
+  现在三处：MCP 面板、命令面板、文档预览；新增带条子的滚动区照此办。回归用例
+  `TestMCPContentKeepsClearOfScrollbar`。
 - **GUI 验证必须用软件 Vulkan**：`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json bin/dev start`。
   硬件 Vulkan 会和 IDE 的 Electron GPU 进程抢同一块 AMD 卡，把 IDE 一起带崩（SIGTRAP）。
   取证步骤同见该文档。

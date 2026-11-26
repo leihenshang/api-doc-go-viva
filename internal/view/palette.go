@@ -74,7 +74,8 @@ func (m *Model) commandPalette(c ui.C) {
 			ui.TextField(c, &m.ui.paletteQuery, "搜索命令", "输入命令名…").FillWidth()
 			// 结果多到超出弹窗时给一条滚动条：列表本身不再被底边裁掉。
 			ui.Scroll(c).Height(px(300)).FillWidth().Scrollbars().Children(func() {
-				ui.Column(c).FillWidth().Gap(px(2)).Children(func() {
+				// 右侧留白给覆盖式滚动条（见 scrollbarGutter）。
+				ui.Column(c).FillWidth().PadRight(px(scrollbarGutter)).Gap(px(2)).Children(func() {
 					needle := strings.ToLower(strings.TrimSpace(m.ui.paletteQuery))
 					shown := 0
 					for _, group := range paletteGroups {

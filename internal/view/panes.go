@@ -1001,7 +1001,7 @@ func (m *Model) docPreviewPane(c ui.C, textWidth float32) {
 			ui.Text(c, "（空文档）").Muted()
 			return
 		}
-		ui.Scroll(c).Grow(1).Scrollbars().Children(func() {
+		ui.Scroll(c).Grow(1).Scrollbars().PadRight(px(scrollbarGutter)).Children(func() {
 			m.previewBlock(c, m.editor.text, m.editor.previewKey, docBase(m.editor.file), textWidth)
 		})
 	}).Grow(1).FillWidth().FillHeight()

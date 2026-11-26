@@ -232,3 +232,33 @@ func TestMCPSettingsLayout(t *testing.T) {
 		t.Fatalf("空状态应显示：%v", painted(driver))
 	}
 }
+
+// TestMCPContentKeepsClearOfScrollbar 滚动区要给自己那条覆盖式滚动条留位置：
+// 内容右端不许越过「弹窗右边 - 框内边距 - scrollbarGutter」，否则文字与右对齐
+// 的按钮（复制配置 / 可写 / 复制）会被压在条子底下。
+func TestMCPContentKeepsClearOfScrollbar(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.OpenMCPSettings()
+	pump(t, driver)
+
+	// 弹窗 700 宽、在 1180 宽的窗口里居中；Modal 内边距按 24 算（与视觉一致）。
+	const dialogRight, modalInset = float32(940), float32(24)
+	limit := dialogRight - modalInset - scrollbarGutter
+	snap := driver.Snapshot()
+	for _, hit := range snap.Hits {
+		// 只看滚动内容区（跳过 scrim、工具栏与底部操作栏），跳过整宽容器。
+		if hit.Label == "" || hit.Bounds.X < 240 || hit.Bounds.Width > 700 ||
+			hit.Bounds.Y < 100 || hit.Bounds.Y > 640 {
+			continue
+		}
+		if right := hit.Bounds.X + hit.Bounds.Width; right > limit {
+			t.Fatalf("%q 越过滚动条留白：right=%.1f 应 ≤ %.1f", hit.Label, right, limit)
+		}
+	}
+}
