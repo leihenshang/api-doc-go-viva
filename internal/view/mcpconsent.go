@@ -2,6 +2,7 @@ package view
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -77,7 +78,7 @@ func (m *Model) confirmMCPWrite(ctx context.Context, tool string, in any) error 
 	if m.settings.MCPConsentDisabled {
 		return nil
 	}
-	req := mcpConsentRequest{tool: tool, args: fmt.Sprintf("%v", in), reply: make(chan bool, 1)}
+	req := mcpConsentRequest{tool: tool, args: consentArgsText(in), reply: make(chan bool, 1)}
 	if !m.mcpConsent.ask(req) {
 		return errors.New("上一个写操作还没确认，这次已拒绝")
 	}
@@ -97,12 +98,26 @@ func (m *Model) confirmMCPWrite(ctx context.Context, tool string, in any) error 
 	}
 }
 
+// consentArgsText 把工具入参排成一行 JSON：确认框要让用户看清「AI 到底要改什么」，
+// 直接 %v 打结构体会变成 {  E2E-允许 GET ... map[] } 这种读不懂的样子。
+func consentArgsText(in any) string {
+	if raw, err := json.Marshal(in); err == nil {
+		return string(raw)
+	}
+	return fmt.Sprintf("%v", in)
+}
+
 // mcpConsentDialog 画写操作确认框：每帧检查一次待确认队列。
 func (m *Model) mcpConsentDialog(c ui.C) {
 	req := m.mcpConsent.take()
 	if req == nil {
+		// 队列空了（用户答过 / 超时丢弃）：把弹窗一起收掉，别留一个点不动的确认框。
+		m.ui.mcpConsentOpen = false
 		return
 	}
+	// 有待确认才开：Modal 的开关一直是 false 的话，这个框根本画不出来
+	// （写操作会一路等到 60 秒超时被拒，用户在界面上看不到任何提示）。
+	m.ui.mcpConsentOpen = true
 	ui.Modal(c, &m.ui.mcpConsentOpen, "MCP 写操作确认", ui.ModalSpec{Width: px(520), Height: px(240)}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "AI 想执行写操作："+req.tool).FontSize(fs(13)).Bold()

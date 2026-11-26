@@ -53,7 +53,14 @@ func NewServer(cfg Config) (*sdk.Server, error) {
 		Title:   "api-doc-go 接口集合（验证版）",
 		Version: ServerVersion,
 	}, nil)
-	registerTools(server, cfg.Service, ToolOptions{ReadOnly: cfg.ReadOnly, Groups: cfg.Groups, Audit: cfg.Audit})
+	// Confirm 必须一起传下去：漏了它，写工具的「先问用户」就在注册这一步被丢掉了，
+	// 界面上永远不会弹确认框（写操作直接落盘）。
+	registerTools(server, cfg.Service, ToolOptions{
+		ReadOnly: cfg.ReadOnly,
+		Groups:   cfg.Groups,
+		Audit:    cfg.Audit,
+		Confirm:  cfg.Confirm,
+	})
 	return server, nil
 }
 

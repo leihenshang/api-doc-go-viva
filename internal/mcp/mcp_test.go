@@ -264,3 +264,59 @@ func toolNames(t *testing.T, server *sdk.Server) map[string]bool {
 	}
 	return out
 }
+
+// TestWriteToolAsksConfirm 写工具执行前必须先问应用：
+// Confirm 返回错误时工具不落盘，审计里也记成失败（write=true / ok=false）。
+//
+// 这个用例同时守住 NewServer 把 cfg.Confirm 传进 ToolOptions —— 漏传时
+// 界面上永远不会弹确认框，写操作直接生效。
+func TestWriteToolAsksConfirm(t *testing.T) {
+	dir := writeCollection(t)
+	audit := NewAudit("")
+	asked := 0
+	server, err := NewServer(Config{
+		Service: &Service{Roots: func() []string { return []string{dir} }},
+		Audit:   audit,
+		Confirm: func(context.Context, string, any) error {
+			asked++
+			return errors.New("用户拒绝了这次写操作")
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	t1, t2 := sdk.NewInMemoryTransports()
+	ctx := context.Background()
+	ss, err := server.Connect(ctx, t1, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ss.Close() })
+	client := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0.0.1"}, nil)
+	cs, err := client.Connect(ctx, t2, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.CallTool(ctx, &sdk.CallToolParams{
+		Name:      "create_request",
+		Arguments: map[string]any{"name": "AI-拒绝测试", "method": "GET", "url": "http://example.invalid/x"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("被拒绝的写操作应返回错误结果：%+v", res.Content)
+	}
+	if asked != 1 {
+		t.Fatalf("写工具必须先问应用一次，实际问了 %d 次", asked)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "AI-拒绝测试.yml")); statErr == nil {
+		t.Fatal("被拒绝后不该落盘")
+	}
+	rows := audit.Load()
+	if len(rows) != 1 || !rows[0].Write || rows[0].OK {
+		t.Fatalf("审计应记一条 write=true / ok=false：%+v", rows)
+	}
+}

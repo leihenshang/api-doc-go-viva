@@ -264,3 +264,51 @@ func TestMCPContentKeepsClearOfScrollbar(t *testing.T) {
 		}
 	}
 }
+
+// TestMCPConsentDialogShows 写操作确认框要真的弹出来：
+// 之前 m.ui.mcpConsentOpen 从没被置 true，Modal 画不出来，写操作只能等 60 秒超时。
+func TestMCPConsentDialogShows(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	if shows(driver, "MCP 写操作确认") {
+		t.Fatalf("没请求时不该有确认框：%v", painted(driver))
+	}
+
+	// 模拟服务端 goroutine 提问（界面线程每帧 take 到就画）。
+	reply := make(chan bool, 1)
+	if !model.mcpConsent.ask(mcpConsentRequest{tool: "create_request", args: "{name:x}", reply: reply}) {
+		t.Fatal("队列空时 ask 应该成功")
+	}
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	if !shows(driver, "MCP 写操作确认") {
+		t.Fatalf("有待确认时应弹出确认框：%v", painted(driver))
+	}
+	if !shows(driver, "create_request") {
+		t.Fatalf("确认框里应写明要执行的工具：%v", painted(driver))
+	}
+
+	// 点「允许」：队列清空、请求方收到 true、弹窗收起。
+	click(t, driver, "允许")
+	pump(t, driver)
+	select {
+	case allow := <-reply:
+		if !allow {
+			t.Fatal("点允许后应回 true")
+		}
+	default:
+		t.Fatal("点允许后请求方应收到答复")
+	}
+	if model.mcpConsent.take() != nil {
+		t.Fatal("答过之后队列应为空")
+	}
+	pump(t, driver)
+	if shows(driver, "MCP 写操作确认") {
+		t.Fatalf("答过之后确认框应收起：%v", painted(driver))
+	}
+}
