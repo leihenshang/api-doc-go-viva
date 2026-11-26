@@ -1,6 +1,8 @@
 package view
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -38,5 +40,47 @@ func TestEmptyStateClearsSearch(t *testing.T) {
 	}
 	if !shows(driver, "健康检查") {
 		t.Fatalf("清空后请求应回来：%v", painted(driver))
+	}
+}
+
+// TestNewRequestValidatesName 新建请求的名称用 v0.6.9 的 validate 校验：
+// 错误画在字段下方（FormField），空名不落盘，输入后错误消失。
+func TestNewRequestValidatesName(t *testing.T) {
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	click(t, driver, "新建请求")
+	pump(t, driver)
+	click(t, driver, "创建")
+	pump(t, driver)
+	if !shows(driver, "请求名不能为空") {
+		t.Fatalf("空名应在字段下方报错：%v", painted(driver))
+	}
+	if !model.ui.newReqOpen {
+		t.Fatal("校验没过时弹窗不该关")
+	}
+	if _, err := os.Stat(filepath.Join(col.Dir, ".yml")); err == nil {
+		t.Fatal("空名不该写出文件")
+	}
+
+	clickText(t, driver, "例如：获取用户列表")
+	pump(t, driver)
+	if err := driver.Type("校验通过"); err != nil {
+		t.Fatalf("Type: %v", err)
+	}
+	pump(t, driver)
+	if shows(driver, "请求名不能为空") {
+		t.Fatalf("输入后错误应消失：%v", painted(driver))
+	}
+
+	click(t, driver, "创建")
+	pump(t, driver)
+	pump(t, driver)
+	if _, err := os.Stat(filepath.Join(col.Dir, "校验通过.yml")); err != nil {
+		t.Fatalf("校验通过后应落盘：%v", err)
 	}
 }

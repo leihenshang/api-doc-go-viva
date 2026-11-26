@@ -14,6 +14,8 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/updater"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/popconfirm"
+	"github.com/vivaui/viva/ui/validate"
 )
 
 // dialogs 声明三个弹窗：新建请求、重命名、设置。它们叠在整窗之上，最后声明。
@@ -50,9 +52,16 @@ func (m *Model) newRequestDialog(c ui.C) {
 	ui.Modal(c, &m.ui.newReqOpen, "新建请求", ui.ModalSpec{}, func() {
 		ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 			ui.Text(c, "请求会写进集合目录，文件名取请求名；重名自动加 -2。").FontSize(fs(11)).Muted()
-			// 文件名取请求名：限长 60 并显示字数，免得撞上文件名长度上限才发现。
-			ui.TextField(c, &m.ui.newName, "请求名", "例如：获取用户列表", ui.MaxLength(60), ui.ShowCount()).
-				FillWidth()
+			// 文件名取请求名：限长 60 并显示字数；校验交给 v0.6.9 的 FormField + validate，
+			// 错误画在字段下方，而不是攒到弹窗底部一行通用提示。
+			ui.FormField(c, &m.ui.newNameField, "请求名").FillWidth().Children(func() {
+				name := ui.TextField(c, &m.ui.newName, "", "例如：获取用户列表",
+					ui.MaxLength(60), ui.ShowCount()).FillWidth()
+				if name.Changed() {
+					validate.Apply(&m.ui.newNameField, m.ui.newName, m.ui.newNameRules)
+					m.ui.newErr = ""
+				}
+			})
 			ui.Row(c).Gap(px(8)).Items(ui.Center).Children(func() {
 				ui.Text(c, "方法").FontSize(fs(11)).Muted()
 				ui.Select(c, &m.ui.newMethod, httpMethods, nil).Width(px(120))
@@ -69,6 +78,11 @@ func (m *Model) newRequestDialog(c ui.C) {
 				m.ui.newReqOpen = false
 			}
 			if ui.Button(c, "创建").Clicked() {
+				// 提交时再校验一次：输入框没碰过（Changed 没触发）也要拦住空名。
+				if !validate.Apply(&m.ui.newNameField, m.ui.newName, m.ui.newNameRules) {
+					m.invalidator.Invalidate()
+					return
+				}
 				c.After(m.createRequest)
 			}
 		})
@@ -414,8 +428,26 @@ func (m *Model) settingsLocal(c ui.C) {
 func (m *Model) cookieDialog(c ui.C) {
 	ui.Modal(c, &m.ui.cookieOpen, "Cookie Jar", ui.ModalSpec{Width: px(700), Height: px(460)}, func() {
 		ui.Column(c).FillWidth().Height(px(360)).Gap(px(6)).Children(func() {
-			ui.Text(c, "发送请求时自动带上；集合运行器也用同一份 jar，所以「先登录再跑」是成立的。").
-				FontSize(11).Muted()
+			// 「清空」放在行首而不是 footer 右端：popconfirm 的气泡有 280px 宽，
+			// 贴着弹窗右边界会越出去、点到弹窗的 scrim 上（实测会把弹窗一起关掉）。
+			ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+				clearCookies := ui.Button(c, "清空").Icon(IconTrash).Outline()
+				if clearCookies.Clicked() {
+					m.cookieConfirm.Open()
+				}
+				m.cookieConfirm.View(c, clearCookies, popconfirm.Spec{
+					Title:       "清空 Cookie Jar？",
+					Description: "发过的请求种下的会话会一起清掉，之后的请求不再自动带 cookie。",
+					OkLabel:     "确认清空",
+					CancelLabel: "取消",
+					Danger:      true,
+				})
+				if m.cookieConfirm.Confirmed() {
+					c.After(m.clearCookies)
+				}
+				ui.Text(c, "发送请求时自动带上；集合运行器也用同一份 jar，所以「先登录再跑」是成立的。").
+					FontSize(11).Muted().Grow(1)
+			})
 			if len(m.ui.cookieRows) == 0 {
 				ui.Text(c, "还没有 cookie：发一次会种 cookie 的请求就会出现在这里。").FontSize(fs(11)).Muted()
 				return
@@ -450,9 +482,6 @@ func (m *Model) cookieDialog(c ui.C) {
 					m.invalidator.Invalidate()
 				})
 			}
-			if ui.Button(c, "清空").Icon(IconTrash).Outline().Clicked() {
-				c.After(m.clearCookies)
-			}
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.cookieOpen = false
 			}
@@ -465,6 +494,24 @@ func (m *Model) cookieDialog(c ui.C) {
 func (m *Model) historyDialog(c ui.C) {
 	ui.Modal(c, &m.ui.historyOpen, "请求历史", ui.ModalSpec{Width: px(760), Height: px(500)}, func() {
 		ui.Column(c).FillWidth().Height(px(400)).Gap(px(6)).Children(func() {
+			// 与 Cookie 弹窗同一个理由：「清空历史」放行首，popconfirm 的气泡才不越界。
+			ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+				clearHistory := ui.Button(c, "清空历史").Icon(IconTrash).Outline()
+				if clearHistory.Clicked() {
+					m.historyConfirm.Open()
+				}
+				m.historyConfirm.View(c, clearHistory, popconfirm.Spec{
+					Title:       "清空请求历史？",
+					Description: "只清本机的 history.jsonl（集合文件不动），清完不可恢复。",
+					OkLabel:     "确认清空",
+					CancelLabel: "取消",
+					Danger:      true,
+				})
+				if m.historyConfirm.Confirmed() {
+					c.After(m.clearHistory)
+				}
+				ui.Text(c, "记录只在本机（history.jsonl），不写进集合。").FontSize(11).Muted().Grow(1)
+			})
 			ui.TextField(c, &m.ui.historyQuery, "搜索历史", "按地址或请求名过滤…").FillWidth()
 			needle := strings.ToLower(strings.TrimSpace(m.ui.historyQuery))
 			shown := 0
@@ -526,9 +573,6 @@ func (m *Model) historyDialog(c ui.C) {
 		})
 	}, func() {
 		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
-			if ui.Button(c, "清空历史").Icon(IconTrash).Outline().Clicked() {
-				c.After(m.clearHistory)
-			}
 			if ui.Button(c, "关闭").Clicked() {
 				m.ui.historyOpen = false
 			}
@@ -645,6 +689,21 @@ func (m *Model) mcpDialog(c ui.C) {
 				// 最近调用：AI 连续调用时能翻「它到底改了什么」。
 				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					ui.Text(c, "最近调用").FontSize(fs(11)).Bold()
+					// 「清空」紧跟标题（不放行尾）：popconfirm 的气泡才有地方展开。
+					clearAudit := ui.Button(c, "清空").Ghost().XSmall()
+					if clearAudit.Clicked() {
+						m.auditConfirm.Open()
+					}
+					m.auditConfirm.View(c, clearAudit, popconfirm.Spec{
+						Title:       "清空调用审计？",
+						Description: "审计日志会整个删掉，导出过的文件不受影响。",
+						OkLabel:     "确认清空",
+						CancelLabel: "取消",
+						Danger:      true,
+					})
+					if m.auditConfirm.Confirmed() {
+						c.After(m.clearMCPAudit)
+					}
 					ui.Spacer(c)
 					if ui.Button(c, "刷新").Ghost().XSmall().Clicked() {
 						m.ui.mcpAuditRows = m.loadMCPAudit()
@@ -652,9 +711,6 @@ func (m *Model) mcpDialog(c ui.C) {
 					}
 					if ui.Button(c, "导出").Ghost().XSmall().Tooltip("导出到偏好目录下的 mcp-audit-export.jsonl").Clicked() {
 						m.exportMCPAudit()
-					}
-					if ui.Button(c, "清空").Ghost().XSmall().Clicked() {
-						m.clearMCPAudit()
 					}
 				})
 				if len(m.ui.mcpAuditRows) == 0 {

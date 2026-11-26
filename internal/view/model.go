@@ -30,6 +30,8 @@ import (
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/ui"
 	"github.com/vivaui/viva/ui/codeeditor"
+	"github.com/vivaui/viva/ui/popconfirm"
+	"github.com/vivaui/viva/ui/validate"
 )
 
 // detailTab 是右侧的页签：请求 / 响应 / 文档（请求条目）与 编辑 / 预览（文档条目）。
@@ -328,6 +330,10 @@ type workspaceUI struct {
 	newName    string
 	newMethod  string
 	newURL     string
+	// 请求名的校验状态与规则（v0.6.9 的 FormField + validate）：错误画在字段下方，
+	// 不再攒到弹窗底部一行通用提示。
+	newNameField ui.FormFieldState
+	newNameRules []validate.Rule
 
 	// 集合公共参数弹窗：默认请求头与默认认证的表单。
 	defaultsOpen bool
@@ -659,8 +665,12 @@ type Model struct {
 	mock       mockRuntime
 	mockServer *appmock.Server
 	run        runState
-	runCh      chan runner.Result
-	runCancel  context.CancelFunc
+	// 三个破坏性小操作的就地确认（v0.6.9 的 popconfirm），见 New() 里的初始化。
+	cookieConfirm  *popconfirm.Popconfirm
+	historyConfirm *popconfirm.Popconfirm
+	auditConfirm   *popconfirm.Popconfirm
+	runCh          chan runner.Result
+	runCancel      context.CancelFunc
 
 	resp     send.Outcome
 	hasResp  bool
@@ -739,6 +749,16 @@ func New(col *explorer.Collection, envName string, vars map[string]string) *Mode
 		settings: settings.Load(),
 	}
 	m.mcpHost.errs = make(chan string, 1)
+	// 破坏性小操作就地确认（v0.6.9 的 popconfirm）：比再开一个弹窗轻，
+	// 比直接执行安全。状态放 model，打开与确认都由这里管。
+	m.cookieConfirm = popconfirm.New()
+	m.historyConfirm = popconfirm.New()
+	m.auditConfirm = popconfirm.New()
+	// 请求名的规则只建一次（闭包），提交与输入变化时复用。
+	m.ui.newNameRules = []validate.Rule{
+		validate.Required("请求名不能为空"),
+		validate.MaxLength(60, "最多 60 个字符"),
+	}
 	m.grpcResults = make(chan grpcOutcome, 1)
 	if col.Dir != "" {
 		m.defaults = explorer.LoadDefaults(col.Dir)

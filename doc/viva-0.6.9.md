@@ -25,6 +25,8 @@ skill（`.claude/skills/building-with-viva`、`.agents/skills/building-with-viva
 | 空状态（`components.Empty` 的 canvas 钩子 + 固定高度） | `ui/empty`（页面级 + actions 插槽） | `view/catalog.go` | 跟随主题与密度；「没有匹配的请求」处顺手加了「清空搜索」按钮 |
 | 选目录不带初值 | `OpenDirectoryOptions.InitialDirectory` | `view/actions.go` | 打开集合 / 导入集合都从当前集合的上一级开始找 |
 | 请求名无长度约束 | `ui.MaxLength(60)` + `ui.ShowCount()` | `view/dialogs.go` | 文件名取请求名，撞上长度上限之前就能看见 |
+| 「清空 Cookie / 历史 / 审计」一点就执行 | `ui/popconfirm`（按钮旁问一句） | `view/dialogs.go` | 不可撤销的动作先问一句；三处按钮都从 footer / 行尾挪到行首（原因见下），触发的确认气泡才不越出弹窗 |
+| 请求名只有底部一行通用错误 | `ui/FormField` + `ui/validate` | `view/dialogs.go` / `view/actions.go` | 错误画在字段下方、标题与边框一起变红；规则是 `Required` + `MaxLength(60)`，输入变化与提交时各校验一次 |
 
 ## 3. viva 有了、但这次没换的自有实现（含原因）
 
@@ -35,14 +37,21 @@ skill（`.claude/skills/building-with-viva`、`.agents/skills/building-with-viva
 | `ui/editabletabs`（按标题宽度、关闭 / 新增、超出滚动） | 自绘标签条（拖拽换位、右键菜单、横向滚动、溢出「⋯」列表） | 换过去会**丢功能**：拖拽排序与右键菜单 editabletabs 没有 |
 | `ui.Table`（列标题 + 排序 + 筛选 + 勾选） | 参数 / 请求头 / 字段表是「行内带输入框的可编辑表格」；运行器结果表带行尾「规则」按钮 | `Table` 的 Cell 只能是字符串，放不下输入框与按钮 |
 | `ui.AlertDialog`（规范确认框：焦点范围、Escape、危险色动作） | 删除分组等确认用自建 `ui.Modal` + 两个按钮 | **试过又退回了**：AlertDialog 由 components 直接画在 widget 层，无头 `Snapshot` 里既没有文字也没有命中区（实测 `Texts`/`Hits` 都没有「删除分组」），「每个交互都要有无头用例」这条约定守不住。自建 Modal 的按钮是普通 `ui.Button`，标签可点可断言 |
-| `ui/popconfirm`（按钮旁问一句） | 「清空 Cookie / 清空历史 / 清空审计」直接执行 | 这是**增强**（防误删）而不是替换；要改交互，留给后续决定 |
 | `ui/typography`（截断 N 行 + 展开 + 复制全文） | `.MaxLines(n)` + `.Ellipsis()` | 现有写法够用；展开 / 复制对只读提示价值不大 |
-| `ui/validate`（规则化表单校验） | 弹窗底部一行 `*Err` 文本 | 要引入 `FormFieldState` 与字段级错误位置，属于表单重构，单独立项 |
 | `ui/descriptions`（标签-值列表） | 集合概览的三张统计卡、设置面板的行 | 设置行是「标签 + 交互控件 + ⓘ」，descriptions 的列布局与它不匹配；统计卡换成表格样式会改视觉 |
 | `ui/anchor`（页内目录）、`ui/comment`、`ui/timeline`、`ui/steps`、`ui/transfer` 等 | 项目里没有对应场景 | 新增能力，不是替换点 |
 | `ui.TreeNode.Loading` | 树没有异步加载 | 没有可替换的「加载中」自绘 |
 | `MenuItem.Toggled` | 排序菜单用 `Checked` 并在点击后关闭 | 排序菜单点完就该关，保持打开反而不合预期 |
 | `ui.SetClipboardText` | `app.SetClipboardText`（8 处） | 同一实现，只是入口不同；换它不值一次全仓改动 |
+
+## 3.1 两条实测限制（写代码前先知道）
+
+- **弹窗内的 `ui.Popover`（含 popconfirm）在无头驱动里点不到**：确认气泡画在 Modal 内部时，
+  `driver.Click` 落在气泡按钮上不会触发 `Clicked()`（真窗口正常，已用软件 Vulkan 实拍确认：
+  气泡在「清空」下方完整展开、点「确认清空」生效）。因此 popconfirm 的交互只能验到
+  「点按钮 → 气泡出现」，确认那一下由真窗口保证；两个既有用例里改成直接调用清空方法。
+- **气泡宽度 280px，贴着弹窗右边界会越界**：越界那部分点击会打到弹窗的 scrim 上（实测会把
+  弹窗一起关掉）。所以三处「清空」都从 footer / 行尾挪到了内容行首，气泡向右有空间。
 
 ## 4. 升级后自动获得的修正（不需要改代码）
 

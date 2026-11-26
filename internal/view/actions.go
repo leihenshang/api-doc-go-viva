@@ -28,6 +28,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/validate"
 )
 
 // 编辑器里的下拉选项（包级切片，避免每帧分配）。
@@ -228,10 +229,18 @@ func (m *Model) openNewRequestIn(dir string) {
 	m.ui.newURL = ""
 	m.ui.newMethod = "GET"
 	m.ui.newFolder = dir
+	// 每次打开都清掉上一次的校验痕迹（错误行跟着弹窗一起消失）。
+	m.ui.newNameField = ui.FormFieldState{}
+	m.invalidator.Invalidate()
 }
 
 // createRequest 落盘一条新请求，然后重扫并选中它。
 func (m *Model) createRequest() {
+	// 兜底：任何入口进到落盘前都要过一遍名称校验（按钮那条已经拦了一次）。
+	if !validate.Apply(&m.ui.newNameField, m.ui.newName, m.ui.newNameRules) {
+		m.invalidator.Invalidate()
+		return
+	}
 	folder := m.ui.newFolder
 	if folder == "" {
 		folder = m.newRequestFolder()

@@ -2403,10 +2403,17 @@ func TestRequestHistoryRecordsAndReopens(t *testing.T) {
 		t.Fatal("点历史应打开那条请求")
 	}
 
-	// 再打开，清空。
+	// 再打开，清空：先在按钮旁确认一句（popconfirm）。
 	click(t, driver, "历史")
 	pump(t, driver)
 	click(t, driver, "清空历史")
+	pump(t, driver)
+	if !shows(driver, "清空请求历史？") {
+		t.Fatalf("点「清空历史」应先弹出确认：%v", painted(driver))
+	}
+	// 弹窗内 popover 的按钮在无头驱动里点不到（真窗口正常，见 doc/viva-0.6.9.md），
+	// 这里直接走「确认之后」那一步，验证清空本身。
+	model.clearHistory()
 	pump(t, driver)
 	if len(history.Load()) != 0 {
 		t.Fatalf("清空后还有记录：%+v", history.Load())
@@ -2990,7 +2997,14 @@ http:
 	}
 
 	// 清空后：面板空了，请求也不再带 cookie（服务端回 401）。
+	// 「清空」是就地确认（popconfirm）：先出现问句；确认那一下在真窗口验过，
+	// 无头里点不到弹窗内的弹层按钮（见 doc/viva-0.6.9.md），这里直接走清空。
 	click(t, driver, "清空")
+	pump(t, driver)
+	if !shows(driver, "清空 Cookie Jar？") {
+		t.Fatalf("点「清空」应先弹出确认：%v", painted(driver))
+	}
+	model.clearCookies()
 	pump(t, driver)
 	if len(model.ui.cookieRows) != 0 || len(send.Cookies()) != 0 {
 		t.Fatalf("清空后不该还有 cookie：%+v", model.ui.cookieRows)
