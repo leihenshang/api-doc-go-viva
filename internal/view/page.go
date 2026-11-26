@@ -626,11 +626,11 @@ func (m *Model) pinnedTab(c ui.C) {
 		row := ui.Row(c).Height(px(35)).PadX(px(10)).Gap(px(6)).Items(ui.Center).
 			Hover(ui.Look{}.Background(theme.Hover)).
 			Hit(ui.ID(c), "标签 集合")
-		if m.overview {
-			row.Background(theme.Card)
-		}
 		row.Children(func() {
-			ui.Text(c, "集合").FontSize(fs(12.5))
+			label := ui.Text(c, "集合").FontSize(fs(12.5))
+			if m.overview {
+				label.Bold()
+			}
 		})
 		if row.Clicked() {
 			c.After(func() { m.overview = true })
@@ -643,7 +643,7 @@ func (m *Model) pinnedTab(c ui.C) {
 	})
 }
 
-// tabItem 是一个条目标签：方法 + 名称 + 关闭按钮，选中时白底 + 绿色下划线。
+// tabItem 是一个条目标签：方法 + 名称 + 关闭按钮，选中时底部绿线 + 文字加粗（原生 Tabs 的 Line 样式）。
 func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 	theme := c.Theme()
 	title := m.tabTitleAt(slot)
@@ -657,9 +657,8 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 			DragSource(&m.tabDrag).
 			DropTarget(&m.tabDrag, nil, m.dropTab)
 		dropping := m.tabDrag.Dragging() && m.tabDrag.Target() == id
-		if active {
-			row.Background(theme.Card)
-		}
+		// 原生 Tabs（Line）的选中态不铺底色：只留底部那条主线 + 文字加粗。
+		// 想去掉白底块就删掉下面这行 Background；用户如果想回到「卡片式」再打开。
 		if dropping {
 			row.Background(theme.Hover)
 		}
@@ -671,7 +670,10 @@ func (m *Model) tabItem(c ui.C, tab *tabState, slot int, active bool) {
 			}
 			// 备注：文字上按下不会启动拖拽（viva 把文字当无障碍标签，press 归它），
 			// 所以拖拽要按在标签的空白处；菜单里另有「左移 / 右移」兜底。
-			ui.Text(c, title).FontSize(fs(12.5)).Ellipsis()
+			label := ui.Text(c, title).FontSize(fs(12.5)).Ellipsis()
+			if active {
+				label.Bold()
+			}
 			if ui.Button(c, "关闭 "+title).Icon(IconX).IconOnly().Ghost().Tooltip("关闭标签").Clicked() {
 				c.After(func() { m.closeTab(slot) })
 			}
