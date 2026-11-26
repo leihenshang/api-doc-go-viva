@@ -56,7 +56,8 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 		if m.scratch {
 			saveLabel = "另存为"
 		}
-		more := ui.Button(c, "更多操作").Icon(IconEllipsis).Ghost().Tooltip("更多操作")
+		// 只画三个点：地址栏右侧寸土寸金，动作名放进悬停提示与无障碍名就够了。
+		more := ui.Button(c, "更多操作").Icon(IconEllipsis).Ghost().IconOnly().Tooltip("更多操作")
 		if more.Clicked() {
 			c.After(func() { m.reqMenuOpen = !m.reqMenuOpen })
 		}
