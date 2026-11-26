@@ -21,6 +21,8 @@ import (
 func main() {
 	dir := flag.String("collection", "", "集合目录（必须含 opencollection.yml）；多个目录用逗号分隔")
 	env := flag.String("env", "", "环境名（environments/<name>.yml，留空表示不替换变量）")
+	// -panel 供截图与排障：启动后直接打开某个面板（现在只有 mcp）。
+	panel := flag.String("panel", "", "启动后直接打开的面板：mcp")
 	flag.Parse()
 
 	explicit := strings.TrimSpace(*dir) != ""
@@ -83,6 +85,9 @@ func main() {
 	}
 	if !explicit {
 		model.ActivateCollection(settings.Load().ActiveCollection)
+	}
+	if *panel == "mcp" {
+		model.OpenMCPSettings()
 	}
 	if err := model.Run(); err != nil {
 		log.Fatal(err)

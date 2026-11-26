@@ -642,106 +642,145 @@ func formatDuration(ms int64) string {
 // mcpDialog 是内嵌 MCP 服务的**独立**设置弹窗：与软件设置分开，没有左侧分区菜单
 // （对齐 Wails 版：MCP 是状态栏入口自带的面板，不属于软件设置）。
 func (m *Model) mcpDialog(c ui.C) {
-	ui.Modal(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: px(680), Height: px(560)}, func() {
+	ui.Modal(c, &m.ui.mcpOpen, "MCP 服务", ui.ModalSpec{Width: px(700), Height: px(690)}, func() {
 		// 整个内容放进定高滚动区：表单 + 工作区 + JSON 加起来超过弹窗高度，
 		// 让它内部滚动，而不是撑破外框跑到窗口上。
-		ui.Scroll(c).Height(px(430)).FillWidth().Scrollbars().Children(func() {
+		ui.Scroll(c).Grow(1).FillWidth().Scrollbars().Children(func() {
 			ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
-				ui.Text(c, "把当前打开的集合以工具的形式提供给 AI（Claude Desktop / Cursor 等 MCP 客户端）。").
-					FontSize(11).Muted()
-				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+				// 一、服务配置
+				m.mcpSectionTitle(c, "服务配置")
+				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "启用服务")
 					ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
+					ui.Spacer(c)
 				})
-				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "监听地址")
-					ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).Width(px(200)).Changed()
-				})
-				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
-					formLabel(c, "只读模式")
-					ui.Switch(c, &m.ui.mcpReadOnly, "只读：不暴露发请求与写磁盘的工具").Changed()
+					ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).
+						Width(px(200)).Changed()
 					ui.Spacer(c)
 				})
-				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
-					formLabel(c, "写操作确认")
-					ui.Switch(c, &m.ui.mcpConsentOff, "关掉后写工具直接执行，不再询问").Changed()
+				// 地址说明紧跟输入框（需求 6）：不再沉到弹窗底部。
+				m.mcpNote(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。")
+				// 两个权限开关同行（需求 3）：说明收进 tips，删掉常驻文字与安全提示条。
+				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+					formLabel(c, "权限选项")
+					ui.Switch(c, &m.ui.mcpReadOnly, "只读模式").Changed()
+					hintTip(c, "只读：不暴露请求与写磁盘的工具")
+					// 两组开关之间留一点距离，否则四个控件连成一句。
+					ui.Slot(c).Width(px(18))
+					ui.Switch(c, &m.ui.mcpConsentOff, "写操作确认").Changed()
+					hintTip(c, "关掉后写工具直接执行，不再询问")
 					ui.Spacer(c)
 				})
-				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
-					formLabel(c, "浏览器来源")
-					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源", "留空 = 拒绝浏览器；多个用逗号分隔").
-						Width(px(320)).Changed()
+				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+					formLabel(c, "浏览器")
+					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源",
+						"留空 = 拒绝浏览器；多个用逗号分隔").Width(px(320)).Changed()
 				})
-				ui.Row(c).Width(formRowWidth).Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "工具组")
+				// 只有真的起不来才占一行；正常运行时不再有状态条（需求 1）。
+				if m.mcp.err != "" {
+					ui.Text(c, "启动失败："+m.mcp.err).FontSize(fs(11)).Color(c.Theme().Danger)
+				}
+
+				// 二、工具权限
+				m.mcpSectionTitle(c, "工具权限")
+				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+					formLabel(c, "暴露工具")
 					for index, name := range appmcp.Groups {
 						slot := index
 						ui.Checkbox(c, &m.ui.mcpGroupOn[slot], mcpGroupLabels[name]).Changed()
 					}
 				})
-				switch {
-				case m.mcp.running:
-					ui.Text(c, "运行中："+m.mcp.addr).FontSize(fs(11)).Mono().Color(c.Theme().Success)
-				case m.mcp.err != "":
-					ui.Text(c, "启动失败："+m.mcp.err).FontSize(fs(11)).Color(c.Theme().Danger)
-				default:
-					ui.Text(c, "未启用").FontSize(fs(11)).Muted()
-				}
+				// 可用工具上移到这里（需求 6），底部不再重复。
+				m.mcpNote(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。")
+
+				// 三、安全与访问
+				m.mcpSectionTitle(c, "安全与访问")
 				m.mcpAllowList(c)
-				if token := m.ui.mcpToken; token != "" {
-					ui.Text(c, "访问令牌：").FontSize(fs(11)).Muted()
-					ui.Text(c, token).FontSize(fs(11)).Mono().Ellipsis()
-				}
-				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-					ui.Text(c, "客户端连接："+mcpURL(m.ui.mcpAddr)).
-						FontSize(11).Muted().Ellipsis()
+				// 访问令牌改成可编辑输入框 + 生成 / 复制（需求 4）。
+				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+					formLabel(c, "访问令牌")
+					ui.TextField(c, &m.ui.mcpToken, "访问令牌", "首次启用时自动生成").
+						Mono().Width(px(300)).Changed()
+					if ui.Button(c, "生成").Outline().Small().
+						Tooltip("生成新令牌：客户端要用它才能连上").Clicked() {
+						c.After(func() {
+							m.ui.mcpToken = newMCPToken()
+							m.invalidator.Invalidate()
+						})
+					}
+					if ui.Button(c, "复制").Outline().Small().
+						Tooltip("复制输入框当前令牌").Clicked() {
+						m.copyValue(m.ui.mcpToken)
+					}
+				})
+
+				// 四、客户端接入：JSON 默认收起，点标题展开（参考设计同款折叠块）。
+				m.mcpSectionTitle(c, "客户端接入")
+				ui.Row(c).FillWidth().Gap(px(6)).Items(ui.Center).Children(func() {
+					arrow := "▸"
+					if m.ui.mcpJSONOpen {
+						arrow = "▾"
+					}
+					ui.Text(c, arrow).FontSize(fs(11)).Muted()
+					if ui.Button(c, "客户端配置（复制内容）").Ghost().XSmall().
+						Tooltip("展开 / 收起客户端配置 JSON").Clicked() {
+						c.After(func() {
+							m.ui.mcpJSONOpen = !m.ui.mcpJSONOpen
+							m.invalidator.Invalidate()
+						})
+					}
 					ui.Spacer(c)
 					if ui.Button(c, "复制配置").Icon(IconCopy).Outline().Small().
 						Tooltip("复制 MCP 客户端配置（含监听地址与令牌）").Clicked() {
 						m.copyValue(m.mcpConfigJSON())
 					}
 				})
-				// 复制的就是下面这段：面板里直接给全文，省得先粘贴到别处才知道是什么。
-				ui.Text(c, "客户端配置（复制内容）").FontSize(fs(11)).Muted()
-				// 定高滚动：JSON 有十来行，撑开会把「完成」顶出弹窗。
-				// 底色用 Box 的 Background 而不是 codeCard 的 Draw：Draw 直接往画布上画，
-				// 不会被滚动区的裁剪rect 收住，卡片就会溢出到弹窗外面。
-				ui.Column(c).FillWidth().Pad(px(8)).Radius(px(6)).Background(m.pal.hover).Children(func() {
-					ui.Paragraph(c, m.mcpConfigJSON(), 0).Mono().FontSize(fs(10))
-				})
-				// 最近调用：AI 连续调用时能翻「它到底改了什么」。
-				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-					ui.Text(c, "最近调用").FontSize(fs(11)).Bold()
-					// 「清空」紧跟标题（不放行尾）：popconfirm 的气泡才有地方展开。
-					clearAudit := ui.Button(c, "清空").Ghost().XSmall()
-					if clearAudit.Clicked() {
-						m.auditConfirm.Open()
-					}
-					m.auditConfirm.View(c, clearAudit, popconfirm.Spec{
-						Title:       "清空调用审计？",
-						Description: "审计日志会整个删掉，导出过的文件不受影响。",
-						OkLabel:     "确认清空",
-						CancelLabel: "取消",
-						Danger:      true,
+				if m.ui.mcpJSONOpen {
+					// 底色用 Box 的 Background 而不是 codeCard 的 Draw：Draw 直接往画布上画，
+					// 不会被滚动区的裁剪 rect 收住，卡片就会溢出到弹窗外面。
+					ui.Column(c).FillWidth().Pad(px(8)).Radius(px(6)).Background(m.pal.hover).Children(func() {
+						ui.Paragraph(c, m.mcpConfigJSON(), 0).Mono().FontSize(fs(10))
 					})
-					if m.auditConfirm.Confirmed() {
-						c.After(m.clearMCPAudit)
-					}
-					ui.Spacer(c)
-					if ui.Button(c, "刷新").Ghost().XSmall().Clicked() {
-						m.ui.mcpAuditRows = m.loadMCPAudit()
-						m.invalidator.Invalidate()
-					}
-					if ui.Button(c, "导出").Ghost().XSmall().Tooltip("导出到偏好目录下的 mcp-audit-export.jsonl").Clicked() {
-						m.exportMCPAudit()
-					}
+				}
+
+				// 五、最近调用：标题与操作按钮同一行（省一块高度，也和参考设计一致）。
+				ui.Column(c).FillWidth().Gap(px(4)).Children(func() {
+					ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+						ui.Text(c, "最近调用").FontSize(fs(12)).Bold()
+						ui.Spacer(c)
+						clearAudit := ui.Button(c, "清空").Ghost().XSmall()
+						if clearAudit.Clicked() {
+							m.auditConfirm.Open()
+						}
+						m.auditConfirm.View(c, clearAudit, popconfirm.Spec{
+							Title:       "清空调用审计？",
+							Description: "审计日志会整个删掉，导出过的文件不受影响。",
+							OkLabel:     "确认清空",
+							CancelLabel: "取消",
+							Danger:      true,
+						})
+						if m.auditConfirm.Confirmed() {
+							c.After(m.clearMCPAudit)
+						}
+						if ui.Button(c, "刷新").Ghost().XSmall().Clicked() {
+							m.ui.mcpAuditRows = m.loadMCPAudit()
+							m.invalidator.Invalidate()
+						}
+						if ui.Button(c, "导出").Ghost().XSmall().
+							Tooltip("导出到偏好目录下的 mcp-audit-export.jsonl").Clicked() {
+							m.exportMCPAudit()
+						}
+					})
+					ui.Divider(c)
 				})
 				if len(m.ui.mcpAuditRows) == 0 {
 					ui.Text(c, "还没有调用记录。").FontSize(fs(11)).Muted()
 				}
 				for _, row := range m.ui.mcpAuditRows {
 					one := row
-					ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+					ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 						ui.Text(c, one.Time.Format("15:04:05")).FontSize(fs(10)).Mono().Muted()
 						ui.Text(c, one.Tool).FontSize(fs(11)).Mono().Ellipsis()
 						if one.Write {
@@ -752,17 +791,15 @@ func (m *Model) mcpDialog(c ui.C) {
 						}
 					})
 				}
-				ui.Text(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。").
-					FontSize(11).Muted()
-				ui.Text(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。").
-					FontSize(11).Muted()
 				if m.copyNote != "" {
 					ui.Text(c, m.copyNote).FontSize(fs(11)).Muted()
 				}
 			})
 		})
 	}, func() {
-		ui.Row(c).FillWidth().Gap(px(8)).Justify(ui.End).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+			ui.Text(c, "更改即时生效").FontSize(fs(11)).Muted()
+			ui.Spacer(c)
 			if ui.Button(c, "完成").Clicked() {
 				m.ui.mcpOpen = false
 			}
@@ -771,35 +808,58 @@ func (m *Model) mcpDialog(c ui.C) {
 	if !m.ui.mcpOpen {
 		return
 	}
-	// 弹窗开着时把改动落到偏好（开关 / 地址变化即重启服务）。
+	// 弹窗开着时把改动落到偏好（开关 / 地址 / 令牌变化即重启服务）。
 	m.applyMCPEdits()
 }
 
-// mcpAllowList 是 MCP 弹窗里的「可访问的工作区」：勾选 = 授权 AI 读这个集合，
+// mcpSectionTitle 是弹窗里的分节标题：小字加粗 + 一条细分隔线，
+// 与参考设计一致（分组之间靠线断句，不靠留白）。
+func (m *Model) mcpSectionTitle(c ui.C, title string) {
+	ui.Column(c).FillWidth().Gap(px(4)).Children(func() {
+		ui.Text(c, title).FontSize(fs(12)).Bold()
+		ui.Divider(c)
+	})
+}
+
+// mcpNote 是标签列之后的辅助说明：缩进到控件列，11px 弱化色。
+func (m *Model) mcpNote(c ui.C, text string) {
+	ui.Row(c).FillWidth().Children(func() {
+		ui.Slot(c).Width(formLabelWidth)
+		ui.Wrap(c, text).FillWidth().FontSize(fs(11)).Muted()
+	})
+}
+
+// mcpAllowList 是 MCP 弹窗「安全与访问」里的工作区列表：勾选 = 授权 AI 读这个集合，
 // 右侧「可写」决定写类工具能否落盘（当前工具集还没有写工具，先随配置存下来）。
 func (m *Model) mcpAllowList(c ui.C) {
-	ui.Text(c, "可访问的工作区").FontSize(fs(11)).Muted()
 	if len(m.ui.mcpAllow) == 0 {
-		ui.Text(c, "（还没有打开的集合：先在侧栏打开一个目录）").FontSize(fs(11)).Muted()
+		ui.Row(c).FillWidth().Children(func() {
+			formLabel(c, "工作区")
+			ui.Text(c, "（还没有打开的集合：先在侧栏打开一个目录）").FontSize(fs(11)).Muted()
+		})
 		return
 	}
-	ui.Column(c).FillWidth().Gap(px(6)).Children(func() {
-		for index := range m.ui.mcpAllow {
-			row := &m.ui.mcpAllow[index]
-			ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-				ui.Checkbox(c, &row.Allowed, row.Name).Changed()
-				ui.Text(c, row.Dir).FontSize(fs(10)).Mono().Muted().Ellipsis()
-				ui.Spacer(c)
-				writable := ui.Checkbox(c, &row.Writable, "可写")
-				if !row.Allowed {
-					writable.Disabled(true)
-				}
-				writable.Changed()
-			})
-		}
-	})
-	ui.Text(c, "「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。").
-		FontSize(11).Muted()
+	for index := range m.ui.mcpAllow {
+		slot := index
+		row := &m.ui.mcpAllow[slot]
+		ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+			if slot == 0 {
+				formLabel(c, "工作区")
+			} else {
+				// 后续行留空同宽标签列，勾选框才排在同一条竖线上。
+				ui.Slot(c).Width(formLabelWidth)
+			}
+			ui.Checkbox(c, &row.Allowed, row.Name).Changed()
+			ui.Text(c, row.Dir).FontSize(fs(10)).Mono().Muted().Ellipsis()
+			ui.Spacer(c)
+			writable := ui.Checkbox(c, &row.Writable, "可写")
+			if !row.Allowed {
+				writable.Disabled(true)
+			}
+			writable.Changed()
+		})
+	}
+	m.mcpNote(c, "「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。")
 }
 
 // settingsAbout 是「关于」：版本与输入法现状。

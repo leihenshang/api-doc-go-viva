@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP 服务 · 排版优化（精简版）</title>
+<style>
+/* =========================================================
+   原截图风格：Naive UI 绿 (#18a058)、纯白扁平、小圆角、紧凑。
+   本版按需求精简：去状态条/副标题，两开关同行 + tips，
+   令牌可编辑 + 生成按钮，去客户端连接行，说明上移。
+   ========================================================= */
+:root{
+  --primary:#18a058;
+  --primary-hover:#36ad6a;
+  --text:#333;
+  --text-2:#555;
+  --text-3:#999;
+  --border:#e0e0e6;
+  --line:#f0f0f0;
+  --fill:#f5f5f5;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font:12px/1.5 "PingFang SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:var(--text);
+  background:#eef0f2;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:Consolas,"Courier New",monospace}
+.stage{min-height:100%;display:flex;align-items:center;justify-content:center;padding:20px}
+
+/* ---------- 对话框 ---------- */
+.modal{
+  width:720px;max-width:100%;max-height:calc(100vh - 40px);
+  display:flex;flex-direction:column;
+  background:#fff;border:1px solid var(--border);border-radius:4px;
+  box-shadow:0 6px 24px rgba(0,0,0,.08);overflow:hidden;
+}
+.head{flex:none;padding:15px 24px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.head h1{margin:0;font-size:15px;font-weight:600;line-height:1.4}
+.icon-btn{width:22px;height:22px;flex:none;border:0;background:transparent;color:#999;cursor:pointer;font-size:15px;line-height:1;padding:0;border-radius:3px}
+.icon-btn:hover{color:var(--text);background:var(--fill)}
+.body{flex:1;min-height:0;overflow-y:auto;padding:2px 24px 10px}
+.body::-webkit-scrollbar{width:6px}
+.body::-webkit-scrollbar-thumb{background:#dcdcdc;border-radius:99px}
+.foot{flex:none;padding:10px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end}
+
+/* ---------- 分组 ---------- */
+.group{padding:11px 0;border-bottom:1px solid var(--line)}
+.group:last-child{border-bottom:0}
+.group-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+
+/* ---------- 行 ---------- */
+.row{display:grid;grid-template-columns:78px 1fr;gap:8px;align-items:center;min-height:30px;padding:2px 0}
+.row.top{align-items:start}
+.label{font-size:12px;color:var(--text-2);line-height:1.5}
+.hint{font-size:11px;color:var(--text-3);line-height:1.5}
+
+/* ---------- 控件 ---------- */
+.switch{width:34px;height:18px;border-radius:9px;border:0;background:#d8d8de;position:relative;cursor:pointer;flex:none;transition:background .18s ease;padding:0;vertical-align:middle}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .2s cubic-bezier(.4,0,.2,1)}
+.switch.on{background:var(--primary)}
+.switch.on::after{transform:translateX(16px)}
+
+/* 两个开关同一行 */
+.switch-row{display:flex;align-items:center;gap:24px;flex-wrap:wrap;min-height:30px}
+.switch-item{display:inline-flex;align-items:center;gap:6px}
+
+/* tips：hover / 键盘聚焦显示说明，方向朝下避免被弹窗裁剪 */
+.tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;border:1px solid #c8c8d0;color:#999;font-size:10px;line-height:1;cursor:help;flex:none}
+.tip::after{content:attr(data-tip);position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%) translateY(-3px);white-space:nowrap;background:#333;color:#fff;font-size:11px;line-height:1.5;padding:5px 8px;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.16);opacity:0;visibility:hidden;transition:opacity .14s ease,transform .14s ease;z-index:30;pointer-events:none}
+.tip:hover::after,.tip:focus-visible::after{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+
+.input{width:100%;max-width:340px;height:30px;padding:0 10px;border:1px solid var(--border);border-radius:3px;background:#fff;font:inherit;font-size:12px;color:var(--text);transition:border-color .16s ease,box-shadow .16s ease}
+.input::placeholder{color:#bbb}
+.input:hover{border-color:#c8c8d0}
+.input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(24,160,88,.12)}
+.input.code{font-family:Consolas,"Courier New",monospace;font-size:12px}
+
+.cb{appearance:none;-webkit-appearance:none;width:15px;height:15px;border:1px solid #c8c8d0;border-radius:3px;background:#fff;margin:0;vertical-align:-3px;cursor:pointer;position:relative;flex:none}
+.cb:checked{background:var(--primary);border-color:var(--primary)}
+.cb:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.cb-label{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.cb-label .cb{margin:0}
+.perms{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+
+.ws{display:flex;align-items:center;gap:6px;min-width:0;padding:2px 0;font-size:12px}
+.ws b{font-weight:500;flex:none}
+.ws code{font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws .cb-label{margin-left:auto;flex:none}
+
+/* 令牌：可编辑输入框 + 按钮 */
+.token{display:flex;align-items:center;gap:6px}
+.token .input{max-width:300px}
+
+.tools{font-size:11px;color:var(--text-2)}
+.tools code{font-size:11px;color:var(--text-2)}
+
+/* 折叠配置 */
+details{margin-top:2px}
+summary{list-style:none;cursor:pointer;font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:6px;padding:3px 0;width:max-content;max-width:100%}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";width:0;height:0;border-left:4px solid #999;border-top:3px solid transparent;border-bottom:3px solid transparent;transition:transform .18s ease;flex:none}
+details[open] summary::before{transform:rotate(90deg)}
+summary:hover{color:var(--primary)}
+.code-head{display:flex;justify-content:space-between;align-items:center;margin-top:5px}
+pre{background:var(--fill);border-radius:3px;padding:9px 11px;margin:4px 0 0;font-size:11px;line-height:1.6;color:var(--text);overflow:auto;max-height:190px}
+
+.empty{padding:6px 0;font-size:11px;color:var(--text-3)}
+.foot-note{margin-right:auto;font-size:11px;color:var(--text-3)}
+
+/* ---------- 按钮 ---------- */
+.btn{height:28px;padding:0 11px;font-size:12px;border:1px solid var(--border);border-radius:3px;background:#fff;color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:inherit;transition:all .16s ease;white-space:nowrap}
+.btn:hover{border-color:var(--primary);color:var(--primary)}
+.btn-primary{height:30px;padding:0 18px;background:var(--primary);border-color:var(--primary);color:#fff;font-weight:500}
+.btn-primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:#fff}
+.btn-text{border:0;background:transparent;color:var(--text-3);height:24px;padding:0 7px;font-size:11px}
+.btn-text:hover{color:var(--primary)}
+.btn svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.switch:focus-visible,.btn:focus-visible,.cb:focus-visible,.icon-btn:focus-visible,summary:focus-visible,.tip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<svg style="display:none" aria-hidden="true"><symbol id="i-copy" viewBox="0 0 20 20"><rect x="7" y="7" width="9" height="9" rx="1.6"/><path d="M13 7V5.6A1.6 1.6 0 0 0 11.4 4H5.6A1.6 1.6 0 0 0 4 5.6v5.8A1.6 1.6 0 0 0 5.6 13H7"/></symbol></svg>
+
+<main class="stage">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="title">
+    <div class="head">
+      <h1 id="title">MCP 服务</h1>
+      <button class="icon-btn" aria-label="关闭">×</button>
+    </div>
+
+    <div class="body">
+
+      <!-- 1 服务配置：说明上移、两开关同行 + tips -->
+      <section class="group">
+        <div class="group-title">服务配置</div>
+        <div class="row">
+          <span class="label">启用服务</span>
+          <div><button class="switch on" role="switch" aria-checked="true" aria-label="启用 MCP 服务"></button><span class="label" style="margin-left:8px">启用 MCP 服务</span></div>
+        </div>
+        <div class="row top">
+          <label class="label" for="addr">监听地址</label>
+          <div>
+            <input id="addr" class="input code" value="127.0.0.1:2026">
+            <div class="hint">只暴露上面勾选的集合；地址留空或只按端口时按回环 127.0.0.1 监听。</div>
+          </div>
+        </div>
+        <div class="row">
+          <span class="label">权限选项</span>
+          <div class="switch-row">
+            <span class="switch-item">
+              <button class="switch" role="switch" aria-checked="false" aria-label="只读模式" id="sw-readonly"></button>
+              <span class="label">只读模式</span>
+              <span class="tip" tabindex="0" role="note" aria-label="只读：不暴露请求与写磁盘的工具" data-tip="只读：不暴露请求与写磁盘的工具">?</span>
+            </span>
+            <span class="switch-item">
+              <button class="switch" role="switch" aria-checked="false" aria-label="写操作确认" id="sw-confirm"></button>
+              <span class="label">写操作确认</span>
+              <span class="tip" tabindex="0" role="note" aria-label="关掉后写工具直接执行，不再询问" data-tip="关掉后写工具直接执行，不再询问">?</span>
+            </span>
+          </div>
+        </div>
+        <div class="row top">
+          <label class="label" for="browser">浏览器</label>
+          <div><input id="browser" class="input" placeholder="留空 = 拒绝浏览器；多个用逗号分隔"></div>
+        </div>
+      </section>
+
+      <!-- 2 工具权限：可用工具上移到此处 -->
+      <section class="group">
+        <div class="group-title">工具权限</div>
+        <div class="row top">
+          <span class="label">暴露工具</span>
+          <div class="perms">
+            <label class="cb-label"><input type="checkbox" checked class="cb">集合与请求</label>
+            <label class="cb-label"><input type="checkbox" checked class="cb">文档</label>
+            <label class="cb-label"><input type="checkbox" checked class="cb">环境变量</label>
+            <label class="cb-label"><input type="checkbox" checked class="cb">响应示例</label>
+            <label class="cb-label"><input type="checkbox" checked class="cb">发送请求</label>
+            <label class="cb-label"><input type="checkbox" checked class="cb">写操作</label>
+          </div>
+        </div>
+        <div class="row top">
+          <span class="label">可用工具</span>
+          <div class="tools"><code class="mono">list_workspaces / list_requests / get_request / get_doc / send_request</code></div>
+        </div>
+      </section>
+
+      <!-- 3 安全与访问：令牌可编辑 + 生成按钮 -->
+      <section class="group">
+        <div class="group-title">安全与访问</div>
+        <div class="row top">
+          <span class="label">可访问的<br>工作区</span>
+          <div>
+            <div class="ws"><b>api-doc-go-sample</b><code class="mono">D:\project\zq\api-doc-go-sample</code><label class="cb-label"><input type="checkbox" class="cb">可写</label></div>
+            <div class="ws"><b>translate_项目</b><code class="mono">D:\project\zq\api-doc-go-viva-test\translate_项目</code><label class="cb-label"><input type="checkbox" class="cb">可写</label></div>
+            <div class="hint" style="margin-top:3px">[可写] 留给将来的写类工具；当前工具集是只读 + 发送请求。</div>
+          </div>
+        </div>
+        <div class="row">
+          <label class="label" for="token">访问令牌</label>
+          <div class="token">
+            <input id="token" class="input code" value="6ba477b961f29120c1616f43883bf699" spellcheck="false">
+            <button class="btn" id="gen-token">生成</button>
+            <button class="btn js-copy" data-copy-input="token"><svg><use href="#i-copy"/></svg>复制</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 客户端接入：已删除客户端连接行与 http 地址，只保留配置示例 -->
+      <section class="group">
+        <div class="group-title">客户端接入</div>
+        <details id="cfg">
+          <summary>客户端配置（复制内容）</summary>
+          <div class="code-head"><span class="hint">mcpServers · api-doc-go</span><button class="btn" id="copy-config"><svg><use href="#i-copy"/></svg>复制配置</button></div>
+          <pre class="mono" id="config-json">{
+  "mcpServers": {
+    "api-doc-go": {
+      "type": "http",
+      "url": "http://127.0.0.1:2026/mcp",
+      "headers": {
+        "Authorization": "Bearer 6ba477b961f29120c1616f43883bf699"
+      }
+    }
+  }
+}</pre>
+        </details>
+      </section>
+
+      <!-- 5 最近调用 -->
+      <section class="group">
+        <div class="group-title">最近调用
+          <span style="display:flex;gap:2px">
+            <button class="btn-text">清空</button><button class="btn-text">刷新</button><button class="btn-text">导出</button>
+          </span>
+        </div>
+        <div class="empty">还没有调用记录。</div>
+      </section>
+
+    </div>
+
+    <div class="foot">
+      <span class="foot-note">更改即时生效</span>
+      <button class="btn btn-primary">完成</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+  const token=$('#token');
+
+  // 生成新令牌（示例逻辑：32 位十六进制）
+  $('#gen-token').addEventListener('click',()=>{
+    const chars='0123456789abcdef';
+    let v=''; for(let i=0;i<32;i++) v+=chars[Math.floor(Math.random()*16)];
+    token.value=v; token.focus(); token.select();
+  });
+
+  // 复制：优先取输入框当前值，保证编辑后复制的是最新内容
+  $$('.js-copy').forEach(b=>b.addEventListener('click',async()=>{
+    const target=b.dataset.copyInput;
+    const text=target ? ($(target).value||'') : (b.dataset.copy||'');
+    try{ await navigator.clipboard.writeText(text); }catch(e){}
+    const old=b.innerHTML; b.textContent='已复制';
+    setTimeout(()=>b.innerHTML=old,1200);
+  }));
+  $('#copy-config').addEventListener('click',async()=>{
+    try{ await navigator.clipboard.writeText($('#config-json').textContent.trim()); }catch(e){}
+    const b=$('#copy-config'), old=b.innerHTML; b.textContent='已复制';
+    setTimeout(()=>b.innerHTML=old,1200);
+  });
+
+  // 开关状态同步（供业务逻辑读取）
+  $$('.switch').forEach(sw=>sw.addEventListener('click',()=>{
+    const on=sw.getAttribute('aria-checked')==='true';
+    sw.setAttribute('aria-checked',String(!on)); sw.classList.toggle('on',!on);
+  }));
+  $('.icon-btn').addEventListener('click',()=>{const m=$('.modal');m.style.transition='opacity .15s';m.style.opacity='.5';setTimeout(()=>m.style.opacity='1',600);});
+})();
+</script>
+</body>
+</html>

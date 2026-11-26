@@ -1732,6 +1732,11 @@ func (m *Model) applyMCPEdits() {
 		m.settings.MCPAllowOrigins = origins
 		changed, restart = true, true
 	}
+	// 访问令牌可编辑：改过 / 重新生成了就落盘并重启（服务按旧令牌在校验）。
+	if token := strings.TrimSpace(m.ui.mcpToken); token != m.settings.MCPToken {
+		m.settings.MCPToken = token
+		changed, restart = true, true
+	}
 	// 工作区授权：勾选 = 出现在白名单；写权限随行一起存。
 	allow := m.mcpAllowFromRows()
 	if !sameMCPAllow(allow, m.settings.MCPAllow) {
@@ -2011,8 +2016,13 @@ func (m *Model) openMCPSettings() {
 	m.ui.mcpAddr = m.settings.MCPAddr
 	m.ui.mcpToken = m.settings.MCPToken
 	m.refreshMCPAllowRows()
+	m.ui.mcpJSONOpen = false
 	m.ui.mcpOpen = true
+	m.invalidator.Invalidate()
 }
+
+// OpenMCPSettings 打开 MCP 面板（状态栏入口之外，供 main 的 -panel 调试参数或将来的菜单使用）。
+func (m *Model) OpenMCPSettings() { m.openMCPSettings() }
 
 // setSortMode 换树的排序（磁盘顺序 / 名称升降），落盘并重建。
 func (m *Model) setSortMode(mode string) {

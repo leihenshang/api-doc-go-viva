@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/vivaui/viva/gfx"
 )
 
 // TestEmptyStateClearsSearch 树没有匹配项时用 v0.6.9 的 ui/empty，并在原地给出「清空搜索」。
@@ -163,5 +164,71 @@ func TestWindowStartsWithMaximize(t *testing.T) {
 	}
 	if model.windowConfig().Maximized {
 		t.Fatal("关掉后窗口不该再最大化")
+	}
+}
+
+// TestMCPSettingsLayout 按参考设计重排后的 MCP 面板：五个分组齐、权限开关同行、
+// 令牌可编辑且带「生成 / 复制」，JSON 默认收起。
+func TestMCPSettingsLayout(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+
+	model.OpenMCPSettings()
+	pump(t, driver)
+	for _, want := range []string{
+		"服务配置", "工具权限", "安全与访问", "客户端接入",
+		"启用服务", "监听地址", "权限选项", "只读模式", "写操作确认", "浏览器",
+		"暴露工具", "工作区", "访问令牌", "客户端配置（复制内容）",
+	} {
+		if !shows(driver, want) {
+			t.Fatalf("MCP 面板缺 %q：%v", want, painted(driver))
+		}
+	}
+	// 令牌是输入框（可编辑）+ 生成 / 复制（需求 4）。
+	if !hasControl(driver, "生成") || !hasControl(driver, "复制") {
+		t.Fatalf("令牌行应有生成与复制按钮：%v", painted(driver))
+	}
+	// JSON 默认收起：面板里不该直接出现 mcpServers 那段。
+	if shows(driver, "mcpServers") {
+		t.Fatalf("客户端配置应默认收起：%v", painted(driver))
+	}
+
+	// 点「生成」换新令牌；点「复制」给出结果提示（无头里可能报剪贴板不可用）。
+	before := model.ui.mcpToken
+	click(t, driver, "生成")
+	pump(t, driver)
+	if model.ui.mcpToken == "" || model.ui.mcpToken == before {
+		t.Fatalf("生成应换一个新令牌：before=%q after=%q", before, model.ui.mcpToken)
+	}
+	click(t, driver, "复制")
+	pump(t, driver)
+	if model.copyNote == "" {
+		t.Fatal("复制应给出结果提示")
+	}
+
+	// 展开客户端配置：状态翻转（JSON 本身在滚动区下方，是否画出来由滚动决定）。
+	click(t, driver, "客户端配置（复制内容）")
+	pump(t, driver)
+	if !model.ui.mcpJSONOpen {
+		t.Fatalf("点标题应展开客户端配置：%v", painted(driver))
+	}
+
+	// 「最近调用」在内容末尾：窗口不高时要滚一下才看得到（滚动区就是为这个留的）。
+	if !shows(driver, "最近调用") {
+		if err := driver.Scroll(gfx.ScrollEvent{X: 590, Y: 380, DeltaY: 600}); err != nil {
+			t.Fatalf("Scroll: %v", err)
+		}
+		pump(t, driver)
+	}
+	if !shows(driver, "最近调用") {
+		t.Fatalf("滚动后应看到「最近调用」：%v", painted(driver))
+	}
+	if !shows(driver, "还没有调用记录。") {
+		t.Fatalf("空状态应显示：%v", painted(driver))
 	}
 }
