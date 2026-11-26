@@ -844,12 +844,14 @@ func (m *Model) mcpAllowList(c ui.C) {
 		slot := index
 		row := &m.ui.mcpAllow[slot]
 		ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+			// 每一行都用同一个 formLabel 占位（首行写标题，其余留空）。
+			// 不能用 ui.Slot 占位：formLabel 是一个 Row，它的实际占位比 Width 多出
+			// 一点内边距，混用会让首行的勾选框比后续行左移十几个像素。
+			label := ""
 			if slot == 0 {
-				formLabel(c, "工作区")
-			} else {
-				// 后续行留空同宽标签列，勾选框才排在同一条竖线上。
-				ui.Slot(c).Width(formLabelWidth)
+				label = "工作区"
 			}
+			formLabel(c, label)
 			// 名称列定宽：勾选框自带名字，宽度随名字长短变，路径起点会跟着漂。
 			// 用固定宽度的容器兜住它（不要给 Checkbox 本身 Width+Ellipsis，那会把控件压没）。
 			ui.Row(c).Width(px(mcpWorkspaceNameWidth)).Items(ui.Center).Children(func() {
