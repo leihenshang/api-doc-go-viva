@@ -53,6 +53,11 @@ func (m *Model) trackPointer(event gfx.PointerEvent) gfx.EventResult {
 	switch event.Kind {
 	case gfx.PointerMove, gfx.PointerDown, gfx.PointerUp:
 		m.hover.x, m.hover.y, m.hover.in = event.X, event.Y, true
+		// 在编辑器里按下：等下一帧再抄光标（这一帧 placeCaret 还没落点）。
+		if event.Kind == gfx.PointerDown && m.pointerInDocCode() {
+			m.docSelPending = true
+			m.invalidator.Invalidate()
+		}
 	case gfx.PointerExit:
 		m.hover.in = false
 	default:

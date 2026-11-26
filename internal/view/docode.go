@@ -85,6 +85,8 @@ func (m *Model) docCodeKey(event gfx.KeyEvent) gfx.EventResult {
 	caret := m.docText.ByteOffset(m.docText.Caret())
 	to := m.docCode.Code.Move(value, caret, movement)
 	m.docText.MoveTo(m.docText.RuneIndex(to), extend)
+	// 键盘移动是用户操作：抄下来给工具栏用。
+	m.docSel = m.docText.Selection()
 	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
@@ -134,6 +136,8 @@ func (m *Model) docCodeInput(window.TextInputContext) *window.TextInput {
 	if m.docText == nil {
 		return nil
 	}
+	// 平台来取文本服务时，光标是用户刚打字/组合完的真实值：抄一份给工具栏。
+	m.docSel = m.docText.Selection()
 	input := &window.TextInput{Editor: m.docText, HideNativeOverlays: true, Color: m.pal.panel}
 	if bounds := m.docCodeRect; bounds.Width > 1 && bounds.Height > 1 {
 		input.Bounds = gfx.Rect{

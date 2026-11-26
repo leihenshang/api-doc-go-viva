@@ -643,6 +643,11 @@ type Model struct {
 	// docHandlers 是源码区自己声明的控件（按键、指针、身份）；不用
 	// ui/codeeditor.View 的 wrapper，原因见 docSourcePane。
 	docHandlers ui.Handlers
+	// docSel 是绘制时抄下的文档选区（工具栏插入位置用它，见 mdinsert.go）。
+	docSel text.Range
+	// docSelPending 表示「刚在编辑器里按过一下」，下一帧再把光标抄进 docSel：
+	// placeCaret 在绘制之后才落插入符，同一帧读到的是旧位置。
+	docSelPending bool
 	// docCodeRect 是源码区上一帧的实拍矩形（平台文本层按它裁剪，见 docCodeInput）。
 	docCodeRect gfx.Rect
 	drafts      map[string]string

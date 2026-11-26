@@ -928,6 +928,8 @@ func (m *Model) docDetail(c ui.C, entry *explorer.Entry) {
 func (m *Model) docSourcePane(c ui.C) {
 	m.docCodeDocument()
 	ui.Column(c).Grow(1).FillHeight().Children(func() {
+		// 工具栏在编辑器上方：插入位置来自文档自己的 text.Editor（见 mdinsert.go）。
+		m.docMarkdownTools(c)
 		snap := &m.docCode.Snapshot
 		snap.Placeholder = "在此编写 Markdown…"
 		snap.LineNumbers = true
@@ -956,6 +958,13 @@ func (m *Model) docCodeDraw(d *ui.DrawContext) {
 		snap.Value = m.docText.String()
 		snap.Caret = m.docText.ByteOffset(m.docText.Caret())
 		selection := m.docText.Selection()
+		// 抄选区的时机要挑：只在「刚在编辑器里按过一下」之后抄（trackPointer 挂起），
+		// 那时 placeCaret 已经把插入符落到点击处；按工具栏按钮不会挂起，所以平台把
+		// 插入符挪到末尾的那种变化抄不进来。
+		if m.docSelPending {
+			m.docSel = selection
+			m.docSelPending = false
+		}
 		snap.SelectionStart = m.docText.ByteOffset(selection.Start)
 		snap.SelectionEnd = m.docText.ByteOffset(selection.End)
 		snap.CompositionStart, snap.CompositionEnd = 0, 0
