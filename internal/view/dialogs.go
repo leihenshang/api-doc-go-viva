@@ -662,31 +662,27 @@ func (m *Model) mcpDialog(c ui.C) {
 				// 一、服务配置
 				m.mcpSectionTitle(c, "服务配置")
 				// 启用服务与监听地址同一行：两者是同一个「服务」概念的两半。
+				// 标签一律左对齐定宽，后面的输入框吃满剩余宽度（见 mcpRowLabel）。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "启用服务")
+					mcpRowLabel(c, "启用服务")
 					ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
 					ui.Slot(c).Width(px(24))
-					// 同一行里的第二个标签不做成 formLabel（那要再占 90），
-					// 但宽度与右对齐照旧，视觉上仍像一列。
-					ui.Row(c).Width(px(64)).Justify(ui.End).Children(func() {
-						ui.Text(c, "监听地址").FontSize(fs(11)).Muted()
-					})
+					mcpRowLabel(c, "监听地址")
 					ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).
-						Width(px(150)).Changed()
+						FillWidth().Changed()
 					hintTip(c, "地址留空或只写端口时按回环 127.0.0.1 监听。")
-					ui.Spacer(c)
 				})
 				// 浏览器来源紧跟在「启用服务 / 监听地址」这一栏下面。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "浏览器来源")
+					mcpRowLabel(c, "浏览器来源")
 					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源", "留空 = 拒绝浏览器").
-						Width(px(320)).Changed()
+						FillWidth().Changed()
 					hintTip(c, "浏览器里的 MCP 客户端发请求会带 Origin 头：这里列出允许的来源（逗号分隔），"+
 						"留空则一律拒绝。命令行客户端不带 Origin，不受影响。")
 				})
 				// 两个权限开关同行（需求 3）：说明收进 tips，删掉常驻文字与安全提示条。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "权限选项")
+					mcpRowLabel(c, "权限选项")
 					ui.Switch(c, &m.ui.mcpReadOnly, "只读模式").Changed()
 					hintTip(c, "只读：不暴露请求与写磁盘的工具")
 					// 两组开关之间留一点距离，否则四个控件连成一句。
@@ -703,11 +699,12 @@ func (m *Model) mcpDialog(c ui.C) {
 				// 二、工具权限
 				m.mcpSectionTitle(c, "工具权限")
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "暴露工具")
+					mcpRowLabel(c, "暴露工具")
 					for index, name := range appmcp.Groups {
 						slot := index
 						ui.Checkbox(c, &m.ui.mcpGroupOn[slot], mcpGroupLabels[name]).Changed()
 					}
+					ui.Spacer(c)
 				})
 				// 可用工具上移到这里（需求 6），底部不再重复。
 				m.mcpNote(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。")
@@ -722,9 +719,9 @@ func (m *Model) mcpDialog(c ui.C) {
 				// 这一栏从内容区最左排（与上面的集合列表、下面的客户端配置一致），
 				// 不再缩进到 90px 标签列后面。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					ui.Text(c, "访问令牌").FontSize(fs(11)).Muted()
+					mcpRowLabel(c, "访问令牌")
 					ui.TextField(c, &m.ui.mcpToken, "访问令牌", "首次启用时自动生成").
-						Mono().Width(px(300)).Changed()
+						Mono().FillWidth().Changed()
 					if ui.Button(c, "生成").Outline().Small().
 						Tooltip("生成新令牌：客户端要用它才能连上").Clicked() {
 						c.After(func() {
@@ -824,6 +821,17 @@ func (m *Model) mcpSectionTitle(c ui.C, title string) {
 	ui.Column(c).FillWidth().Gap(px(4)).Children(func() {
 		ui.Text(c, title).FontSize(fs(12)).Bold()
 		ui.Divider(c)
+	})
+}
+
+// mcpRowLabelWidth 是 MCP 面板里标签列的宽度：比设置面板的 90 窄，
+// 因为这些标签左对齐（不是右对齐到列尾），短一些也不会显得空。
+const mcpRowLabelWidth float32 = 64
+
+// mcpRowLabel 是左对齐的定宽标签：控件从同一条竖线起排，输入框再用 FillWidth 吃满。
+func mcpRowLabel(c ui.C, text string) {
+	ui.Row(c).Width(px(mcpRowLabelWidth)).Children(func() {
+		ui.Text(c, text).FontSize(fs(11)).Muted()
 	})
 }
 
