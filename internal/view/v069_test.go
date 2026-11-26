@@ -184,7 +184,7 @@ func TestMCPSettingsLayout(t *testing.T) {
 	model.OpenMCPSettings()
 	pump(t, driver)
 	for _, want := range []string{
-		"服务配置", "工具权限", "安全与访问", "客户端接入",
+		"服务配置", "工具权限", "客户端接入",
 		"启用服务", "监听地址", "权限选项", "只读模式", "写操作确认", "浏览器",
 		"暴露工具", "访问令牌", "可访问的集合", "客户端配置（复制内容）", "浏览器来源",
 	} {

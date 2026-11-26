@@ -661,19 +661,29 @@ func (m *Model) mcpDialog(c ui.C) {
 			ui.Column(c).FillWidth().PadRight(px(scrollbarGutter)).Gap(px(10)).Children(func() {
 				// 一、服务配置
 				m.mcpSectionTitle(c, "服务配置")
+				// 启用服务与监听地址同一行：两者是同一个「服务」概念的两半。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "启用服务")
 					ui.Switch(c, &m.ui.mcpEnabled, "启用 MCP 服务").Changed()
-					ui.Spacer(c)
-				})
-				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "监听地址")
+					ui.Slot(c).Width(px(24))
+					// 同一行里的第二个标签不做成 formLabel（那要再占 90），
+					// 但宽度与右对齐照旧，视觉上仍像一列。
+					ui.Row(c).Width(px(64)).Justify(ui.End).Children(func() {
+						ui.Text(c, "监听地址").FontSize(fs(11)).Muted()
+					})
 					ui.TextField(c, &m.ui.mcpAddr, "监听地址", settings.DefaultMCPAddr).
-						Width(px(200)).Changed()
+						Width(px(150)).Changed()
 					ui.Spacer(c)
 				})
-				// 地址说明紧跟输入框（需求 6）：不再沉到弹窗底部。
+				// 地址说明紧跟这一行（它讲的是监听地址），浏览器来源紧随其后。
 				m.mcpNote(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。")
+				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+					formLabel(c, "浏览器来源")
+					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源", "留空 = 拒绝浏览器").
+						Width(px(320)).Changed()
+					hintTip(c, "浏览器里的 MCP 客户端发请求会带 Origin 头：这里列出允许的来源（逗号分隔），"+
+						"留空则一律拒绝。命令行客户端不带 Origin，不受影响。")
+				})
 				// 两个权限开关同行（需求 3）：说明收进 tips，删掉常驻文字与安全提示条。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "权限选项")
@@ -684,13 +694,6 @@ func (m *Model) mcpDialog(c ui.C) {
 					ui.Switch(c, &m.ui.mcpConsentOff, "写操作确认").Changed()
 					hintTip(c, "关掉后写工具直接执行，不再询问")
 					ui.Spacer(c)
-				})
-				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-					formLabel(c, "浏览器来源")
-					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源", "留空 = 拒绝浏览器").
-						Width(px(320)).Changed()
-					hintTip(c, "浏览器里的 MCP 客户端发请求会带 Origin 头：这里列出允许的来源（逗号分隔），"+
-						"留空则一律拒绝。命令行客户端不带 Origin，不受影响。")
 				})
 				// 只有真的起不来才占一行；正常运行时不再有状态条（需求 1）。
 				if m.mcp.err != "" {
@@ -709,9 +712,13 @@ func (m *Model) mcpDialog(c ui.C) {
 				// 可用工具上移到这里（需求 6），底部不再重复。
 				m.mcpNote(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。")
 
-				// 三、安全与访问
-				m.mcpSectionTitle(c, "安全与访问")
-				// 访问令牌改成可编辑输入框 + 生成 / 复制（需求 4）。
+				// 三、集合列表：单独一栏、左对齐，「可写」的说明收进标题旁的 tips。
+				m.mcpSectionTitleTip(c, "可访问的集合",
+					"「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。")
+				m.mcpAllowList(c)
+
+				// 四、客户端接入：令牌 + 配置 JSON（都指向同一个客户端）。
+				m.mcpSectionTitle(c, "客户端接入")
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "访问令牌")
 					ui.TextField(c, &m.ui.mcpToken, "访问令牌", "首次启用时自动生成").
@@ -728,14 +735,6 @@ func (m *Model) mcpDialog(c ui.C) {
 						m.copyValue(m.ui.mcpToken)
 					}
 				})
-
-				// 四、集合列表：单独一栏、左对齐，「可写」的说明收进标题旁的 tips。
-				m.mcpSectionTitleTip(c, "可访问的集合",
-					"「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。")
-				m.mcpAllowList(c)
-
-				// 五、客户端接入：配置 JSON 常显（不再折叠），行尾一个复制按钮。
-				m.mcpSectionTitle(c, "客户端接入")
 				ui.Row(c).FillWidth().Gap(px(6)).Items(ui.Center).Children(func() {
 					ui.Text(c, "客户端配置（复制内容）").FontSize(fs(11)).Muted()
 					ui.Spacer(c)
