@@ -83,3 +83,13 @@ func TestUIScalePercent(t *testing.T) {
 		}
 	}
 }
+
+// 启动默认最大化：存盘字段是反向的 StartWindowed，默认值靠取反得到。
+func TestStartMaximizedDefault(t *testing.T) {
+	if !(Settings{}).StartMaximized() {
+		t.Fatal("默认应最大化打开")
+	}
+	if (Settings{StartWindowed: true}).StartMaximized() {
+		t.Fatal("StartWindowed 为真时应按浮动尺寸打开")
+	}
+}

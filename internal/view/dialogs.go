@@ -321,6 +321,13 @@ func (m *Model) settingsAppearance(c ui.C) {
 			"关掉：改动只存成草稿，重开还能捡回来，但集合文件不动。")
 	})
 	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+		formLabel(c, "启动窗口")
+		ui.Switch(c, &m.ui.startMaximized, "启动时最大化")
+		ui.Spacer(c)
+		hintTip(c, "开着：下次启动直接铺满整个工作区（最大化，标题栏与窗口按钮都还在，不是无边框全屏）；"+
+			"关掉：按上次的浮动尺寸打开。")
+	})
+	ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
 		formLabel(c, "关闭窗口")
 		if ui.Switch(c, &m.ui.closeToTray, "关闭窗口时收到托盘").Changed() {
 			// 开关就是图标的开关：关掉时把托盘图标摘掉，不留一个点不开的图标。

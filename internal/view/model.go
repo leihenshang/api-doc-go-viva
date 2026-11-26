@@ -462,7 +462,9 @@ type workspaceUI struct {
 	insecure        bool
 	persistCookies  bool
 	closeToTray     bool
-	sealSecrets     bool
+	// startMaximized 是「启动时最大化」的开关（存盘用反向字段 StartWindowed）。
+	startMaximized bool
+	sealSecrets    bool
 	// 检查更新：结果文本与（有新版本时的）发布页地址。
 	// 请求级设置弹窗的表单值（三态项 0=默认 1=开 2=关）。
 	reqSetOpen        bool
@@ -840,6 +842,8 @@ func (m *Model) windowConfig() app.Config {
 		// 顶栏融合：不要系统标题栏，工具条自己就是标题栏（拖动区在 toolbar 里声明）。
 		// viva 在 Windows / Linux 上自绘最小化 / 最大化 / 关闭，并给无边框窗口补阴影、
 		// 圆角与边缘拖拽缩放，所以不需要我们自己画这些。
+		// 启动即最大化（设置 → 外观 → 启动窗口 可关）：Width/Height 保留为还原尺寸。
+		Maximized:      m.settings.StartMaximized(),
 		WindowMode:     app.WindowCustomTitlebar,
 		TitlebarHeight: titlebarHeight,
 		WindowControls: m.windowControls,

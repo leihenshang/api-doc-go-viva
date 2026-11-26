@@ -1656,6 +1656,10 @@ func (m *Model) applySettingsEdits() {
 		m.settings.CloseToTray = m.ui.closeToTray
 		changed = true
 	}
+	if m.ui.startMaximized != m.settings.StartMaximized() {
+		m.settings.StartWindowed = !m.ui.startMaximized
+		changed = true
+	}
 	if repo := strings.TrimSpace(m.ui.updateRepo); repo != m.settings.UpdateRepo {
 		m.settings.UpdateRepo = repo
 		changed = true
@@ -1953,6 +1957,7 @@ func (m *Model) syncSettingsUI() {
 	m.ui.insecure = m.settings.InsecureSSL
 	m.ui.persistCookies = m.settings.PersistCookies()
 	m.ui.closeToTray = m.settings.CloseToTray
+	m.ui.startMaximized = m.settings.StartMaximized()
 	m.ui.sealSecrets = m.settings.SealSecrets()
 	m.ui.scalePick = m.settings.UIScalePercent()
 	m.ui.docSplit = m.settings.DocSplit

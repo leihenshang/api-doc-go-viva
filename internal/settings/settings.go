@@ -35,6 +35,9 @@ type Settings struct {
 	UpdateRepo string `json:"updateRepo,omitempty"`
 	// CloseToTray 为真时关闭窗口不退出，收到托盘（托盘区不可用时自动退回退出）。
 	CloseToTray bool `json:"closeToTray,omitempty"`
+	// StartWindowed 为真时按上次的浮动尺寸打开窗口；默认最大化（铺满工作区）。
+	// 用反向字段是因为 bool 的零值就是 false，而这里的默认值恰好是「最大化」。
+	StartWindowed bool `json:"startWindowed,omitempty"`
 	// NoSealSecrets 为真时敏感值明文落盘；默认加密（密钥在配置目录）。
 	NoSealSecrets bool `json:"noSealSecrets,omitempty"`
 	// NoCookiePersist 为真时 Cookie 只留在内存里（关掉窗口就没了）。
@@ -145,6 +148,9 @@ func (s Settings) FollowRedirects() bool { return !s.NoFollowRedirects }
 
 // SealSecrets 报告敏感值是否加密落盘（默认加密）。
 func (s Settings) SealSecrets() bool { return !s.NoSealSecrets }
+
+// StartMaximized 报告启动时是否直接最大化（默认是；设置里关掉才按浮动尺寸开）。
+func (s Settings) StartMaximized() bool { return !s.StartWindowed }
 
 // PersistCookies 报告 Cookie Jar 是否落盘（默认落盘）。
 func (s Settings) PersistCookies() bool { return !s.NoCookiePersist }

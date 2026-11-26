@@ -139,3 +139,29 @@ func TestFailTextShownAndCopyable(t *testing.T) {
 		t.Fatalf("失败原因应画出来：%v", painted(driver))
 	}
 }
+
+// TestWindowStartsWithMaximize 启动配置读设置的「启动时最大化」，并在设置面板里能关掉。
+func TestWindowStartsWithMaximize(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	col, err := explorer.Load(writeCollection(t, "http://example.invalid"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	if !model.windowConfig().Maximized {
+		t.Fatal("默认应最大化打开窗口")
+	}
+	if !model.ui.startMaximized {
+		t.Fatal("设置面板的开关默认应为开")
+	}
+
+	// 关掉开关：落盘字段反过来，窗口配置跟着变。
+	model.ui.startMaximized = false
+	model.applySettingsEdits()
+	if !model.settings.StartWindowed {
+		t.Fatal("关掉后 StartWindowed 应为真")
+	}
+	if model.windowConfig().Maximized {
+		t.Fatal("关掉后窗口不该再最大化")
+	}
+}
