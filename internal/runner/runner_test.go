@@ -2,8 +2,10 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/leihenshang/api-doc-go-share/collection"
@@ -82,5 +84,39 @@ func TestRunRecordsTransportErrors(t *testing.T) {
 	results := Run(context.Background(), []Case{caseFor("断网", "http://127.0.0.1:1/x")}, Options{}, nil)
 	if len(results) != 1 || !results[0].Failed || results[0].Err == "" {
 		t.Fatalf("应记一条传输错误：%+v", results)
+	}
+}
+
+// TestRetryRecoversFailure 单条失败后重试一次：只有最终结果进 results，
+// 重试不改变量袋语义（同一条请求用开跑前的变量快照）。
+func TestRetryRecoversFailure(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	plan := send.Plan{File: requestFile("GET", srv.URL), MaxBody: 1 << 20}
+	cases := []Case{{Name: "偶发", File: "偶发.yml", Plan: plan}}
+
+	results := Run(context.Background(), cases, Options{Retry: 1}, nil)
+	if len(results) != 1 {
+		t.Fatalf("重试不该多出结果条数：%d", len(results))
+	}
+	if results[0].Failed || results[0].Status != http.StatusOK {
+		t.Fatalf("重试后应通过：%+v", results[0])
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("应请求两次：%d", hits.Load())
+	}
+
+	hits.Store(0)
+	results = Run(context.Background(), cases, Options{}, nil)
+	if !results[0].Failed {
+		t.Fatalf("不重试时第一次就失败：%+v", results[0])
 	}
 }

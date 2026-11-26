@@ -40,6 +40,8 @@ func (m *Model) showLive() {
 		return // 还没发过：保持「尚未发送」的空态
 	}
 	m.showOutcome(m.live)
+	// 断言只属于这次真实响应：切回实时要把它一起还原。
+	m.assertOut, m.scriptErr = m.liveAsserts, m.liveScriptErr
 }
 
 // showExample 把一份示例铺到响应区（状态行、正文、响应头都跟着换）。

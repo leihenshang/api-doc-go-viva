@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
@@ -260,6 +261,29 @@ func (m *Model) bodyTab(c ui.C) {
 
 // fieldEditor 编辑请求体字段表（body.fields）：字段名 / 类型 / 必填 / 示例 / 说明。
 func (m *Model) fieldEditor(c ui.C) {
+	m.fieldTable(c, &m.req.fields, "字段")
+	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+		if ui.Button(c, "添加字段").Icon(IconPlus).Ghost().Clicked() {
+			m.req.fields = append(m.req.fields, &fieldRow{typ: "string"})
+			m.markEdited()
+		}
+		// 字段表可以照着一次真实返回自动生成：省得手敲路径与类型。
+		if ui.Button(c, "从当前响应生成").Icon(IconImport).Outline().
+			Tooltip("按当前响应推字段名与类型；同名字段的说明、示例、必填保持不变").
+			Disabled(!m.hasResp).Clicked() {
+			c.After(m.generateFields)
+		}
+		if len(m.req.fields) > 0 {
+			if ui.Button(c, "清空字段").Icon(IconTrash).Outline().Clicked() {
+				c.After(m.clearFields)
+			}
+		}
+	})
+}
+
+// fieldTable 是 5 列表格本体（请求体字段表与响应字段表共用）。
+// 只画行与行尾操作；「添加 / 生成 / 清空」这排按钮由调用方按自己的语义摆。
+func (m *Model) fieldTable(c ui.C, rows *[]*fieldRow, noun string) {
 	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 		ui.Text(c, "字段名").FontSize(fs(11)).Muted().Grow(3).MinWidth(0).Ellipsis()
 		ui.Text(c, "类型").FontSize(fs(11)).Muted().Grow(2).MinWidth(0).Ellipsis()
@@ -268,7 +292,7 @@ func (m *Model) fieldEditor(c ui.C) {
 		ui.Text(c, "说明").FontSize(fs(11)).Muted().Grow(3).MinWidth(0).Ellipsis()
 		ui.Slot(c).Width(rowActionWidth)
 	})
-	for index, row := range m.req.fields {
+	for index, row := range *rows {
 		slot := index
 		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 			if ui.TextField(c, &row.name, "字段名", "id").Grow(3).MinWidth(0).Changed() {
@@ -287,36 +311,19 @@ func (m *Model) fieldEditor(c ui.C) {
 			if ui.TextField(c, &row.desc, "说明", "").Grow(1).Changed() {
 				m.markEdited()
 			}
-			m.rowMover(c, index, len(m.req.fields), func(from, to int) {
-				if moveItem(m.req.fields, from, to) {
+			m.rowMover(c, index, len(*rows), func(from, to int) {
+				if moveItem(*rows, from, to) {
 					m.markEdited()
 				}
 			})
-			if ui.Button(c, "删除字段").Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
+			if ui.Button(c, "删除"+noun).Icon(IconTrash).Outline().IconOnly().Tooltip("删除这一行").Clicked() {
 				c.After(func() {
-					m.req.fields = append(m.req.fields[:slot], m.req.fields[slot+1:]...)
+					*rows = append((*rows)[:slot], (*rows)[slot+1:]...)
 					m.markEdited()
 				})
 			}
 		})
 	}
-	ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-		if ui.Button(c, "添加字段").Icon(IconPlus).Ghost().Clicked() {
-			m.req.fields = append(m.req.fields, &fieldRow{typ: "string"})
-			m.markEdited()
-		}
-		// 字段表可以照着一次真实返回自动生成：省得手敲路径与类型。
-		if ui.Button(c, "从当前响应生成").Icon(IconImport).Outline().
-			Tooltip("按当前响应推字段名与类型；同名字段的说明、示例、必填保持不变").
-			Disabled(!m.hasResp).Clicked() {
-			c.After(m.generateFields)
-		}
-		if len(m.req.fields) > 0 {
-			if ui.Button(c, "清空字段").Icon(IconTrash).Outline().Clicked() {
-				c.After(m.clearFields)
-			}
-		}
-	})
 }
 
 // formEditor 编辑 form / multipart 的逐行字段；multipart 多一列「类型」（text 或 file）。
@@ -557,6 +564,10 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 		if m.find.open && entry.Kind == explorer.KindHTTP {
 			m.findBar(c)
 		}
+		// 断言与脚本结果紧跟状态行：跑完就能看到成败，不用滚到底部找。
+		if entry.Kind == explorer.KindHTTP && (len(m.assertOut) > 0 || m.scriptErr != "") {
+			m.assertSummary(c)
+		}
 		body := ui.Scroll(c).Grow(1).FillWidth()
 		m.scrollToFind(body)
 		body.Children(func() {
@@ -603,6 +614,56 @@ func (m *Model) responsePanel(c ui.C, entry *explorer.Entry) {
 			}
 		})
 	})
+}
+
+// assertSummary 是响应区里的断言结果：一条汇总 + 失败明细（最多 5 条）。
+//
+// 明细只列失败的：全通过时一行「断言 3/3 通过」就够，不占正文的可见高度。
+func (m *Model) assertSummary(c ui.C) {
+	theme := c.Theme()
+	passed := 0
+	for _, item := range m.assertOut {
+		if item.Passed {
+			passed++
+		}
+	}
+	if len(m.assertOut) > 0 {
+		tint := theme.Success
+		if passed != len(m.assertOut) {
+			tint = theme.Danger
+		}
+		ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+			ui.Text(c, "断言").FontSize(fs(11)).Muted().Shrink(0)
+			ui.Text(c, strconv.Itoa(passed)+"/"+strconv.Itoa(len(m.assertOut))+" 通过").
+				FontSize(fs(11)).Bold().Color(tint).Shrink(0)
+			if len(m.assertOut) > passed {
+				ui.Text(c, "有失败项").FontSize(fs(11)).Color(theme.Danger).Shrink(0)
+			}
+		})
+	}
+	if m.scriptErr != "" {
+		ui.Text(c, "脚本错误："+m.scriptErr).FontSize(fs(11)).Color(theme.Danger).MaxLines(2).Ellipsis()
+	}
+	shown := 0
+	for _, item := range m.assertOut {
+		if item.Passed || shown >= 5 {
+			continue
+		}
+		shown++
+		line := "✗ "
+		if item.Name != "" {
+			line += item.Name + "："
+		}
+		line += item.Expr
+		if item.Error != "" {
+			line += "（" + item.Error + "）"
+		}
+		ui.Text(c, line).FontSize(fs(11)).Color(theme.Danger).MaxLines(1).Ellipsis()
+	}
+	if len(m.assertOut)-passed > shown {
+		ui.Text(c, "还有 "+strconv.Itoa(len(m.assertOut)-passed-shown)+" 条失败未展开").
+			FontSize(fs(10)).Muted().Ellipsis()
+	}
 }
 
 // truncationNote 是「响应太大，只读回了一段」的提示。

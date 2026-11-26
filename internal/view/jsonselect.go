@@ -279,6 +279,53 @@ func (m *Model) handlePointer(c ui.C, d *ui.DrawContext, id gfx.ID, withArrows b
 	}
 }
 
+// responseLine 是响应正文当前光标所在的逻辑行（从 1 开始）与总行数。
+//
+// JSON 视图的可见行可能跳过被折叠的行，所以行号要经 lineIndex 映射回原始 JSON 行；
+// 原始视图的折行续行与上一行同号（只标逻辑行，折行不单独编号）。
+func (m *Model) responseLine() (row, total int, ok bool) {
+	sel := &m.jsonSel
+	if len(sel.vis) == 0 {
+		return 0, 0, false
+	}
+	if sel.plain {
+		return logicalRowOf(sel, sel.head.line), logicalCount(sel), true
+	}
+	if len(sel.lineIndex) == 0 {
+		return 0, 0, false
+	}
+	index := clampInt(sel.head.line, 0, len(sel.lineIndex)-1)
+	return sel.lineIndex[index] + 1, len(m.tables.json), true
+}
+
+// logicalRowOf 返回第 row 个可见行所在的逻辑行号（从 1 开始）。
+func logicalRowOf(sel *selView, row int) int {
+	count := 0
+	for index := 0; index <= row && index < len(sel.cont); index++ {
+		if !sel.cont[index] {
+			count++
+		}
+	}
+	if count == 0 {
+		count = 1
+	}
+	return count
+}
+
+// logicalCount 是可见行折算成的逻辑行总数（折行续行不单独计）。
+func logicalCount(sel *selView) int {
+	count := 0
+	for _, cont := range sel.cont {
+		if !cont {
+			count++
+		}
+	}
+	if count == 0 {
+		count = 1
+	}
+	return count
+}
+
 // isFoldable 报告某行能不能折叠（有对应的收尾行）。
 func (m *Model) isFoldable(index int) bool {
 	_, ok := m.tables.jsonFolds[index]

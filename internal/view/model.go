@@ -20,6 +20,7 @@ import (
 	appmcp "github.com/leihenshang/api-doc-go-viva/internal/mcp"
 	appmock "github.com/leihenshang/api-doc-go-viva/internal/mock"
 	"github.com/leihenshang/api-doc-go-viva/internal/runner"
+	"github.com/leihenshang/api-doc-go-viva/internal/script"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/leihenshang/api-doc-go-viva/internal/settings"
 	"github.com/vivaui/viva/app"
@@ -35,11 +36,16 @@ import (
 type detailTab uint8
 
 const (
-	// http 请求的四个分段（顺序对齐 Wails：参数 / 请求体 / 请求头 / 认证），外加文档。
+	// http 请求的九个分段，顺序对齐 Wails 版：
+	// 请求参数 / 请求体 / 请求头部 / 认证 / 响应字段 / 变量 / 脚本 / 断言 / 文档。
 	tabParams detailTab = iota
 	tabBody
 	tabHeaders
 	tabAuth
+	tabRespFields
+	tabVars
+	tabScript
+	tabAsserts
 	// gRPC 仍用「请求 / 响应 / 文档」三页签。
 	tabRequest
 	tabResponse
@@ -50,20 +56,31 @@ const (
 
 // 页签集合是包级切片：Tabs 每帧都要它，放这里避免每帧分配。
 var (
-	httpSegments = []detailTab{tabParams, tabBody, tabHeaders, tabAuth, tabDocs}
-	docTabs      = []detailTab{tabEdit, tabPreview}
+	httpSegments = []detailTab{
+		tabParams, tabBody, tabHeaders, tabAuth,
+		tabRespFields, tabVars, tabScript, tabAsserts, tabDocs,
+	}
+	docTabs = []detailTab{tabEdit, tabPreview}
 )
 
 func tabLabel(tab detailTab) string {
 	switch tab {
 	case tabParams:
-		return "参数"
+		return "请求参数"
 	case tabBody:
 		return "请求体"
 	case tabHeaders:
-		return "请求头"
+		return "请求头部"
 	case tabAuth:
 		return "认证"
+	case tabRespFields:
+		return "响应字段"
+	case tabVars:
+		return "变量"
+	case tabScript:
+		return "脚本"
+	case tabAsserts:
+		return "断言"
 	case tabRequest:
 		return "请求"
 	case tabResponse:
@@ -128,6 +145,9 @@ type sendResult struct {
 	tab int
 	gen int
 	out send.Outcome
+	// 断言与脚本结果随结果一起回来：在后台线程算，界面线程只搬运。
+	asserts   []script.AssertResult
+	scriptErr string
 }
 
 // requestTables 是「当前选中请求」派生出来的表格与文案，选中项变化时重建一次。
@@ -232,6 +252,31 @@ type fieldRow struct {
 	desc     string
 }
 
+// varRow 是「变量」分段的一行：请求级临时变量，发送时覆盖环境同名值。
+type varRow struct {
+	enabled bool
+	name    string
+	value   string
+}
+
+// assertRow 是「断言」分段的一行：expr 为 JS 布尔表达式，可引用 res / bru。
+type assertRow struct {
+	name string
+	expr string
+}
+
+// respDocDraft 是「响应字段」分段的编辑状态。
+//
+// 字段表（fields）与生成时的响应快照（sample / ctype / status / headers）一起落盘，
+// 与 Wails 版的 respdoc 段同形；快照只作说明用途，不参与发送。
+type respDocDraft struct {
+	fields  []*fieldRow
+	sample  string
+	ctype   string
+	status  int
+	headers []collection.KV
+}
+
 // requestDraft 是一条 http 请求的编辑草稿；保存时写回集合文件。
 type requestDraft struct {
 	file   string
@@ -242,6 +287,15 @@ type requestDraft struct {
 	headers []*kvRow
 	form    []*kvRow
 	fields  []*fieldRow
+
+	// 「变量 / 脚本 / 断言」三段（Bruno 超集，落盘进请求文件的顶层 extra 键）。
+	vars       []*varRow
+	scriptPre  string
+	scriptPost string
+	asserts    []*assertRow
+
+	// 「响应字段」分段：字段表 + 生成时的响应快照，落盘为顶层 respdoc 段。
+	resp respDocDraft
 
 	bodyType  string
 	bodyRaw   string
@@ -492,8 +546,9 @@ type Model struct {
 	// tabStrip 是页签条的滚动状态；tabOverflow 表示它装不下（决定左右箭头是否出现）。
 	tabStrip     *ui.ScrollState
 	tabOverflows bool
-	// tabMenuOpen 是右侧「⋯」的展开状态。
+	// tabMenuOpen 是右侧「⋯」的展开状态；segMenuOpen 是请求页分段条的「⋯」。
 	tabMenuOpen bool
+	segMenuOpen bool
 	// 自动保存：autoSaveAt 是「停手后第几秒落盘」，pending 表示还欠一次写。
 	autoSaveAt      time.Time
 	autoSavePending bool
@@ -620,6 +675,10 @@ type Model struct {
 	failText string
 	statusOK bool
 
+	// 断言与脚本的结果（随每次发送刷新，按标签各存一份）。
+	assertOut []script.AssertResult
+	scriptErr string
+
 	// 响应示例：当前请求存下来的快照（examples/*.yml），与最近一次真实响应分开存。
 	// exSel 为空表示正在看实时响应；看示例时 live 不被覆盖，切回来用它还原。
 	exRows []explorer.Example
@@ -627,6 +686,9 @@ type Model struct {
 	// respMenuOpen 是右上角「保存响应」下拉的展开状态。
 	respMenuOpen bool
 	live         send.Outcome
+	// live 的脚本 / 断言结果：切到示例再切回实时时要一并还原。
+	liveAsserts   []script.AssertResult
+	liveScriptErr string
 
 	// 集合级公共参数（清单 defaults 段）：默认请求头 + inherit 认证的来源。
 	defaults collection.Defaults
@@ -1183,8 +1245,40 @@ func (m *Model) start(entry *explorer.Entry) {
 	if !m.scratch && entry != nil {
 		record.Name, record.File = entry.Name, entry.File
 	}
+	// 脚本侧快照在界面线程拍好：后台线程不读 m.req（用户可能在等待时继续编辑）。
+	session := script.New(m.vars, script.Scripts{
+		PreRequest:   m.req.scriptPre,
+		PostResponse: m.req.scriptPost,
+	})
+	preVars := m.scriptVars()
+	asserts := m.scriptAsserts()
 	go func() {
+		// 前置：vars 赋值 + pre-request 脚本（脚本写入的变量覆盖环境同名值）。
+		pre := session.RunPreRequest(preVars)
+		plan.Vars = session.Vars()
+		// vars 的值本身可以再引用别的变量：合并后再解析一次。
+		for name, value := range pre.Vars {
+			if resolved, _ := send.Resolve(value, plan.Vars); resolved != value {
+				plan.Vars[name] = resolved
+				session.SetVar(name, resolved)
+			}
+		}
 		out := send.Do(context.Background(), plan)
+		result := sendResult{tab: tabID, gen: gen, out: out}
+		if out.Err == "" {
+			post := session.RunPostResponse(&script.Response{
+				Status:       out.Status,
+				Headers:      headerMap(out.Headers),
+				Body:         script.ParseBody(out.Body),
+				BodyText:     out.Body,
+				ResponseTime: out.Duration.Milliseconds(),
+				ContentType:  out.ContentType,
+			}, asserts)
+			result.asserts, result.scriptErr = post.Asserts, post.ScriptError
+		} else {
+			// 没拿到响应就没有断言可判；前置脚本的错误仍要报出来。
+			result.scriptErr = pre.ScriptError
+		}
 		record.URL = out.URL
 		record.Status, record.Duration, record.Size, record.Err = out.Status, out.Duration.Milliseconds(), out.Size, out.Err
 		// 请求快照：敏感头打码后再进历史文件。
@@ -1198,7 +1292,7 @@ func (m *Model) start(entry *explorer.Entry) {
 		if record.URL != "" {
 			_ = history.Append(record)
 		}
-		m.results <- sendResult{tab: tabID, gen: gen, out: out}
+		m.results <- result
 		m.invalidator.Invalidate()
 	}()
 }
@@ -1232,6 +1326,7 @@ func (m *Model) resetResponse() {
 	m.hasResp = false
 	m.status, m.reason, m.elapsed, m.size = "", "", "", ""
 	m.bodyText, m.missing, m.failText, m.statusOK = "", "", "", false
+	m.assertOut, m.scriptErr = nil, ""
 	m.copyNote = ""
 }
 
@@ -1253,7 +1348,7 @@ func (m *Model) collect() {
 		return // 结果属于已经换掉的那条请求
 	}
 	if index == m.curTab {
-		m.fillResponse(result.out)
+		m.fillResponse(result)
 		m.storeTab()
 		return
 	}
@@ -1261,23 +1356,28 @@ func (m *Model) collect() {
 	saved := &tabState{}
 	m.captureInto(saved)
 	m.applyFromTab(tab)
-	m.fillResponse(result.out)
+	m.fillResponse(result)
 	m.captureInto(tab)
 	m.applyFromTab(saved)
 }
 
 // fillResponse 把一次发送结果翻成状态行与正文文案。
 // 同时留一份 live：切到示例再切回来时用它还原（示例不覆盖真实响应）。
-func (m *Model) fillResponse(out send.Outcome) {
-	m.live = out
+func (m *Model) fillResponse(result sendResult) {
+	m.live = result.out
+	m.liveAsserts, m.liveScriptErr = result.asserts, result.scriptErr
 	m.exSel = ""
-	m.showOutcome(out)
+	m.showOutcome(result.out)
+	// showOutcome 会先清空上一次的断言结果，这里再补上本次的（看示例时不显示断言）。
+	m.assertOut, m.scriptErr = result.asserts, result.scriptErr
 }
 
 // showOutcome 把一份结果（实时或示例）铺成界面文案。
 func (m *Model) showOutcome(out send.Outcome) {
 	m.resp = out
 	m.hasResp, m.sending = true, false
+	// 断言与脚本结果只属于刚回来的那一份响应；切示例 / 重新发送都先清掉。
+	m.assertOut, m.scriptErr = nil, ""
 	if out.Err != "" {
 		m.failText = out.Err
 		return

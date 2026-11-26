@@ -2,7 +2,10 @@ package view
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -18,6 +21,11 @@ func (m *Model) statusBar(c ui.C) {
 	ui.Divider(c)
 	ui.Row(c).FillWidth().Height(statusBarHeight).PadX(px(12)).Gap(px(10)).Items(ui.Center).
 		Background(m.pal.bg).Children(func() {
+		// 只读视图的行号：正文不挪原点（动了选区的坐标换算就全偏），
+		// 光标所在行列与总行数放在底栏，滚到哪儿都能看见自己在第几行。
+		if info := m.lineStatus(); info != "" {
+			ui.Text(c, info).FontSize(fs(11)).Muted().Mono().Shrink(0)
+		}
 		ui.Spacer(c)
 		if m.ui.exportNote != "" {
 			ui.Text(c, m.ui.exportNote).FontSize(fs(11)).Muted()
@@ -118,4 +126,48 @@ func (m *Model) statusCounts() string {
 		text = fmt.Sprintf("%d 个请求 · %d 篇文档 · %d 个环境", requests, docs, len(m.ui.envs))
 	}
 	return text
+}
+
+// lineStatus 是底栏左侧那句「行 12 列 5 · 共 340 行」。
+//
+// 口径（与 N22 的约定一致）：只标逻辑行，折行不单独编号——
+// 原始报文里被切开的续行记回上一行的号；JSON 视图用原始 JSON 的行号，
+// 折叠隐藏的行不参与计数，但总数仍是整篇的行数。
+func (m *Model) lineStatus() string {
+	entry := m.activeEntry()
+	if entry == nil {
+		return ""
+	}
+	switch entry.Kind {
+	case explorer.KindDoc:
+		if m.tab != tabPreview {
+			return ""
+		}
+		return "文档 " + strconv.Itoa(lineCount(m.editor.text)) + " 行"
+	case explorer.KindHTTP:
+		if m.tab == tabDocs && !m.docsEditing {
+			return "文档 " + strconv.Itoa(lineCount(m.req.docs)) + " 行"
+		}
+		row, total, ok := m.responseLine()
+		if !ok {
+			return ""
+		}
+		info := "行 " + strconv.Itoa(row) + " 列 " + strconv.Itoa(m.jsonSel.head.col+1) +
+			" · 共 " + strconv.Itoa(total) + " 行"
+		if sel := m.jsonSel; sel.has {
+			span := sel.head.line - sel.anchor.line
+			if span < 0 {
+				span = -span
+			}
+			info += " · 选中 " + strconv.Itoa(span+1) + " 行"
+		}
+		return info
+	default:
+		return ""
+	}
+}
+
+// lineCount 是一段文本的逻辑行数（空文本算 1 行，与编辑器一致）。
+func lineCount(text string) int {
+	return strings.Count(text, "\n") + 1
 }

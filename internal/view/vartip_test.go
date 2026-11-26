@@ -105,7 +105,7 @@ func TestVarTipHeaderRow(t *testing.T) {
 	model.invalidator.Invalidate()
 	pump(t, driver)
 
-	click(t, driver, "请求头")
+	click(t, driver, "请求头部")
 	pump(t, driver)
 	hoverFieldVar(t, driver, hitBoundsOf(t, driver, "值"))
 	if !shows(driver, "token = s3cret") {

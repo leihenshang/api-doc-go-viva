@@ -246,6 +246,10 @@ func (m *Model) createRequest() {
 	m.ui.newErr = ""
 	if m.ui.savingScratch {
 		m.ui.savingScratch = false
+		// 临时请求的变量 / 脚本 / 断言 / 响应字段一起写进新文件，别让另存为丢配置。
+		if err := explorer.SaveRequestExtras(m.col.Dir, file, m.extrasFromDraft()); err != nil {
+			m.ui.newErr = err.Error()
+		}
 		m.closeScratchTab()
 	}
 	m.reload(file, tabParams)
@@ -551,10 +555,19 @@ func (m *Model) openImport(mode int) {
 
 // pickImportFile 选一个 Postman 导出的集合 JSON 读进文本框。
 func (m *Model) pickImportFile() {
-	files, err := app.OpenFiles(app.OpenFileOptions{
-		Title:   "选择 Postman 集合 JSON",
-		Filters: []app.FileFilter{{Name: "集合 JSON", Pattern: "*.json"}},
-	})
+	title := "选择 Postman 集合 JSON"
+	filters := []app.FileFilter{{Name: "集合 JSON", Pattern: "*.json"}}
+	if m.ui.importMode == 2 {
+		// OpenAPI 既可能是 JSON 也可能是 YAML：过滤器要一起给，否则选 yaml 根本看不见。
+		title = "选择 OpenAPI 文档（JSON / YAML）"
+		filters = []app.FileFilter{
+			{Name: "OpenAPI 文档", Pattern: "*.json;*.yaml;*.yml"},
+			{Name: "所有文件", Pattern: "*"},
+		}
+	} else if m.ui.importMode == 5 {
+		title = "选择 Insomnia 导出文件（insomnia.json）"
+	}
+	files, err := app.OpenFiles(app.OpenFileOptions{Title: title, Filters: filters})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
 			m.ui.importErr = err.Error()
@@ -627,7 +640,7 @@ func (m *Model) runImport() {
 	} else if m.ui.importMode == 2 {
 		text := strings.TrimSpace(m.ui.importText)
 		if text == "" {
-			m.ui.importErr = "把 OpenAPI 的 JSON 粘进来，或选一个文件"
+			m.ui.importErr = "把 OpenAPI 的 JSON / YAML 粘进来，或选一个文件"
 			m.invalidator.Invalidate()
 			return
 		}
@@ -668,6 +681,22 @@ func (m *Model) runImport() {
 			return
 		}
 		summary, err = importers.OpenCollection(m.col.Dir, folder, dir)
+	} else if m.ui.importMode == 5 {
+		text := strings.TrimSpace(m.ui.importText)
+		if text == "" {
+			m.ui.importErr = "把 Insomnia 导出的 insomnia.json 粘进来，或选一个文件"
+			m.invalidator.Invalidate()
+			return
+		}
+		items, parsed, parseErr := importers.Insomnia([]byte(text))
+		if parseErr != nil {
+			m.ui.importErr = parseErr.Error()
+			m.invalidator.Invalidate()
+			return
+		}
+		summary, err = importers.Write(m.col.Dir, folder, items)
+		summary.Notes = append(parsed.Notes, summary.Notes...)
+		summary.Vars = parsed.Vars
 	} else {
 		text := strings.TrimSpace(m.ui.importText)
 		if text == "" {
@@ -1256,6 +1285,7 @@ func (m *Model) loadRequestDraft(entry *explorer.Entry) {
 	if draft.authIn == "" {
 		draft.authIn = "header"
 	}
+	draft.loadExtras(explorer.ReadExtras(entry.Payload))
 	m.req = draft
 	// 记下磁盘基线：保存前靠它发现「文件被别人改过」。
 	if m.col != nil {
@@ -1327,6 +1357,7 @@ func (m *Model) applyDraftToFile(file *collection.RequestFile) {
 	file.HTTP.Auth = m.authFromDraft()
 	file.Summary = strings.TrimSpace(m.req.summary)
 	file.Docs = m.req.docs
+	explorer.WriteExtras(file, m.extrasFromDraft())
 }
 
 func (m *Model) saveRequest() {

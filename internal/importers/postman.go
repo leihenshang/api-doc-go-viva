@@ -15,6 +15,17 @@ import (
 // raw / urlencoded / formdata 三种 body、bearer / basic / apikey 三种认证、
 // 集合级变量。脚本（event）、pre-request、测试断言一概忽略并记一条提示。
 func Postman(data []byte) ([]Item, Summary, error) {
+	// Postman v1 与 v2 的顶层结构不同：v1 是 requests / folders 平铺 + order 数组，
+	// v2 是嵌套的 item 树。顶层没有 item 但有这两者之一，就按 v1 走。
+	var probe struct {
+		Item     json.RawMessage `json:"item"`
+		Requests json.RawMessage `json:"requests"`
+		Folders  json.RawMessage `json:"folders"`
+	}
+	if json.Unmarshal(data, &probe) == nil && len(probe.Item) == 0 &&
+		(len(probe.Requests) > 0 || len(probe.Folders) > 0) {
+		return postmanV1(data)
+	}
 	var doc pmCollection
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, Summary{}, fmt.Errorf("不是 Postman 集合 JSON: %w", err)
@@ -232,19 +243,32 @@ func pmTarget(raw pmURL) (string, []collection.KV) {
 	if target == "" {
 		return "", nil
 	}
-	params := make([]collection.KV, 0, len(raw.Query))
-	parsed, err := neturl.Parse(target)
-	if err == nil {
-		for key, values := range parsed.Query() {
-			for _, value := range values {
-				params = append(params, collection.KV{Name: key, Value: value, Enabled: true})
+	return splitTarget(target, raw.Query)
+}
+
+// splitTarget 把地址里的查询串拆进 params（集合里查询参数是独立可编辑的一张表）。
+// 地址里的优先；地址里没有时才用文档里的 query 行（保留说明与启用状态）。
+//
+// 不用 url.Parse(target).String() 重建地址：那会把 `{{host}}` 变成 `%7B%7Bhost%7D%7D`，
+// 占位符就此失效。这里只在 `?` 处切一刀，参数按原顺序逐个解码（map 会把顺序打乱）。
+func splitTarget(target string, extra []pmKV) (string, []collection.KV) {
+	base, rawQuery, hasQuery := strings.Cut(strings.TrimSpace(target), "?")
+	params := make([]collection.KV, 0, 4)
+	if hasQuery {
+		for _, pair := range strings.Split(rawQuery, "&") {
+			if strings.TrimSpace(pair) == "" {
+				continue
 			}
+			key, value, _ := strings.Cut(pair, "=")
+			name := decodeQueryPart(key)
+			if strings.TrimSpace(name) == "" {
+				continue
+			}
+			params = append(params, collection.KV{Name: name, Value: decodeQueryPart(value), Enabled: true})
 		}
-		parsed.RawQuery = ""
-		target = parsed.String()
 	}
 	if len(params) == 0 {
-		for _, query := range raw.Query {
+		for _, query := range extra {
 			if strings.TrimSpace(query.Key) == "" {
 				continue
 			}
@@ -253,7 +277,16 @@ func pmTarget(raw pmURL) (string, []collection.KV) {
 			})
 		}
 	}
-	return target, params
+	return base, params
+}
+
+// decodeQueryPart 解 %XX；解不开就保留原文（脏地址不该让整条请求导不进来）。
+func decodeQueryPart(part string) string {
+	decoded, err := neturl.QueryUnescape(part)
+	if err != nil {
+		return part
+	}
+	return decoded
 }
 
 // convertBody 把 raw / urlencoded / formdata 映射成集合里的三种 body。
@@ -349,4 +382,267 @@ func convertAuth(auth pmAuth, summary *Summary) *collection.Auth {
 		summary.Notes = append(summary.Notes, auth.Type+" 认证不支持，已忽略")
 		return nil
 	}
+}
+
+// ---------- Postman v1 ----------
+//
+// v1 的顶层是平铺的 requests / folders 加一个 order 数组（子项 id 顺序），
+// 与 v2 的嵌套 item 完全不同。字段差异：
+//   - 请求在 `requests[]`，含 method / url（字符串）/ headers / dataMode / data / rawModeData；
+//   - 文件夹在 `folders[]`，子项顺序在自己的 `order` 里；
+//   - 变量叫 `variables`（v2 是 `variable`）；
+//   - 请求头可能是数组，也可能是一整段字符串（"A: 1\nB: 2"）。
+
+type pmV1Doc struct {
+	Name      string       `json:"name"`
+	Desc      string       `json:"description"`
+	Order     []string     `json:"order"`
+	Folders   []pmV1Folder `json:"folders"`
+	Requests  []pmV1Req    `json:"requests"`
+	Variables []pmKV       `json:"variables"`
+}
+
+type pmV1Folder struct {
+	ID    string   `json:"id"`
+	Name  string   `json:"name"`
+	Order []string `json:"order"`
+}
+
+type pmV1Req struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Method      string          `json:"method"`
+	URL         string          `json:"url"`
+	Headers     json.RawMessage `json:"headers"`
+	DataMode    string          `json:"dataMode"`
+	Data        []pmV1KV        `json:"data"`
+	RawModeData string          `json:"rawModeData"`
+	Description string          `json:"description"`
+}
+
+// pmV1KV 是 v1 的键值行：启用状态写的是 enabled（v2 写 disabled），两者都容忍。
+type pmV1KV struct {
+	Key         string `json:"key"`
+	Value       string `json:"value"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
+	Enabled     *bool  `json:"enabled"`
+	Disabled    bool   `json:"disabled"`
+}
+
+func (kv pmV1KV) on() bool {
+	if kv.Enabled != nil {
+		return *kv.Enabled
+	}
+	return !kv.Disabled
+}
+
+// postmanV1 把 v1 的平铺结构还原成条目树（顺序按 order，缺失的按数组顺序补齐）。
+func postmanV1(data []byte) ([]Item, Summary, error) {
+	var doc pmV1Doc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, Summary{}, fmt.Errorf("不是 Postman 集合 JSON: %w", err)
+	}
+	if len(doc.Requests) == 0 && len(doc.Folders) == 0 {
+		return nil, Summary{}, fmt.Errorf("集合里没有可导入的请求（Postman v1 的 requests 为空）")
+	}
+	summary := Summary{}
+	folders := make(map[string]pmV1Folder, len(doc.Folders))
+	for _, folder := range doc.Folders {
+		folders[folder.ID] = folder
+	}
+	requests := make(map[string]pmV1Req, len(doc.Requests))
+	for _, request := range doc.Requests {
+		requests[request.ID] = request
+	}
+	visited := make(map[string]bool, len(doc.Requests)+len(doc.Folders))
+
+	var build func(ids []string) []Item
+	build = func(ids []string) []Item {
+		out := make([]Item, 0, len(ids))
+		for _, id := range ids {
+			if visited[id] {
+				continue // 防环：v1 的 order 理论上不会有环，但脏数据不该让导入挂住
+			}
+			visited[id] = true
+			if request, ok := requests[id]; ok {
+				file, note := convertV1Request(request, &summary)
+				if note != "" {
+					summary.Notes = append(summary.Notes, note)
+					continue
+				}
+				out = append(out, Item{Name: file.Info.Name, Request: file})
+				continue
+			}
+			if folder, ok := folders[id]; ok {
+				name := strings.TrimSpace(folder.Name)
+				if name == "" {
+					name = "导入的分组"
+				}
+				out = append(out, Item{Name: name, Items: build(folder.Order)})
+			}
+		}
+		return out
+	}
+	items := build(doc.Order)
+
+	// 有些导出没有 order（或只写了一半）：剩下的按原数组顺序补在最后，宁可顺序乱也不丢条目。
+	for _, folder := range doc.Folders {
+		if visited[folder.ID] {
+			continue
+		}
+		visited[folder.ID] = true
+		name := strings.TrimSpace(folder.Name)
+		if name == "" {
+			name = "导入的分组"
+		}
+		items = append(items, Item{Name: name, Items: build(folder.Order)})
+	}
+	for _, request := range doc.Requests {
+		if visited[request.ID] {
+			continue
+		}
+		visited[request.ID] = true
+		file, note := convertV1Request(request, &summary)
+		if note != "" {
+			summary.Notes = append(summary.Notes, note)
+			continue
+		}
+		items = append(items, Item{Name: file.Info.Name, Request: file})
+	}
+
+	for _, variable := range doc.Variables {
+		if strings.TrimSpace(variable.Key) == "" {
+			continue
+		}
+		summary.Vars = append(summary.Vars, collection.EnvVar{
+			Name: variable.Key, Value: variable.Value, Enabled: true, Secret: false,
+		})
+	}
+	if len(items) == 0 {
+		return nil, summary, fmt.Errorf("集合里没有可导入的请求")
+	}
+	return items, summary, nil
+}
+
+// convertV1Request 把一条 v1 请求转成请求文件。
+func convertV1Request(request pmV1Req, summary *Summary) (*collection.RequestFile, string) {
+	name := strings.TrimSpace(request.Name)
+	if name == "" {
+		name = "导入的请求"
+	}
+	target := strings.TrimSpace(request.URL)
+	if target == "" {
+		return nil, "跳过没有地址的请求：" + name
+	}
+	target, params := splitTarget(target, nil)
+	if len(params) == 0 {
+		params = []collection.KV{{Enabled: true}}
+	}
+	file := &collection.RequestFile{
+		Info: collection.FileInfo{Name: name, Type: "http"},
+		HTTP: collection.HTTPBlock{
+			Method:  strings.ToUpper(strings.TrimSpace(request.Method)),
+			URL:     target,
+			Params:  params,
+			Headers: v1Headers(request.Headers),
+			Body:    v1Body(request, name, summary),
+		},
+		Docs: strings.TrimSpace(request.Description),
+	}
+	if file.HTTP.Method == "" {
+		file.HTTP.Method = "GET"
+	}
+	return file, ""
+}
+
+// v1Headers 兼容两种写法：数组（key/value/enabled）与一整段 "A: 1\nB: 2" 文本。
+func v1Headers(raw json.RawMessage) []collection.KV {
+	if len(raw) == 0 {
+		return nil
+	}
+	var rows []pmV1KV
+	if err := json.Unmarshal(raw, &rows); err == nil {
+		out := make([]collection.KV, 0, len(rows))
+		for _, row := range rows {
+			if strings.TrimSpace(row.Key) == "" {
+				continue
+			}
+			out = append(out, collection.KV{
+				Name: row.Key, Value: row.Value, Description: row.Description, Enabled: row.on(),
+			})
+		}
+		return out
+	}
+	var text string
+	if json.Unmarshal(raw, &text) != nil {
+		return nil
+	}
+	out := make([]collection.KV, 0, 4)
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		out = append(out, collection.KV{Name: strings.TrimSpace(key), Value: strings.TrimSpace(value), Enabled: true})
+	}
+	return out
+}
+
+// v1Body 按 dataMode 映射 body：raw / urlencoded / params（form-data）/ binary。
+func v1Body(request pmV1Req, name string, summary *Summary) collection.Body {
+	switch strings.ToLower(strings.TrimSpace(request.DataMode)) {
+	case "", "none":
+		return collection.Body{Type: "none"}
+	case "raw":
+		typ := "text"
+		if looksJSON(request.RawModeData) {
+			typ = "json"
+		}
+		return collection.Body{Type: typ, Raw: request.RawModeData}
+	case "urlencoded":
+		rows := make([]collection.KV, 0, len(request.Data))
+		for _, field := range request.Data {
+			if strings.TrimSpace(field.Key) == "" {
+				continue
+			}
+			rows = append(rows, collection.KV{
+				Name: field.Key, Value: field.Value, Description: field.Description,
+				Enabled: field.on(), Type: "text",
+			})
+		}
+		return collection.Body{Type: "form", Form: rows}
+	case "params":
+		rows := make([]collection.KV, 0, len(request.Data))
+		for _, field := range request.Data {
+			if strings.TrimSpace(field.Key) == "" {
+				continue
+			}
+			typ := "text"
+			if strings.EqualFold(field.Type, "file") {
+				typ = "file"
+				if strings.TrimSpace(field.Value) == "" {
+					summary.Notes = append(summary.Notes, "「"+name+"」的文件字段没有路径，导入后需自己填")
+				}
+			}
+			rows = append(rows, collection.KV{
+				Name: field.Key, Value: field.Value, Description: field.Description,
+				Enabled: field.on(), Type: typ,
+			})
+		}
+		return collection.Body{Type: "multipart", Form: rows}
+	default:
+		summary.Notes = append(summary.Notes, "「"+name+"」的 "+request.DataMode+" body 不支持，已留空")
+		return collection.Body{Type: "none"}
+	}
+}
+
+// looksJSON 只看首个非空字符：判断 raw 体该记成 json 还是 text。
+func looksJSON(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	return strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[")
 }

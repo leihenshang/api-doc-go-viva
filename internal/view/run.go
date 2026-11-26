@@ -24,12 +24,14 @@ type runRow struct {
 
 // runState 是运行器的界面状态。
 type runState struct {
-	Rows       []runRow
-	Selected   map[string]bool
-	Results    []runner.Result
-	StopOnFail bool
-	Running    bool
-	Note       string
+	Rows     []runRow
+	Selected map[string]bool
+	Results  []runner.Result
+	// FailedFiles 是这次结果里失败的那几条（按出现顺序，供「重跑失败项」一键重选）。
+	FailedFiles []string
+	StopOnFail  bool
+	Running     bool
+	Note        string
 }
 
 // openRunner 打开运行器：每次打开都把当前集合的 http 请求抄成一份列表，默认全选。
@@ -103,6 +105,7 @@ func (m *Model) startRun() {
 	m.runCh = channel
 	m.run.Running = true
 	m.run.Results = m.run.Results[:0]
+	m.run.FailedFiles = nil
 	m.run.Note = ""
 	go func() {
 		defer close(channel)
@@ -111,6 +114,33 @@ func (m *Model) startRun() {
 			m.invalidator.Invalidate()
 		})
 	}()
+}
+
+// retryFailed 只重跑上次失败的那几条：把勾选改成失败项再走同一条执行路径。
+//
+// 为什么复用勾选而不是另开一条执行路径：运行器的语义（顺序、extract 传递、
+// StopOnFailure）都绑在「勾选的列表」上，重跑只是换一份勾选，行为与手点一致。
+func (m *Model) retryFailed() {
+	if m.run.Running || len(m.run.FailedFiles) == 0 {
+		return
+	}
+	failed := make(map[string]bool, len(m.run.FailedFiles))
+	for _, file := range m.run.FailedFiles {
+		failed[file] = true
+	}
+	selected := 0
+	for index := range m.run.Rows {
+		m.run.Rows[index].Selected = failed[m.run.Rows[index].File]
+		if m.run.Rows[index].Selected {
+			selected++
+		}
+	}
+	if selected == 0 {
+		m.run.Note = "失败的条目已不在当前集合里"
+		m.invalidator.Invalidate()
+		return
+	}
+	m.startRun()
 }
 
 // stopRun 停下正在跑的集合（已发出的那条会跑完）。
@@ -140,6 +170,9 @@ func (m *Model) drainRun() {
 				return
 			}
 			m.run.Results = append(m.run.Results, result)
+			if result.Failed && !containsString(m.run.FailedFiles, result.File) {
+				m.run.FailedFiles = append(m.run.FailedFiles, result.File)
+			}
 			m.invalidator.Invalidate()
 		default:
 			return
@@ -242,4 +275,14 @@ func (m *Model) exportRunReport() {
 	}
 	m.run.Note = "已导出 " + filepath.Base(target)
 	m.invalidator.Invalidate()
+}
+
+// containsString 报告切片里有没有这个值（结果条数很少，线性查找足够）。
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

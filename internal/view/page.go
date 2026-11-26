@@ -439,6 +439,12 @@ func (m *Model) sidebar(c ui.C) {
 // tabWidth 是标签的固定宽度：宽度一致，横向滚动的偏移才好算。
 var tabWidth float32 = 132
 
+// segmentPitch 是请求页每个分段页签的宽度。
+//
+// 固定宽度而不是平分：九个中文标签里最长的是「请求参数 / 请求头部 / 响应字段」（4 字），
+// 68 够放 4 字加内边距；整条放进横向滚动后，窄栏里也不会把标签压成「请求」。
+const segmentPitch float32 = 68
+
 // tabPitch 是一个标签占的横向距离（标签 + 行间距）。
 var tabPitch float32 = tabWidth + 2
 
@@ -577,6 +583,29 @@ func (m *Model) tabOverflow(c ui.C) {
 		}
 		if menu.Item("关闭全部").Clicked() {
 			c.After(m.closeAllTabs)
+		}
+	})
+}
+
+// segOverflow 是分段条右侧的「⋯」：窄栏里九个分段装不下、横向滚动又不显眼，
+// 这里列出全部分段，当前项打勾，点一下直接切换。
+func (m *Model) segOverflow(c ui.C) {
+	button := ui.Button(c, "全部分段").Icon(IconEllipsis).IconOnly().Ghost()
+	if button.Clicked() {
+		c.After(func() { m.segMenuOpen = !m.segMenuOpen })
+	}
+	if !m.segMenuOpen {
+		return
+	}
+	ui.Menu(c, button, &m.segMenuOpen, func(menu *ui.MenuItems) {
+		for _, seg := range httpSegments {
+			target := seg
+			if menu.Item(tabLabel(target)).Checked(m.tab == target).Clicked() {
+				c.After(func() {
+					m.tab = target
+					m.invalidator.Invalidate()
+				})
+			}
 		}
 	})
 }
@@ -774,7 +803,17 @@ func (m *Model) requestPane(c ui.C) {
 	theme := c.Theme()
 	ui.Column(c).Fill().Pad(panePadding).Gap(px(8)).Radius(theme.Metrics.RadiusSurface).
 		Background(theme.Card).Border(1, m.pal.border).Children(func() {
-		ui.Tabs(c, &m.tab, httpSegments, tabLabel).Line()
+		// 九个分段在左右分栏的窄请求栏里放不下：Tabs 默认把可用宽度平分给每个触发区，
+		// 「请求参数 / 请求头部 / 响应字段」会被截成「请求 / 响应」。这里给每个分段固定
+		// 宽度、整体放进横向滚动——宽度不够时滚过去，标签文字不再被压掉；
+		// 右侧「⋯」列出全部分段，给不知道能横扫的人一条兜底路径。
+		ui.Row(c).FillWidth().Gap(px(4)).Items(ui.Center).Children(func() {
+			ui.Scroll(c).Grow(1).Height(px(38)).Sideways().Children(func() {
+				ui.Tabs(c, &m.tab, httpSegments, tabLabel).Line().
+					Width(px(segmentPitch * float32(len(httpSegments))))
+			})
+			m.segOverflow(c)
+		})
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Gap(px(10)).Children(func() {
 				switch m.tab {
@@ -784,6 +823,14 @@ func (m *Model) requestPane(c ui.C) {
 					m.kvEditor(c, &m.req.headers, "添加请求头")
 				case tabAuth:
 					m.authTab(c)
+				case tabRespFields:
+					m.respFieldsTab(c)
+				case tabVars:
+					m.varsTab(c)
+				case tabScript:
+					m.scriptTab(c)
+				case tabAsserts:
+					m.assertsTab(c)
 				case tabDocs:
 					m.docsTab(c)
 				default:

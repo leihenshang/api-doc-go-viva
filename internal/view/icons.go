@@ -314,6 +314,28 @@ var IconImport = gfx.Icon{
 	},
 }
 
+// icon-retry is a compiled vector icon（重跑：逆时针圆弧 + 箭头）。
+var IconRetry = gfx.Icon{
+	ViewBox: 24.0,
+	Stroke:  2.0,
+	Cap:     gfx.CapRound,
+	Join:    gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(4.0, 12.0),
+		gfx.CubicTo(4.0, 7.6, 7.6, 4.0, 12.0, 4.0),
+		gfx.CubicTo(15.0, 4.0, 17.6, 5.7, 18.9, 8.2),
+		gfx.MoveTo(19.0, 4.0),
+		gfx.LineTo(19.0, 9.0),
+		gfx.LineTo(14.0, 9.0),
+		gfx.MoveTo(20.0, 12.0),
+		gfx.CubicTo(20.0, 16.4, 16.4, 20.0, 12.0, 20.0),
+		gfx.CubicTo(9.0, 20.0, 6.4, 18.3, 5.1, 15.8),
+		gfx.MoveTo(5.0, 20.0),
+		gfx.LineTo(5.0, 15.0),
+		gfx.LineTo(10.0, 15.0),
+	},
+}
+
 // icon-moon is a compiled vector icon.
 var IconMoon = gfx.Icon{
 	ViewBox: 24.0,

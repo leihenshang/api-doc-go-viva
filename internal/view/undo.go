@@ -3,6 +3,7 @@ package view
 import (
 	"time"
 
+	"github.com/leihenshang/api-doc-go-share/collection"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -93,6 +94,44 @@ func (d requestDraft) clone() requestDraft {
 	out.headers = cloneRows(d.headers)
 	out.form = cloneRows(d.form)
 	out.fields = cloneFields(d.fields)
+	out.vars = cloneVars(d.vars)
+	out.asserts = cloneAsserts(d.asserts)
+	out.resp = d.resp.clone()
+	return out
+}
+
+func cloneVars(rows []*varRow) []*varRow {
+	if rows == nil {
+		return nil
+	}
+	out := make([]*varRow, len(rows))
+	for i, row := range rows {
+		copied := *row
+		out[i] = &copied
+	}
+	return out
+}
+
+func cloneAsserts(rows []*assertRow) []*assertRow {
+	if rows == nil {
+		return nil
+	}
+	out := make([]*assertRow, len(rows))
+	for i, row := range rows {
+		copied := *row
+		out[i] = &copied
+	}
+	return out
+}
+
+// clone 深拷响应字段段：字段行与响应头快照都要独立，撤销才能整份还原。
+func (d respDocDraft) clone() respDocDraft {
+	out := d
+	out.fields = cloneFields(d.fields)
+	if d.headers != nil {
+		out.headers = make([]collection.KV, len(d.headers))
+		copy(out.headers, d.headers)
+	}
 	return out
 }
 

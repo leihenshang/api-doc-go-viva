@@ -986,6 +986,14 @@ func (m *Model) runnerDialog(c ui.C) {
 				}
 				return
 			}
+			if len(m.run.FailedFiles) > 0 {
+				if ui.Button(c, "重跑失败项（"+strconv.Itoa(len(m.run.FailedFiles))+"）").
+					Icon(IconRetry).Outline().
+					Tooltip("只把失败的请求重新勾选并再跑一遍；顺序、extract 传递与「遇到失败即停」照旧").
+					Clicked() {
+					c.After(m.retryFailed)
+				}
+			}
 			if len(m.run.Results) > 0 {
 				if ui.Button(c, "导出 JUnit").Icon(IconImport).Outline().
 					Tooltip("把这次结果写成 JUnit XML（CI 直接能读）").Clicked() {
@@ -1063,16 +1071,19 @@ func (m *Model) mockDialog(c ui.C) {
 	})
 }
 
-// importDialog 是「导入集合」：Postman 导出的 JSON，或另一个 OpenCollection 集合目录。
-// 两种来源落到同一个落点分组，导完就重扫，同名一律加 -2。
+// importDialog 是「导入集合」：Postman（v1 / v2）、Insomnia、OpenAPI（JSON / YAML）、
+// 集合包、Bruno 与另一个 OpenCollection 目录都从这一个弹窗进来。
+// 各来源落到同一个落点分组，导完就重扫，同名一律加 -2。
 func (m *Model) importDialog(c ui.C) {
 	ui.ModalWith(c, &m.ui.importOpen, "导入集合", ui.ModalSpec{Width: px(720), Height: px(520)}, func() {
 		ui.Column(c).FillWidth().Gap(px(8)).Children(func() {
 			ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 				ui.Text(c, "来源").FontSize(fs(11)).Muted().Width(px(48))
-				ui.Choice(c, &m.ui.importMode, importModes, func(mode int) string {
+				// 六种来源横向排不下（Choice 会平分宽度把「Insomnia 集合」截断），
+				// 用下拉：与 Wails 版同一种交互，也不受弹窗宽度影响。
+				ui.Select(c, &m.ui.importMode, importModes, func(mode int) string {
 					return importModeNames[mode]
-				})
+				}).Width(px(230))
 				ui.Spacer(c)
 				ui.Text(c, "导入到").FontSize(fs(11)).Muted().Width(px(48))
 				ui.Select(c, &m.ui.importFolder, m.ui.importFolders, nil).Width(px(200))
@@ -1097,9 +1108,31 @@ func (m *Model) importDialog(c ui.C) {
 				})
 				ui.TextArea(c, &m.ui.importText, "集合包 JSON", `{"format":"api-doc-go/collection","files":[...]}`).
 					FillWidth().Height(px(220))
+			} else if m.ui.importMode == 5 {
+				ui.Text(c, "Insomnia 导出的 insomnia.json（Export Data）：分组照层级搬过来，请求换新 uid；"+
+					"查询参数 / 请求头 / body / bearer·basic·apikey 认证会转过来，脚本与断言忽略；"+
+					"{{ _.变量 }} 会转成 {{变量}}。").
+					FontSize(11).Muted()
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+					if ui.Button(c, "选择文件…").Icon(IconFilePlus).Outline().Clicked() {
+						c.After(m.pickImportFile)
+					}
+					if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
+						text, err := app.ClipboardText()
+						if err != nil {
+							m.ui.importErr = err.Error()
+						} else {
+							m.ui.importText = text
+							m.ui.importErr = ""
+						}
+					}
+					ui.Spacer(c)
+				})
+				ui.TextArea(c, &m.ui.importText, "Insomnia 导出 JSON", `{"_type":"export","resources":[...]}`).
+					FillWidth().Height(px(220))
 			} else if m.ui.importMode == 2 {
-				ui.Text(c, "OpenAPI 3 文档（JSON）：一个「路径 + 方法」导入成一条请求，"+
-					"查询参数与请求头进表，描述进文档；$ref 不展开。").
+				ui.Text(c, "OpenAPI 3 文档（JSON 或 YAML）：一个「路径 + 方法」导入成一条请求，"+
+					"查询参数与请求头进表，描述进文档；$ref 不展开，YAML 会先转成 JSON。").
 					FontSize(11).Muted()
 				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					ui.Text(c, "地址前缀").FontSize(fs(11)).Muted().Width(px(64))
@@ -1107,7 +1140,7 @@ func (m *Model) importDialog(c ui.C) {
 					m.varTipField(base, m.ui.importBase)
 					ui.Text(c, "留空则只写路径").FontSize(fs(11)).Muted()
 					ui.Spacer(c)
-					if ui.Button(c, "选择 JSON 文件…").Icon(IconFilePlus).Outline().Clicked() {
+					if ui.Button(c, "选择文件…").Icon(IconFilePlus).Outline().Clicked() {
 						c.After(m.pickImportFile)
 					}
 					if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
@@ -1120,7 +1153,7 @@ func (m *Model) importDialog(c ui.C) {
 						}
 					}
 				})
-				ui.TextArea(c, &m.ui.importText, "OpenAPI JSON", `{"openapi":"3.0.0","paths":{...}}`).
+				ui.TextArea(c, &m.ui.importText, "OpenAPI 文档", `{"openapi":"3.0.0","paths":{...}}`).
 					FillWidth().Height(px(200))
 			} else if m.ui.importMode == 4 {
 				ui.Text(c, "原生 Bruno 集合（含 .bru 文件）：方法 / 地址 / 查询参数 / 请求头 / "+
@@ -1133,7 +1166,7 @@ func (m *Model) importDialog(c ui.C) {
 					}
 				})
 			} else if m.ui.importMode == 1 {
-				ui.Text(c, "另一个 OpenCollection 集合：分组照层级复制，请求换成新 uid，文档进 docs/。").FontSize(fs(11)).Muted()
+				ui.Text(c, "另一个 OpenCollection 集合：分组照层级复制，请求换成新 uid，文档进 docs/。").FontSize(fs(11)).Muted().FillWidth().MaxLines(2)
 				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
 					ui.TextField(c, &m.ui.importDir, "集合目录", "/path/to/collection").Grow(1)
 					if ui.Button(c, "选择目录…").Icon(IconFolderOpen).Outline().Clicked() {
@@ -1142,9 +1175,9 @@ func (m *Model) importDialog(c ui.C) {
 				})
 			} else {
 				ui.Text(c, "Postman v2 集合：方法 / 地址 / 查询参数 / 请求头 / raw·urlencoded·formdata body / "+
-					"bearer·basic·apikey 认证会转过来；脚本与断言忽略。").FontSize(fs(11)).Muted()
+					"bearer·basic·apikey 认证会转过来；脚本与断言忽略。").FontSize(fs(11)).Muted().FillWidth().MaxLines(2)
 				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
-					if ui.Button(c, "选择 JSON 文件…").Icon(IconFilePlus).Outline().Clicked() {
+					if ui.Button(c, "选择文件…").Icon(IconFilePlus).Outline().Clicked() {
 						c.After(m.pickImportFile)
 					}
 					if ui.Button(c, "从剪贴板粘贴").Icon(IconCopy).Ghost().Clicked() {
@@ -1182,9 +1215,9 @@ func (m *Model) importDialog(c ui.C) {
 
 // importModes / importModeNames 是导入来源的两个选项。
 var (
-	importModes     = []int{0, 1, 2, 3, 4}
-	importModeNames = []string{"Postman 集合", "OpenCollection 集合", "OpenAPI 3（JSON）",
-		"集合包（.apidocgo.json）", "Bruno 集合"}
+	importModes     = []int{0, 1, 2, 3, 4, 5}
+	importModeNames = []string{"Postman 集合（v1 / v2）", "OpenCollection 集合", "OpenAPI 3（JSON / YAML）",
+		"集合包（.apidocgo.json）", "Bruno 集合", "Insomnia 集合"}
 )
 
 // curlImportDialog 是「导入 cURL」：粘贴命令，解析成一条新请求（参考 19）。

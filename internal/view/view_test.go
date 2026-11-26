@@ -68,7 +68,7 @@ func TestClickingSendShowsTheResponse(t *testing.T) {
 	if !shows(driver, "渲染检查") {
 		t.Fatalf("Docs 默认应按 Markdown 排版（标题未画出）：%v", painted(driver))
 	}
-	click(t, driver, "参数")
+	click(t, driver, "请求参数")
 	pump(t, driver)
 
 	click(t, driver, "发送")
@@ -2163,7 +2163,7 @@ func TestRequestResponseSplitLayout(t *testing.T) {
 		}
 		return 0, 0, false
 	}
-	reqX, reqY, okReq := find("参数")
+	reqX, reqY, okReq := find("请求参数")
 	respX, respY, okResp := find("响应")
 	if !okReq || !okResp {
 		t.Fatalf("找不到分栏标题：req=%v resp=%v", okReq, okResp)
@@ -2196,8 +2196,22 @@ func TestRequestResponseSplitLayout(t *testing.T) {
 	if respY > 400 {
 		t.Fatalf("左右分栏时响应不应掉到下方：响应 y=%.1f", respY)
 	}
-	// 分段页签（参数 / 请求体 / 请求头 / 认证 / 文档）只占请求列：
+	// 分段页签（请求参数 / 请求体 / 请求头部 / 认证 / 响应字段 / 变量 / 脚本 / 断言 / 文档）只占请求列：
 	// 它曾画在分栏之上、横跨整幅宽度，看起来像独立于两栏的一条横幅。
+	// 九个分段在窄请求列里放不下，整条是横向滚动的：先滚到最右，「文档」才会画出来。
+	var stripX, stripY float32
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Role == gfx.RoleTab && hit.Label == "请求参数" {
+			stripX, stripY = hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2
+		}
+	}
+	if stripX == 0 {
+		t.Fatalf("找不到分段页签「请求参数」：%v", painted(driver))
+	}
+	if err := driver.Scroll(gfx.ScrollEvent{X: stripX, Y: stripY, DeltaX: 600}); err != nil {
+		t.Fatalf("横向滚动分段条: %v", err)
+	}
+	pump(t, driver)
 	lastTabRight := float32(0)
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.Role == gfx.RoleTab && hit.Label == "文档" {

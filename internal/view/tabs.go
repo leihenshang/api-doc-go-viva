@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
+	"github.com/leihenshang/api-doc-go-viva/internal/script"
 	"github.com/leihenshang/api-doc-go-viva/internal/send"
 	"github.com/vivaui/viva/gfx"
 )
@@ -46,7 +47,13 @@ type tabState struct {
 	bodyText string
 	missing  string
 	failText string
-	gen      int
+	// 断言与脚本结果：随这次响应一起存，切走再切回不丢。
+	assertOut []script.AssertResult
+	scriptErr string
+	// live 的脚本 / 断言结果（切到示例再切回实时时还原）。
+	liveAsserts   []script.AssertResult
+	liveScriptErr string
+	gen           int
 }
 
 // activeTab 是当前标签；没有打开任何内容时返回 nil。
@@ -345,10 +352,12 @@ func (m *Model) captureInto(t *tabState) {
 	t.editor = m.editor
 	t.resp = m.resp
 	t.live, t.exSel, t.exRows = m.live, m.exSel, m.exRows
+	t.liveAsserts, t.liveScriptErr = m.liveAsserts, m.liveScriptErr
 	t.hasResp, t.sending, t.statusOK = m.hasResp, m.sending, m.statusOK
 	t.status, t.reason, t.elapsed, t.size = m.status, m.reason, m.elapsed, m.size
 	t.copyNote = m.copyNote
 	t.bodyText, t.missing, t.failText = m.bodyText, m.missing, m.failText
+	t.assertOut, t.scriptErr = m.assertOut, m.scriptErr
 	t.gen = m.gen
 }
 
@@ -370,10 +379,12 @@ func (m *Model) applyFromTab(t *tabState) {
 	m.editor = t.editor
 	m.resp = t.resp
 	m.live, m.exSel, m.exRows = t.live, t.exSel, t.exRows
+	m.liveAsserts, m.liveScriptErr = t.liveAsserts, t.liveScriptErr
 	m.hasResp, m.sending, m.statusOK = t.hasResp, t.sending, t.statusOK
 	m.status, m.reason, m.elapsed, m.size = t.status, t.reason, t.elapsed, t.size
 	m.copyNote = t.copyNote
 	m.bodyText, m.missing, m.failText = t.bodyText, t.missing, t.failText
+	m.assertOut, m.scriptErr = t.assertOut, t.scriptErr
 	m.gen = t.gen
 }
 
