@@ -75,6 +75,10 @@ type Settings struct {
 	MCPToken string `json:"mcpToken,omitempty"`
 	// MCPReadOnly 只暴露读工具：不发请求、不写磁盘。
 	MCPReadOnly bool `json:"mcpReadOnly,omitempty"`
+	// MCPAllowOrigins 是允许的浏览器来源（防 DNS rebinding）：空 = 拒绝一切带 Origin 的请求。
+	MCPAllowOrigins []string `json:"mcpAllowOrigins,omitempty"`
+	// MCPConsentDisabled 关掉「写操作需用户确认」；零值 = 需要确认（安全默认）。
+	MCPConsentDisabled bool `json:"mcpConsentDisabled,omitempty"`
 	// MCPGroups 是要暴露的工具组（collection / docs / env / example / network / write）；空 = 全部。
 	MCPGroups []string `json:"mcpGroups,omitempty"`
 	// MCPAllow 是可访问工作区的白名单：出现在列表里 = 授权，Writable 决定写工具能否落盘。

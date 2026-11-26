@@ -424,9 +424,17 @@ type workspaceUI struct {
 	envPick      string
 
 	// MCP 服务的设置（独立弹窗，与软件设置分开）：开关 / 监听地址 / 令牌 / 工作区授权。
-	mcpOpen     bool
-	mcpEnabled  bool
-	mcpReadOnly bool
+	mcpOpen bool
+	// mcpOrigins 是弹窗里的来源白名单文本（逗号分隔），落盘前才拆成数组。
+	mcpOrigins string
+	// mcpAuditRows 是面板里展示的最近调用（打开面板时载入，避免每帧读文件）。
+	mcpAuditRows []appmcp.AuditEntry
+	// mcpConsentOpen 是写操作确认框的开关。
+	mcpConsentOpen bool
+	// mcpConsentOff 是弹窗里「写操作不确认」的镜像（零值 = 需要确认）。
+	mcpConsentOff bool
+	mcpEnabled    bool
+	mcpReadOnly   bool
 	// mcpGroupOn 按 appmcp.Groups 的顺序记「哪一组开着」。
 	mcpGroupOn []bool
 	mcpAddr    string
@@ -588,6 +596,8 @@ type Model struct {
 	trayNote    string
 
 	ui workspaceUI
+	// mcpConsent 是服务端与界面之间传递「写操作确认」的桥。
+	mcpConsent mcpConsent
 	// mcp 是内嵌 MCP 服务的运行状态（底栏状态点 / 设置面板）；服务器本体在 mcp.go。
 	mcp        mcpRuntime
 	mcpHost    mcpHost

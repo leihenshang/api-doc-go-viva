@@ -1668,6 +1668,15 @@ func (m *Model) applyMCPEdits() {
 		m.settings.MCPAddr = addr
 		changed, restart = true, true
 	}
+	if off := m.ui.mcpConsentOff; off != m.settings.MCPConsentDisabled {
+		m.settings.MCPConsentDisabled = off
+		changed = true
+	}
+	// 浏览器来源白名单：逗号分隔，空 = 拒绝一切带 Origin 的请求。
+	if origins := parseMCPOrigins(m.ui.mcpOrigins); !sameStrings(origins, m.settings.MCPAllowOrigins) {
+		m.settings.MCPAllowOrigins = origins
+		changed, restart = true, true
+	}
 	// 工作区授权：勾选 = 出现在白名单；写权限随行一起存。
 	allow := m.mcpAllowFromRows()
 	if !sameMCPAllow(allow, m.settings.MCPAllow) {
@@ -1911,6 +1920,9 @@ func (m *Model) syncSettingsUI() {
 	m.ui.mcpReadOnly = m.settings.MCPReadOnly
 	m.syncMCPGroups()
 	m.ui.mcpAddr = m.settings.MCPAddr
+	m.ui.mcpOrigins = strings.Join(m.settings.MCPAllowOrigins, ", ")
+	m.ui.mcpAuditRows = m.loadMCPAudit()
+	m.ui.mcpConsentOff = m.settings.MCPConsentDisabled
 	m.ui.mcpToken = m.settings.MCPToken
 }
 

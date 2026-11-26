@@ -79,7 +79,10 @@ func (m *Model) startMCP() {
 		Service:  &appmcp.Service{Roots: m.mcpRoots},
 		ReadOnly: m.settings.MCPReadOnly,
 		Groups:   m.settings.MCPGroups,
-		Audit:    m.mcp.audit,
+		// 空 = 拒绝一切带 Origin 的请求（浏览器类客户端因此连不上，要显式授权）。
+		AllowOrigins: m.settings.MCPAllowOrigins,
+		Confirm:      m.confirmMCPWrite,
+		Audit:        m.mcp.audit,
 	})
 	if err != nil {
 		m.mcp = mcpRuntime{err: err.Error()}
@@ -240,4 +243,75 @@ func (m *Model) pickedMCPGroups() []string {
 		return nil
 	}
 	return out
+}
+
+// parseMCPOrigins 把「逗号分隔的来源」拆成数组：去空格、丢空项、去重且保序。
+// 除空列表（拒绝一切带 Origin 的请求）之外不加额外限制，匹配规则交给服务端。
+func parseMCPOrigins(text string) []string {
+	out := make([]string, 0, 4)
+	seen := map[string]bool{}
+	for _, part := range strings.Split(text, ",") {
+		item := strings.TrimSpace(part)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+// mcpAuditPath 是审计文件的位置（偏好目录）；取不到目录时为空。
+func mcpAuditPath() string {
+	if dir, err := settings.Dir(); err == nil {
+		return filepath.Join(dir, "mcp-audit.jsonl")
+	}
+	return ""
+}
+
+// loadMCPAudit 读最近 20 条调用：服务在跑就用内存里的，否则读文件。
+func (m *Model) loadMCPAudit() []appmcp.AuditEntry {
+	audit := m.mcp.audit
+	if audit == nil {
+		audit = appmcp.NewAudit(mcpAuditPath())
+	}
+	rows := audit.Load()
+	if len(rows) > 20 {
+		rows = rows[len(rows)-20:]
+	}
+	return rows
+}
+
+// clearMCPAudit 清空审计并刷新面板。
+func (m *Model) clearMCPAudit() {
+	audit := m.mcp.audit
+	if audit == nil {
+		audit = appmcp.NewAudit(mcpAuditPath())
+	}
+	_ = audit.Clear()
+	m.ui.mcpAuditRows = m.loadMCPAudit()
+	m.copyNote = "已清空调用审计"
+	m.invalidator.Invalidate()
+}
+
+// exportMCPAudit 把审计导出到偏好目录下的固定文件，并在面板上写出路径。
+func (m *Model) exportMCPAudit() {
+	dir, err := settings.Dir()
+	if err != nil {
+		m.copyNote = "导出失败：" + err.Error()
+		m.invalidator.Invalidate()
+		return
+	}
+	target := filepath.Join(dir, "mcp-audit-export.jsonl")
+	audit := m.mcp.audit
+	if audit == nil {
+		audit = appmcp.NewAudit(mcpAuditPath())
+	}
+	count, err := audit.Export(target)
+	if err != nil {
+		m.copyNote = "导出失败：" + err.Error()
+	} else {
+		m.copyNote = fmt.Sprintf("已导出 %d 条到 %s", count, target)
+	}
+	m.invalidator.Invalidate()
 }

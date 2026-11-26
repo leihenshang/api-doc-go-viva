@@ -35,6 +35,8 @@ type Config struct {
 	Service *Service
 	// ReadOnly 只注册读工具（不发请求、不写磁盘）。
 	ReadOnly bool
+	// Confirm 在写工具执行前被调用；返回错误即拒绝执行（应用可以据此弹窗让用户确认）。
+	Confirm func(ctx context.Context, tool string, in any) error
 	// Groups 是要暴露的工具组；空 = 全部。
 	Groups []string
 	// Audit 记录每次工具调用；nil 表示不记。
@@ -59,6 +61,8 @@ func NewServer(cfg Config) (*sdk.Server, error) {
 type ToolOptions struct {
 	// ReadOnly 为真时只注册读工具（不发请求、不写磁盘）。
 	ReadOnly bool
+	// Confirm 在写工具执行前被调用；返回错误即拒绝执行。
+	Confirm func(ctx context.Context, tool string, in any) error
 	// Groups 是要注册的分组；空 = 全部（只读模式下再按 ReadOnly 过滤）。
 	Groups []string
 	Audit  *Audit
@@ -232,6 +236,13 @@ func register[In any](server *sdk.Server, opts ToolOptions, tool *sdk.Tool,
 	}
 	sdk.AddTool(server, tool, func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
 		started := time.Now()
+		// 写工具先问应用：用户可以在界面上拒绝这一次调用。
+		if write && opts.Confirm != nil {
+			if err := opts.Confirm(ctx, tool.Name, in); err != nil {
+				opts.Audit.Record(tool.Name, write, in, started, err)
+				return nil, nil, err
+			}
+		}
 		text, err := fn(ctx, in)
 		opts.Audit.Record(tool.Name, write, in, started, err)
 		if err != nil {

@@ -39,6 +39,7 @@ func (m *Model) dialogs(c ui.C) {
 	m.mockRuleDialog(c)
 	m.settingsDialog(c)
 	m.mcpDialog(c)
+	m.mcpConsentDialog(c)
 	m.envDialog(c)
 	m.newEnvDialog(c)
 	m.openCollectionDialogs(c)
@@ -587,6 +588,16 @@ func (m *Model) mcpDialog(c ui.C) {
 					ui.Switch(c, &m.ui.mcpReadOnly, "只读：不暴露发请求与写磁盘的工具").Changed()
 					ui.Spacer(c)
 				})
+				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+					formLabel(c, "写操作确认")
+					ui.Switch(c, &m.ui.mcpConsentOff, "关掉后写工具直接执行，不再询问").Changed()
+					ui.Spacer(c)
+				})
+				ui.Row(c).Width(formRowWidth).Gap(px(8)).Items(ui.Center).Children(func() {
+					formLabel(c, "浏览器来源")
+					ui.TextField(c, &m.ui.mcpOrigins, "浏览器来源", "留空 = 拒绝浏览器；多个用逗号分隔").
+						Width(px(320)).Changed()
+				})
 				ui.Row(c).Width(formRowWidth).Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "工具组")
 					for index, name := range appmcp.Groups {
@@ -624,6 +635,37 @@ func (m *Model) mcpDialog(c ui.C) {
 				ui.Column(c).FillWidth().Pad(px(8)).Radius(px(6)).Background(m.pal.hover).Children(func() {
 					ui.Paragraph(c, m.mcpConfigJSON(), 0).Mono().FontSize(fs(10))
 				})
+				// 最近调用：AI 连续调用时能翻「它到底改了什么」。
+				ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+					ui.Text(c, "最近调用").FontSize(fs(11)).Bold()
+					ui.Spacer(c)
+					if ui.Button(c, "刷新").Ghost().XSmall().Clicked() {
+						m.ui.mcpAuditRows = m.loadMCPAudit()
+						m.invalidator.Invalidate()
+					}
+					if ui.Button(c, "导出").Ghost().XSmall().Tooltip("导出到偏好目录下的 mcp-audit-export.jsonl").Clicked() {
+						m.exportMCPAudit()
+					}
+					if ui.Button(c, "清空").Ghost().XSmall().Clicked() {
+						m.clearMCPAudit()
+					}
+				})
+				if len(m.ui.mcpAuditRows) == 0 {
+					ui.Text(c, "还没有调用记录。").FontSize(fs(11)).Muted()
+				}
+				for _, row := range m.ui.mcpAuditRows {
+					one := row
+					ui.Row(c).FillWidth().Gap(px(8)).Items(ui.Center).Children(func() {
+						ui.Text(c, one.Time.Format("15:04:05")).FontSize(fs(10)).Mono().Muted()
+						ui.Text(c, one.Tool).FontSize(fs(11)).Mono().Ellipsis()
+						if one.Write {
+							ui.Text(c, "写").FontSize(fs(10)).Color(c.Theme().Danger)
+						}
+						if !one.OK {
+							ui.Text(c, "失败").FontSize(fs(10)).Color(c.Theme().Danger)
+						}
+					})
+				}
 				ui.Text(c, "可用工具：list_workspaces / list_requests / get_request / get_doc / send_request。").
 					FontSize(11).Muted()
 				ui.Text(c, "只暴露上面勾选的集合；地址留空或只写端口时按回环 127.0.0.1 监听。").

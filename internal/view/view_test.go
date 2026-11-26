@@ -4124,3 +4124,49 @@ func TestMCPConfigFitsPanel(t *testing.T) {
 		}
 	}
 }
+
+// TestMCPOrigins 来源白名单：逗号分隔、去空格去重，空串 = 拒绝一切带 Origin 的请求。
+func TestMCPOrigins(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"  ", nil},
+		{"http://localhost:3000", []string{"http://localhost:3000"}},
+		{" http://a.com , http://b.com ", []string{"http://a.com", "http://b.com"}},
+		{"http://a.com,,http://a.com", []string{"http://a.com"}},
+	}
+	for _, one := range cases {
+		got := parseMCPOrigins(one.in)
+		if len(got) != len(one.want) {
+			t.Fatalf("parseMCPOrigins(%q) = %v, want %v", one.in, got, one.want)
+		}
+		for index := range got {
+			if got[index] != one.want[index] {
+				t.Fatalf("parseMCPOrigins(%q) = %v, want %v", one.in, got, one.want)
+			}
+		}
+	}
+}
+
+// TestMCPOriginsField 设置面板里有来源白名单输入框，且落盘再打开能回显。
+func TestMCPOriginsField(t *testing.T) {
+	col, err := explorer.Load(filepath.Join("..", "explorer", "testdata", "docs"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	model := New(col, "", nil)
+	driver := openWindow(t, model)
+	model.ui.mcpOpen = true
+	model.ui.mcpOrigins = "http://localhost:3000"
+	model.invalidator.Invalidate()
+	pump(t, driver)
+	if !hasControl(driver, "浏览器来源") {
+		t.Fatalf("MCP 面板应有来源白名单输入框：%v", painted(driver))
+	}
+	model.applyMCPEdits()
+	if len(model.settings.MCPAllowOrigins) != 1 || model.settings.MCPAllowOrigins[0] != "http://localhost:3000" {
+		t.Fatalf("来源没落盘：%v", model.settings.MCPAllowOrigins)
+	}
+}
