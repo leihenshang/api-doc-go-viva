@@ -4141,14 +4141,21 @@ func TestMCPConfigFitsPanel(t *testing.T) {
 	if last >= 0 && last-first > 160 {
 		t.Fatalf("JSON 没被滚动区裁住：%0.f → %0.f", first, last)
 	}
-	// 弹窗（700x690，1180x760 里居中）内的文本不该越过底边跑到窗口上。
-	for _, text := range driver.Snapshot().Texts {
-		if text.Bounds.X < 240 || text.Bounds.X > 940 {
+	// 真正要守的是「JSON 不会把底部操作栏顶出弹窗」：
+	// 滚动区里的文本按布局本来就会排到视口下方（那正是可滚动的前提），
+	// 所以这里看去底栏按钮的位置，而不是逐条文本的布局坐标。
+	found := false
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label != "完成" {
 			continue
 		}
-		if bottom := text.Bounds.Y + text.Bounds.Height; bottom > 720 && text.Bounds.Y < 715 {
-			t.Fatalf("面板里有文本溢出弹窗底边：%q 底边 %.0f", text.Value, bottom)
+		found = true
+		if bottom := hit.Bounds.Y + hit.Bounds.Height; bottom > 725 {
+			t.Fatalf("「完成」被内容顶出弹窗：底边 %.0f", bottom)
 		}
+	}
+	if !found {
+		t.Fatalf("面板里没有「完成」按钮：%v", painted(driver))
 	}
 }
 

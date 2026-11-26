@@ -186,12 +186,17 @@ func TestMCPSettingsLayout(t *testing.T) {
 	for _, want := range []string{
 		"服务配置", "工具权限", "安全与访问", "客户端接入",
 		"启用服务", "监听地址", "权限选项", "只读模式", "写操作确认", "浏览器",
-		"暴露工具", "工作区", "访问令牌", "客户端配置（复制内容）", "浏览器来源",
+		"暴露工具", "访问令牌", "可访问的集合", "客户端配置（复制内容）", "浏览器来源",
 	} {
 		if !shows(driver, want) {
 			t.Fatalf("MCP 面板缺 %q：%v", want, painted(driver))
 		}
 	}
+	// 「可写」的说明收进集合栏标题旁的 ⓘ（hit 的标签就是说明文字）。
+	if !hasControl(driver, "「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。") {
+		t.Fatalf("集合栏标题旁应有「可写」说明的 tips：%v", painted(driver))
+	}
+
 	// 令牌是输入框（可编辑）+ 生成 / 复制（需求 4）。
 	if !hasControl(driver, "生成") || !hasControl(driver, "复制") {
 		t.Fatalf("令牌行应有生成与复制按钮：%v", painted(driver))

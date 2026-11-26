@@ -711,7 +711,6 @@ func (m *Model) mcpDialog(c ui.C) {
 
 				// 三、安全与访问
 				m.mcpSectionTitle(c, "安全与访问")
-				m.mcpAllowList(c)
 				// 访问令牌改成可编辑输入框 + 生成 / 复制（需求 4）。
 				ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
 					formLabel(c, "访问令牌")
@@ -730,7 +729,12 @@ func (m *Model) mcpDialog(c ui.C) {
 					}
 				})
 
-				// 四、客户端接入：配置 JSON 常显（不再折叠），行尾一个复制按钮。
+				// 四、集合列表：单独一栏、左对齐，「可写」的说明收进标题旁的 tips。
+				m.mcpSectionTitleTip(c, "可访问的集合",
+					"「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。")
+				m.mcpAllowList(c)
+
+				// 五、客户端接入：配置 JSON 常显（不再折叠），行尾一个复制按钮。
 				m.mcpSectionTitle(c, "客户端接入")
 				ui.Row(c).FillWidth().Gap(px(6)).Items(ui.Center).Children(func() {
 					ui.Text(c, "客户端配置（复制内容）").FontSize(fs(11)).Muted()
@@ -822,6 +826,18 @@ func (m *Model) mcpSectionTitle(c ui.C, title string) {
 	})
 }
 
+// mcpSectionTitleTip 与 mcpSectionTitle 一样，但标题右边跟一个 ⓘ：
+// 整节的说明（比如「可写」是什么意思）收进气泡，不再占一行常驻文字。
+func (m *Model) mcpSectionTitleTip(c ui.C, title, tip string) {
+	ui.Column(c).FillWidth().Gap(px(4)).Children(func() {
+		ui.Row(c).FillWidth().Gap(px(6)).Items(ui.Center).Children(func() {
+			ui.Text(c, title).FontSize(fs(12)).Bold()
+			hintTip(c, tip)
+		})
+		ui.Divider(c)
+	})
+}
+
 // mcpNote 是标签列之后的辅助说明：缩进到控件列，11px 弱化色。
 func (m *Model) mcpNote(c ui.C, text string) {
 	ui.Row(c).FillWidth().Children(func() {
@@ -834,24 +850,14 @@ func (m *Model) mcpNote(c ui.C, text string) {
 // 右侧「可写」决定写类工具能否落盘（当前工具集还没有写工具，先随配置存下来）。
 func (m *Model) mcpAllowList(c ui.C) {
 	if len(m.ui.mcpAllow) == 0 {
-		ui.Row(c).FillWidth().Children(func() {
-			formLabel(c, "工作区")
-			ui.Text(c, "（还没有打开的集合：先在侧栏打开一个目录）").FontSize(fs(11)).Muted()
-		})
+		ui.Text(c, "（还没有打开的集合：先在侧栏打开一个目录）").FontSize(fs(11)).Muted()
 		return
 	}
 	for index := range m.ui.mcpAllow {
 		slot := index
 		row := &m.ui.mcpAllow[slot]
+		// 这一栏从内容区最左开始排（不再留 90px 标签列），集合多时一眼能扫完。
 		ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-			// 每一行都用同一个 formLabel 占位（首行写标题，其余留空）。
-			// 不能用 ui.Slot 占位：formLabel 是一个 Row，它的实际占位比 Width 多出
-			// 一点内边距，混用会让首行的勾选框比后续行左移十几个像素。
-			label := ""
-			if slot == 0 {
-				label = "工作区"
-			}
-			formLabel(c, label)
 			// 名称列定宽：勾选框自带名字，宽度随名字长短变，路径起点会跟着漂。
 			// 用固定宽度的容器兜住它（不要给 Checkbox 本身 Width+Ellipsis，那会把控件压没）。
 			ui.Row(c).Width(px(mcpWorkspaceNameWidth)).Items(ui.Center).Children(func() {
@@ -865,7 +871,6 @@ func (m *Model) mcpAllowList(c ui.C) {
 			writable.Changed()
 		})
 	}
-	m.mcpNote(c, "「可写」留给将来的写类工具；当前工具集是只读 + 发送请求。")
 }
 
 // settingsAbout 是「关于」：版本与输入法现状。
