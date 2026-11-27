@@ -37,6 +37,19 @@ func (m *Model) overviewPage(c ui.C) {
 				m.openSettings()
 			}
 		})
+		// 导出接口文档：菜单里也有（顶部「⋯」），但集合详情是「我要把这套接口交出去」时
+		// 最先看的地方，入口不该藏起来。
+		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
+			if ui.Button(c, "导出 Markdown").Icon(IconImport).Secondary().Weight(gfx.WeightRegular).
+				Tooltip("把整套集合导出成一份 Markdown 接口文档，可勾选范围").Clicked() {
+				c.After(func() { m.openExport("md") })
+			}
+			if ui.Button(c, "导出 HTML").Icon(IconImport).Secondary().Weight(gfx.WeightRegular).
+				Tooltip("把整套集合导出成单文件 HTML 接口文档，可勾选范围").Clicked() {
+				c.After(func() { m.openExport("html") })
+			}
+			ui.Text(c, "导出前可勾选要包含的分组与请求").FontSize(fs(11)).Muted()
+		})
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			for _, hint := range overviewHints {
 				ui.Text(c, hint).FontSize(fs(10)).Mono().Muted().
