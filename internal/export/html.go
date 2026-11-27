@@ -20,46 +20,133 @@ func HTMLSelected(docs []Doc, sel Selection) string {
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<title>" + title + "</title>\n<style>" + htmlStyle + "</style>\n</head>\n<body>\n")
-
-	body, toc := renderBody(docs, sel)
-	b.WriteString("<div class=\"layout\">\n<nav class=\"toc\"><div class=\"toc-title\">目录</div>")
-	b.WriteString("<input class=\"toc-search\" type=\"search\" placeholder=\"搜索…\" aria-label=\"搜索目录\">")
-	b.WriteString("<div class=\"toc-list\">" + toc + "</div></nav>\n<main>\n")
-	b.WriteString(body)
-	b.WriteString("</main>\n</div>\n<script>" + tocScript + "</script>\n</body>\n</html>\n")
+	body, entries := renderBody(docs, sel)
+	b.WriteString("<div class=\"layout\">\n")
+	b.WriteString(buildTOC(entries))
+	b.WriteString("\n<main class=\"content\">\n" + body + "</main>\n")
+	// 右侧大纲：内容由脚本按「当前这一节」生成；收起后正文铺满，右缘留展开把手。
+	b.WriteString(`<nav class="ol" aria-label="当前页目录">`)
+	b.WriteString(`<div class="ol-head"><div class="ol-title">目录</div>`)
+	b.WriteString(`<button type="button" class="ol-toggle" aria-expanded="true" aria-label="收起目录" title="收起目录">›</button>`)
+	b.WriteString(`</div><div class="ol-list"></div></nav>`)
+	b.WriteString(`<button type="button" class="ol-open" aria-label="展开目录" title="展开目录">‹</button>`)
+	b.WriteString("\n</div>\n<script>" + tocScript + "</script>\n</body>\n</html>\n")
 	return b.String()
 }
 
-// renderBody 同时生成正文与目录：锚点在一次遍历里编号，保证两边一一对应。
-func renderBody(docs []Doc, sel Selection) (body, toc string) {
-	var out, nav strings.Builder
+// tocEntry 是目录里的一项：正文与目录在同一次遍历里产出，锚点编号一一对应。
+type tocEntry struct {
+	id     string
+	level  int    // 1 集合 / 2 分组（嵌套越深越大）/ 3 请求
+	kind   string // root / folder / request
+	text   string // 已转义
+	method string
+}
+
+// buildTOC 把扁平条目拼成可折叠的 <ul> 嵌套树：层级用数组当栈，
+// 遇到更浅的层级就把已打开的 </ul></li> 补上。
+func buildTOC(entries []tocEntry) string {
+	var b strings.Builder
+	b.WriteString(`<nav class="toc" aria-label="目录"><div class="toc-title">目录</div>`)
+	b.WriteString(`<input class="toc-search" type="search" placeholder="搜索目录…" aria-label="搜索目录">`)
+	b.WriteString(`<ul class="toc-list">`)
+	var open []int
+	closeTo := func(level int) {
+		for len(open) > 0 && open[len(open)-1] >= level {
+			b.WriteString("</ul></li>")
+			open = open[:len(open)-1]
+		}
+	}
+	for _, e := range entries {
+		switch e.kind {
+		case "root":
+			closeTo(1)
+			b.WriteString(`<li class="toc-root"><a href="#` + e.id + `" title="` + e.text + `">` + e.text + `</a></li>`)
+		case "folder":
+			closeTo(e.level)
+			b.WriteString(`<li class="toc-folder" aria-expanded="true" data-default="true">`)
+			b.WriteString(`<button type="button" class="toc-toggle" aria-label="展开或收起"></button>`)
+			b.WriteString(`<a href="#` + e.id + `">` + e.text + `</a><ul>`)
+			open = append(open, e.level)
+		case "request":
+			b.WriteString(`<li class="toc-request">`)
+			// 文档条目没有方法，不占徽标位（否则会留一个空胶囊）
+			if e.method != "" {
+				b.WriteString(`<span class="tm ` + methodClass(e.method) + `">` + e.method + `</span>`)
+			}
+			b.WriteString(`<a href="#` + e.id + `" title="` + e.text + `">` + e.text + `</a></li>`)
+		}
+	}
+	closeTo(1)
+	b.WriteString(`</ul></nav>`)
+	return b.String()
+}
+
+// methodClass 把请求方法映射到徽标配色（沿用 Wails 版那套语义色）。
+func methodClass(method string) string {
+	switch strings.ToUpper(method) {
+	case "GET":
+		return "m-get"
+	case "POST":
+		return "m-post"
+	case "PUT":
+		return "m-put"
+	case "DELETE":
+		return "m-delete"
+	case "PATCH":
+		return "m-patch"
+	case "GRPC":
+		return "m-grpc"
+	case "":
+		return "m-doc"
+	}
+	return "m-other"
+}
+
+// renderBody 同时生成正文与目录条目：锚点在一次遍历里编号，保证两边一一对应。
+func renderBody(docs []Doc, sel Selection) (body string, entries []tocEntry) {
+	var out strings.Builder
 	id := 0
-	emit := func(level int, title string, navClass, style string) {
+	emitHeading := func(level int, text string) string {
 		tag := "h" + strconv.Itoa(clampLevel(level))
-		out.WriteString("<" + tag + " id=\"" + tocID(id) + "\">" + html.EscapeString(title) + "</" + tag + ">\n")
-		nav.WriteString("<a class=\"toc-item " + navClass + "\" style=\"" + style + "\" href=\"#" +
-			tocID(id) + "\">" + html.EscapeString(title) + "</a>\n")
+		anchor := tocID(id)
+		out.WriteString("<" + tag + " id=\"" + anchor + "\">" + html.EscapeString(text) + "</" + tag + ">\n")
 		id++
+		return anchor
 	}
 	for _, doc := range docs {
-		emit(1, doc.Name, "toc-root", "")
+		rootAnchor := emitHeading(1, doc.Name)
+		entries = append(entries, tocEntry{id: rootAnchor, level: 1, kind: "root", text: html.EscapeString(doc.Name)})
 		for _, sec := range sections(doc.Col, sel) {
+			level := 2
 			if sec.Depth > 0 || sec.Title != doc.Col.Name {
-				emit(min(sec.Depth+2, 5), sec.Title, "toc-folder", "padding-left:"+strconv.Itoa(8+sec.Depth*14)+"px")
+				level = min(sec.Depth+2, 5)
+				anchor := emitHeading(level, sec.Title)
+				entries = append(entries, tocEntry{id: anchor, level: level, kind: "folder", text: html.EscapeString(sec.Title)})
 			}
 			for _, entry := range sec.Entries {
-				// 标题的 id 就是 emit 分配的那个：先写标题与目录项，再写正文。
-				level := min(sec.Depth+3, 6)
-				tag := "h" + strconv.Itoa(clampLevel(level))
-				out.WriteString("<" + tag + " id=\"" + tocID(id) + "\">" + html.EscapeString(entryTitle(entry)) + "</" + tag + ">\n")
-				nav.WriteString("<a class=\"toc-item\" style=\"padding-left:" + strconv.Itoa(22+sec.Depth*14) +
-					"px\" href=\"#" + tocID(id) + "\">" + html.EscapeString(entryTitle(entry)) + "</a>\n")
+				// 标题 = 方法徽标 + 名称（与目录里一致，样式也同一套 .tm）。
+				title := strings.TrimSpace(entry.Name)
+				if entry.Kind == explorer.KindDoc {
+					title = strings.TrimSpace("文档 " + entry.Name)
+				}
+				tag := "h" + strconv.Itoa(clampLevel(min(sec.Depth+3, 6)))
+				anchor := tocID(id)
+				out.WriteString("<" + tag + " id=\"" + anchor + "\">")
+				if entry.Kind != explorer.KindDoc && entry.Method != "" {
+					out.WriteString("<span class=\"tm " + methodClass(entry.Method) + "\">" + html.EscapeString(entry.Method) + "</span>")
+				}
+				out.WriteString(html.EscapeString(title) + "</" + tag + ">\n")
+				entries = append(entries, tocEntry{
+					id: anchor, level: level + 1, kind: "request",
+					text: html.EscapeString(title), method: strings.ToUpper(entry.Method),
+				})
 				id++
 				writeEntryBody(&out, entry, 4)
 			}
 		}
 	}
-	return out.String(), nav.String()
+	return out.String(), entries
 }
 
 // writeEntryBody 写一条请求的内容：概述、地址、参数 / 请求头 / 表单 / 请求体 / 字段 / 认证 / 文档。
@@ -256,64 +343,3 @@ func renderSpans(spans []markdown.Span) string {
 	}
 	return b.String()
 }
-
-// htmlStyle 是内联样式：浅色、可打印、代码块与表格可横向滚动。
-const htmlStyle = `
-:root { color-scheme: light; }
-* { box-sizing: border-box; }
-body { margin: 0; color: #202124; background: #fff;
-       font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif; }
-.layout { display: flex; gap: 24px; max-width: 92%; margin: 0 auto; padding: 28px 20px; align-items: flex-start; }
-.toc { flex: 0 0 240px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: hidden;
-       display: flex; flex-direction: column; border: 1px solid #e3e3e3; border-radius: 10px;
-       background: #f5f6f8; padding: 12px 14px; font-size: 13px; }
-.toc-title { font-weight: 600; margin-bottom: 8px; }
-.toc-search { width: 100%; margin: 0 0 10px; padding: 6px 8px; border: 1px solid #e3e3e3;
-              border-radius: 6px; font: inherit; background: #fff; outline: none; }
-.toc-search:focus { border-color: #18a058; }
-.toc-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.toc-item { display: block; padding: 3px 6px; color: #202124; text-decoration: none; border-radius: 6px; }
-.toc-item:hover { background: #e8f5ee; }
-.toc-root { font-weight: 600; }
-.toc-folder { color: #444; }
-main { flex: 1 1 auto; min-width: 0; }
-h1 { font-size: 26px; margin: 8px 0 16px; }
-h2 { font-size: 20px; margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #ececec; }
-h3 { font-size: 16px; margin: 22px 0 8px; }
-h4 { font-size: 13px; margin: 16px 0 6px; color: #5f6368; }
-p { margin: 8px 0; }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
-       background: #f5f5f5; border-radius: 4px; padding: 1px 4px; }
-pre { background: #f7f7f8; border: 1px solid #ececec; border-radius: 8px; padding: 12px; overflow: auto; }
-pre code { background: none; padding: 0; }
-table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 13px; }
-th, td { border: 1px solid #e3e3e3; padding: 6px 10px; text-align: left; vertical-align: top; }
-th { background: #f5f6f8; font-weight: 600; }
-blockquote { margin: 10px 0; padding: 4px 12px; border-left: 3px solid #18a058; color: #444; background: #fafafa; }
-.summary { color: #444; }
-.url code { font-size: 13px; }
-.image-alt { color: #5f6368; font-style: italic; }
-@media print {
-  .toc, .toc-search { display: none; }
-  .layout { display: block; max-width: none; padding: 0; }
-  pre, table { break-inside: avoid; }
-  h1, h2, h3 { break-after: avoid; }
-}
-`
-
-// tocScript 是唯一的交互脚本：目录搜索过滤。
-const tocScript = `
-(function () {
-  var list = document.querySelector('.toc-list');
-  var search = document.querySelector('.toc-search');
-  if (!list || !search) { return; }
-  search.addEventListener('input', function () {
-    var needle = search.value.trim().toLowerCase();
-    var items = list.querySelectorAll('.toc-item');
-    for (var i = 0; i < items.length; i++) {
-      var text = items[i].textContent.toLowerCase();
-      items[i].style.display = (!needle || text.indexOf(needle) >= 0) ? '' : 'none';
-    }
-  });
-})();
-`

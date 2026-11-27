@@ -158,6 +158,37 @@ func TestHTMLExportEscapesUserText(t *testing.T) {
 	}
 }
 
+// TestHTMLExportUsesCollapsibleTOC：目录是可折叠树，右侧有当前页大纲。
+func TestHTMLExportUsesCollapsibleTOC(t *testing.T) {
+	out := HTML([]Doc{buildCollection(t)})
+	for _, want := range []string{
+		`<ul class="toc-list">`,
+		`class="toc-folder" aria-expanded="true" data-default="true"`,
+		`class="toc-toggle"`,
+		`<span class="tm m-get">GET</span>`,
+		`<nav class="ol" aria-label="当前页目录">`,
+		`class="ol-open"`,
+		`<main class="content">`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HTML 缺 %q", want)
+		}
+	}
+	// 只数目录那一段：脚本里可能提到标签名，会把整篇统计带偏。
+	tocStart := strings.Index(out, `<nav class="toc"`)
+	tocEnd := strings.Index(out, "</nav>")
+	if tocStart < 0 || tocEnd < tocStart {
+		t.Fatal("找不到目录段")
+	}
+	toc := out[tocStart : tocEnd+len("</nav>")]
+	if open, close := strings.Count(toc, "<ul"), strings.Count(toc, "</ul>"); open != close {
+		t.Fatalf("<ul> 不配平：%d 开 %d 闭", open, close)
+	}
+	if open, close := strings.Count(toc, "<li"), strings.Count(toc, "</li>"); open != close {
+		t.Fatalf("<li> 不配平：%d 开 %d 闭", open, close)
+	}
+}
+
 // TestSelectedExportSkipsUnchecked 勾选导出：没勾的条目不出现在正文与目录里，
 // 勾空了的分组整节省略，计数与实际条数一致。
 func TestSelectedExportSkipsUnchecked(t *testing.T) {
@@ -185,8 +216,12 @@ func TestSelectedExportSkipsUnchecked(t *testing.T) {
 	}
 
 	out := HTMLSelected([]Doc{doc}, sel)
-	if !strings.Contains(out, "POST 登录") || strings.Contains(out, "GET 健康检查") {
-		t.Fatalf("HTML 的勾选结果不对")
+	// 正文标题现在是「方法徽标 + 名称」（对齐 Wails 版），不再是「POST 登录」连写。
+	if !strings.Contains(out, `class="tm m-post">POST<`) || !strings.Contains(out, "登录") {
+		t.Fatalf("HTML 里应含带徽标的 POST 登录")
+	}
+	if strings.Contains(out, "健康检查") {
+		t.Fatalf("没勾的健康检查不该出现在 HTML 里")
 	}
 	// 目录只应剩集合名 + 分组 + 登录三段。
 	links := regexp.MustCompile(`href="#toc-\d+"`).FindAllString(out, -1)

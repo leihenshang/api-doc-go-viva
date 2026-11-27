@@ -2883,7 +2883,8 @@ http:
 	if ext != "md" || !strings.Contains(content, "GET 健康检查") {
 		t.Fatalf("产物应包含仍在勾选里的请求：\n%s", content)
 	}
-	if strings.Contains(content, "POST 登录") {
+	// 标题现在是「徽标 + 名称」，判「登录」这个名字本身在不在。
+	if strings.Contains(content, ">登录<") {
 		t.Fatalf("取消勾选的请求不该出现：\n%s", content)
 	}
 
@@ -2894,7 +2895,7 @@ http:
 		t.Fatalf("重新勾分组应带回子项：%d", requests)
 	}
 	html, _, _ := model.exportContentFor("html", model.exportSelection())
-	if !strings.Contains(html, "POST 登录") {
+	if !strings.Contains(html, `class="tm m-post">POST<`) || !strings.Contains(html, ">登录<") {
 		t.Fatal("HTML 也要跟着范围走")
 	}
 }
