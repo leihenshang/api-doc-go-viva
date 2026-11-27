@@ -376,6 +376,28 @@ func (m *Model) treeContent(i int) {
 	}
 }
 
+// treeTooltip 只在名称「真的会被省略」时才挂悬浮提示：名字的像素宽超过这一行
+// 可用宽度（侧栏宽减缩进、方法色块、行尾按钮）时才加，否则鼠标一扫全是提示很吵。
+func (m *Model) treeTooltip(c ui.C, box ui.Box, row *treeRow) ui.Box {
+	canvas := c.Canvas()
+	if canvas == nil || row.name == "" {
+		return box
+	}
+	room := m.split.Pos - float32(row.depth)*m.tree.Indent - 30 // 行尾「⋯」+ 内边距
+	if row.kind == nodeFolder {
+		room -= 24 // 展开箭头
+	} else {
+		room -= 52 // 方法色块
+	}
+	if room <= 0 {
+		return box
+	}
+	if canvas.TextWidth(row.name, fs(13)) > room {
+		return box.Tooltip(row.name)
+	}
+	return box
+}
+
 // drawTreeGuides 在祖先列上画竖线：锚点 X 是内容起点，减去缩进（分组行还要减去
 // 24px 的箭头位）就是行首，再按层级往右推。
 func (m *Model) drawTreeGuides(d *ui.DrawContext, depth int, branch bool) {
@@ -401,7 +423,7 @@ func (m *Model) activateFolderRoot(root int) {
 // rootRow 是集合根：名字 + 右侧「更多」（新建请求 / 新建文档 / 关闭集合）。
 func (m *Model) rootRow(c ui.C, row *treeRow, i int) {
 	root := row.root
-	ui.Text(c, row.name).FontSize(fs(13)).Bold().Ellipsis().LabelFor(m.tree.RowID(i))
+	m.treeTooltip(c, ui.Text(c, row.name).FontSize(fs(13)).Bold().Ellipsis().LabelFor(m.tree.RowID(i)), row)
 	ui.Spacer(c)
 	more := ui.Button(c, "更多 "+row.name).Icon(IconEllipsis).IconOnly().Ghost()
 	if more.Clicked() {
@@ -458,7 +480,7 @@ func (m *Model) entryRow(c ui.C, row *treeRow, i int) {
 	entry := row.entry
 	ui.Text(c, methodText(entry)).FontSize(fs(11)).Mono().Bold().Width(px(46)).
 		Color(entryTint(&m.theme, entry, m.isLight()))
-	name := ui.Text(c, entry.Name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i))
+	name := m.treeTooltip(c, ui.Text(c, entry.Name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i)), row)
 	// 行尾「···」只在悬停时**看得见**，但它一直声明着：之前是「悬停才声明」，
 	// 指针一移到按钮上，Hovered() 就变成按钮、下一帧按钮消失，指针又落回行上，
 	// 于是按钮反复出现/消失——看上去一闪一闪。入口与右键菜单一致（参考 03）。
@@ -1000,7 +1022,7 @@ func (m *Model) folderRow(c ui.C, row *treeRow, i int) {
 		hovered = canvas.Hovered()
 	}
 	key := row.key
-	name := ui.Text(c, row.name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i))
+	name := m.treeTooltip(c, ui.Text(c, row.name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i)), row)
 	ui.Spacer(c)
 	// 和条目行完全一套写法：行尾「⋯」一直声明、靠 Opacity 控制可见性。
 	// （之前误以为分组行不生效，其实是截图截到了另一个旧实例的窗口。）
