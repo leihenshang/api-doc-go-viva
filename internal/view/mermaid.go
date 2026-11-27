@@ -1,6 +1,7 @@
 package view
 
 import (
+	"fmt"
 	"hash/fnv"
 	"math"
 	"strconv"
@@ -81,8 +82,40 @@ const (
 	shapeDiamond
 )
 
+// nodeStyle 是 classDef / style 解出来的节点外观（只覆盖给了值的项）。
+type nodeStyle struct {
+	fill, stroke, text gfx.Color
+	hasFill            bool
+	hasStroke          bool
+	hasText            bool
+	strokeWidth        float32
+	dashed             bool
+}
+
+// merge 把 src 里给了值的项盖到自己身上（cls 先、style 后，后者优先）。
+func (s *nodeStyle) merge(src nodeStyle) {
+	if src.hasFill {
+		s.fill, s.hasFill = src.fill, true
+	}
+	if src.hasStroke {
+		s.stroke, s.hasStroke = src.stroke, true
+	}
+	if src.hasText {
+		s.text, s.hasText = src.text, true
+	}
+	if src.strokeWidth > 0 {
+		s.strokeWidth = src.strokeWidth
+	}
+	if src.dashed {
+		s.dashed = true
+	}
+}
+
 type mermaidNode struct {
 	label       string
+	id          string // 源码里的原始 id（classDef / style 靠它匹配）
+	style       nodeStyle
+	className   string   // 从 `A[x]:::cls` 或 `class A cls` 来
 	lines       []string // 换行后的显示行（layout 时按宽度断行）
 	cluster     string   // 所属 subgraph 的 id，空表示不在任何分组里
 	shape       mermaidShape
@@ -223,6 +256,10 @@ func firstWord(s string) string {
 func parseFlowchart(d *mermaidDiagram, src string) {
 	index := map[string]int{}
 	// subgraph 可以嵌套：栈顶就是当前分组。
+	// classDef / class / style 解析结果，最后统一套到节点上（顺序：classDef → style）。
+	classDefs := map[string]nodeStyle{}
+	classAssign := map[string]string{}
+	directStyle := map[string]nodeStyle{}
 	var clusterStack []string
 	currentCluster := func() string {
 		if len(clusterStack) == 0 {
@@ -231,7 +268,7 @@ func parseFlowchart(d *mermaidDiagram, src string) {
 		return clusterStack[len(clusterStack)-1]
 	}
 	add := func(ref string) int {
-		id, label, shape := parseNodeRef(ref)
+		id, label, shape, className := parseNodeRef(ref)
 		if id == "" {
 			return -1
 		}
@@ -243,10 +280,16 @@ func parseFlowchart(d *mermaidDiagram, src string) {
 			if n := &d.nodes[i]; n.cluster == "" {
 				n.cluster = currentCluster()
 			}
+			if className != "" {
+				n := &d.nodes[i]
+				n.className = className
+			}
 			return i
 		}
 		index[id] = len(d.nodes)
-		d.nodes = append(d.nodes, mermaidNode{label: label, shape: shape, cluster: currentCluster()})
+		d.nodes = append(d.nodes, mermaidNode{
+			id: id, label: label, shape: shape, cluster: currentCluster(), className: className,
+		})
 		return len(d.nodes) - 1
 	}
 	if len(d.nodes) > 0 {
@@ -261,6 +304,34 @@ func parseFlowchart(d *mermaidDiagram, src string) {
 		lower := strings.ToLower(line)
 		switch {
 		case strings.HasPrefix(lower, "flowchart"), strings.HasPrefix(lower, "graph"):
+			continue
+		case strings.HasPrefix(lower, "classdef"):
+			// classDef highlight fill:#f9f,stroke:#333,stroke-width:2px,color:#fff
+			rest := strings.TrimSpace(line[len("classDef"):])
+			name, props, ok := strings.Cut(rest, " ")
+			if ok {
+				classDefs[strings.TrimSpace(name)] = parseMermaidStyle(props)
+			}
+			continue
+		case strings.HasPrefix(lower, "class "):
+			// class A,B highlight
+			rest := strings.TrimSpace(line[len("class"):])
+			ids, name, ok := strings.Cut(rest, " ")
+			if ok {
+				for _, id := range strings.Split(ids, ",") {
+					if id = strings.TrimSpace(id); id != "" {
+						classAssign[id] = strings.TrimSpace(name)
+					}
+				}
+			}
+			continue
+		case strings.HasPrefix(lower, "style "):
+			// style C fill:#bbf,stroke:#f66
+			rest := strings.TrimSpace(line[len("style"):])
+			id, props, ok := strings.Cut(rest, " ")
+			if ok {
+				directStyle[strings.TrimSpace(id)] = parseMermaidStyle(props)
+			}
 			continue
 		case strings.HasPrefix(lower, "subgraph"):
 			id, title := splitSubgraph(strings.TrimSpace(line[len("subgraph"):]))
@@ -308,6 +379,109 @@ func parseFlowchart(d *mermaidDiagram, src string) {
 			}
 		}
 	}
+	// 样式按 id 套到节点：classDef 先、显式 style 后（后者优先）。
+	for i := range d.nodes {
+		n := &d.nodes[i]
+		cls := n.className
+		if assigned, ok := classAssign[n.id]; ok {
+			cls = assigned
+		}
+		if def, ok := classDefs[cls]; ok {
+			n.style.merge(def)
+		}
+		if st, ok := directStyle[n.id]; ok {
+			n.style.merge(st)
+		}
+	}
+}
+
+// parseMermaidStyle 解析 `fill:#f9f,stroke:#333,stroke-width:2px,color:#fff,stroke-dasharray:5 5`。
+func parseMermaidStyle(props string) nodeStyle {
+	var st nodeStyle
+	for _, kv := range strings.Split(props, ",") {
+		key, val, ok := strings.Cut(strings.TrimSpace(kv), ":")
+		if !ok {
+			continue
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		val = strings.TrimSpace(val)
+		switch key {
+		case "fill":
+			if c, ok := parseMermaidColor(val); ok {
+				st.fill, st.hasFill = c, true
+			}
+		case "stroke":
+			if c, ok := parseMermaidColor(val); ok {
+				st.stroke, st.hasStroke = c, true
+			}
+		case "color":
+			if c, ok := parseMermaidColor(val); ok {
+				st.text, st.hasText = c, true
+			}
+		case "stroke-width":
+			var w float32
+			if _, err := fmt.Sscanf(strings.TrimSuffix(val, "px"), "%f", &w); err == nil && w > 0 {
+				st.strokeWidth = w
+			}
+		case "stroke-dasharray":
+			if val != "" && val != "0" && !strings.EqualFold(val, "none") {
+				st.dashed = true
+			}
+		}
+	}
+	return st
+}
+
+// mermaidColorNames 是 mermaid 图里最常出现的几个命名色（够覆盖手工写的文档）。
+var mermaidColorNames = map[string][3]byte{
+	"red": {255, 0, 0}, "green": {0, 128, 0}, "blue": {0, 0, 255},
+	"orange": {255, 165, 0}, "yellow": {255, 255, 0}, "purple": {128, 0, 128},
+	"pink": {255, 192, 203}, "gray": {128, 128, 128}, "grey": {128, 128, 128},
+	"black": {0, 0, 0}, "white": {255, 255, 255}, "cyan": {0, 255, 255},
+	"magenta": {255, 0, 255}, "lime": {0, 255, 0}, "teal": {0, 128, 128},
+	"navy": {0, 0, 128}, "silver": {192, 192, 192}, "maroon": {128, 0, 0},
+	"lightblue": {173, 216, 230}, "lightgreen": {144, 238, 144},
+	"lightyellow": {255, 255, 224}, "lightgray": {211, 211, 211}, "lightgrey": {211, 211, 211},
+}
+
+// parseMermaidColor 只认 #rgb / #rrggbb / 少量命名色；rgb() 之类一律当没给。
+func parseMermaidColor(value string) (gfx.Color, bool) {
+	v := strings.TrimSpace(strings.ToLower(value))
+	if v == "" || strings.EqualFold(v, "none") || strings.EqualFold(v, "transparent") {
+		return gfx.Color{}, false
+	}
+	if strings.HasPrefix(v, "#") {
+		hex := v[1:]
+		switch len(hex) {
+		case 3:
+			r, ok1 := hexNibble(hex[0])
+			g, ok2 := hexNibble(hex[1])
+			b, ok3 := hexNibble(hex[2])
+			if ok1 && ok2 && ok3 {
+				return gfx.RGBA(r*17, g*17, b*17, 1), true
+			}
+		case 6:
+			var r, g, b uint8
+			if _, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b); err == nil {
+				return gfx.RGBA(r, g, b, 1), true
+			}
+		}
+		return gfx.Color{}, false
+	}
+	if rgb, ok := mermaidColorNames[v]; ok {
+		return gfx.RGBA(rgb[0], rgb[1], rgb[2], 1), true
+	}
+	return gfx.Color{}, false
+}
+
+func hexNibble(ch byte) (uint8, bool) {
+	switch {
+	case ch >= '0' && ch <= '9':
+		return ch - '0', true
+	case ch >= 'a' && ch <= 'f':
+		return ch - 'a' + 10, true
+	}
+	return 0, false
 }
 
 // splitSubgraph 拆 `subgraph 名称` 与 `subgraph id [标题]` 两种写法。
@@ -358,11 +532,16 @@ func splitArrow(s string) (left, right, arrow string, ok bool) {
 }
 
 // parseNodeRef 拆 A[文字] / A(文字) / A([文字]) / A{文字} / A，返回 id、显示文字与外形。
-func parseNodeRef(s string) (id, label string, shape mermaidShape) {
+func parseNodeRef(s string) (id, label string, shape mermaidShape, className string) {
 	shape = shapeRect
 	s = strings.TrimSpace(s)
+	// 行尾的 :::className（inline class）先摘掉
+	if i := strings.Index(s, ":::"); i >= 0 {
+		className = strings.TrimSpace(s[i+3:])
+		s = strings.TrimSpace(s[:i])
+	}
 	if s == "" {
-		return "", "", shape
+		return "", "", shape, className
 	}
 	cut := len(s)
 	for i := 0; i < len(s); i++ {
@@ -398,7 +577,7 @@ func parseNodeRef(s string) (id, label string, shape mermaidShape) {
 	if id == "" && label != "" {
 		id = label
 	}
-	return id, label, shape
+	return id, label, shape, className
 }
 
 func parsePie(d *mermaidDiagram, src string) {
@@ -992,17 +1171,44 @@ func paintFlow(canvas *gfx.Canvas, d *mermaidDiagram, x, y float32, theme *ui.Th
 
 	for _, n := range d.nodes {
 		bounds := gfx.Rect{X: x + n.x, Y: y + n.y, Width: n.w, Height: n.h}
-		switch n.shape {
-		case shapeDiamond:
-			paintDiamond(canvas, bounds, theme.Border, theme.Card)
-		case shapeStadium:
-			canvas.RoundedBorder(bounds, bounds.Height/2, 1, theme.Border, theme.Card)
-		case shapeRound:
-			canvas.RoundedBorder(bounds, 10, 1, theme.Border, theme.Card)
-		default:
-			canvas.RoundedBorder(bounds, 4, 1, theme.Border, theme.Card)
+		// classDef / style 给了值就盖掉主题色，没给的仍跟随明暗主题。
+		fill, border, textColor := theme.Card, theme.Border, theme.Foreground
+		width := float32(1)
+		if n.style.hasFill {
+			fill = n.style.fill
 		}
-		paintNodeLabel(canvas, n, bounds, theme)
+		if n.style.hasStroke {
+			border = n.style.stroke
+		}
+		if n.style.hasText {
+			textColor = n.style.text
+		}
+		if n.style.strokeWidth > 0 {
+			width = n.style.strokeWidth
+		}
+		radius := float32(4)
+		switch n.shape {
+		case shapeStadium:
+			radius = bounds.Height / 2
+		case shapeRound:
+			radius = 10
+		}
+		if n.style.dashed && n.shape != shapeDiamond {
+			canvas.Rounded(bounds, radius, fill)
+			dashedRect(canvas, bounds, radius, border)
+		} else {
+			switch n.shape {
+			case shapeDiamond:
+				paintDiamond(canvas, bounds, border, fill)
+			case shapeStadium:
+				canvas.RoundedBorder(bounds, bounds.Height/2, width, border, fill)
+			case shapeRound:
+				canvas.RoundedBorder(bounds, 10, width, border, fill)
+			default:
+				canvas.RoundedBorder(bounds, 4, width, border, fill)
+			}
+		}
+		paintNodeLabel(canvas, n, bounds, textColor)
 	}
 	for _, a := range arrows {
 		arrowHead(canvas, a.x, a.y, a.dirX, a.dirY, linkColor)
@@ -1046,7 +1252,7 @@ func dashedRect(canvas *gfx.Canvas, bounds gfx.Rect, radius float32, color gfx.C
 }
 
 // paintNodeLabel 把（可能多行的）标签画在节点正中。
-func paintNodeLabel(canvas *gfx.Canvas, n mermaidNode, bounds gfx.Rect, theme *ui.Theme) {
+func paintNodeLabel(canvas *gfx.Canvas, n mermaidNode, bounds gfx.Rect, textColor gfx.Color) {
 	const size float32 = 12
 	const lineHeight float32 = size * 1.35
 	lines := n.lines
@@ -1057,7 +1263,7 @@ func paintNodeLabel(canvas *gfx.Canvas, n mermaidNode, bounds gfx.Rect, theme *u
 	y := bounds.Y + (bounds.Height-total)/2
 	for _, line := range lines {
 		canvas.LabelCenter(line, gfx.Rect{X: bounds.X - 4, Y: y, Width: bounds.Width + 8, Height: lineHeight},
-			gfx.TextStyle{Size: size, Color: theme.Foreground})
+			gfx.TextStyle{Size: size, Color: textColor})
 		y += lineHeight
 	}
 }

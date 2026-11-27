@@ -1,6 +1,10 @@
 package view
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/vivaui/viva/gfx"
+)
 
 func TestMermaidParsingSmoke(t *testing.T) {
 	src := "前言\n\n```mermaid\nflowchart TD\n A[开始] --> B{判断}\n B -->|是| C[处理]\n```\n\n中间段落\n\n```mermaid\npie title 分布\n \"GET\" : 3\n \"POST\" : 1\n```\n\n结尾\n"
@@ -30,5 +34,53 @@ func TestMermaidParsingSmoke(t *testing.T) {
 	// 没有 mermaid 块时不分段（保持原快路径）
 	if segs := splitMermaidSegments("普通\n\n文本\n"); segs != nil {
 		t.Fatalf("没有 mermaid 时不该切段：%+v", segs)
+	}
+}
+
+// classDef / class / style / :::cls 四种写法都要落到节点样式上。
+func TestMermaidClassDefAndStyle(t *testing.T) {
+	src := `flowchart TD
+    classDef warn fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#4e342e
+    classDef dashed fill:#ffffff,stroke:#7b1fa2,stroke-dasharray:5 4
+    A[一] --> B[二]
+    class B warn
+    style A fill:#e3f2fd
+    C[三]:::dashed --> D[四]`
+	d := parseMermaid(src)
+	if d.kind != mermaidFlow {
+		t.Fatalf("应识别为 flowchart，实际 %v", d.kind)
+	}
+	byLabel := map[string]mermaidNode{}
+	for _, n := range d.nodes {
+		byLabel[n.label] = n
+	}
+	b, ok := byLabel["二"]
+	if !ok {
+		t.Fatalf("没解析到节点「二」：%+v", d.nodes)
+	}
+	if !b.style.hasFill || !b.style.hasStroke || !b.style.hasText {
+		t.Fatalf("class 没套上 fill/stroke/color：%+v", b.style)
+	}
+	if b.style.strokeWidth != 2 {
+		t.Fatalf("stroke-width 应为 2，实际 %v", b.style.strokeWidth)
+	}
+	if want := gfx.RGBA(0xe6, 0x51, 0x00, 1); b.style.stroke != want {
+		t.Fatalf("stroke 颜色不对：%+v want %+v", b.style.stroke, want)
+	}
+	// style 指令只改 fill，不该把其它项也清掉
+	a, ok := byLabel["一"]
+	if !ok {
+		t.Fatalf("没解析到节点「一」")
+	}
+	if !a.style.hasFill || a.style.hasStroke {
+		t.Fatalf("style 应只给 fill：%+v", a.style)
+	}
+	// :::cls 的虚线
+	c, ok := byLabel["三"]
+	if !ok {
+		t.Fatalf("没解析到节点「三」")
+	}
+	if !c.style.dashed || c.className != "dashed" {
+		t.Fatalf(":::dashed 没生效：className=%q dashed=%v", c.className, c.style.dashed)
 	}
 }

@@ -1,7 +1,9 @@
 # Markdown 里的 Mermaid：方案、实现与限度
 
 > **状态（2026-11-27）**：已按「方案 E + goja/dagre」落地一版实验实现，覆盖 `flowchart`（TD/LR，含
-> subgraph、形状区分、长标签折行、回边）与 `pie`；`sequence` / `class` / `gantt` 等仍降级成一行灰字。
+> subgraph、形状区分、长标签折行、回边、`classDef` / `class` / `style` / `:::cls` 四套样式写法，
+> 支持 fill / stroke / stroke-width / color / stroke-dasharray）与 `pie`；
+> `sequence` / `class` / `gantt` 等仍降级成一行灰字。
 > 布局交给 `@dagrejs/dagre@1.1.4`（MIT，`internal/view/assets/dagre.min.js`，96KB），用 goja 跑。
 
 > 结论先写：viva 的 Markdown 组件没有「自定义代码块」钩子，mermaid 只能先渲染成图片、再走已有的图片通路。
