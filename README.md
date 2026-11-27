@@ -52,21 +52,3 @@ COLLECTION=../api-doc-go-proj ENV_NAME= bin/dev start   # 换集合 / 关环境
 
 仓库带 Viva 官方的 `building-with-viva` skill（`.claude/skills/` 与 `.agents/skills/` 各一份只读拷贝，
 对应 v0.6.9）：写界面、改交互之前先读它。项目约定、硬规则与提交前检查见 [`AGENTS.md`](AGENTS.md)。
-
-## 许可
-
-本项目采用 **PolyForm Noncommercial License 1.0.0**（全文见 [`LICENSE`](LICENSE)）：
-
-- **可以**：阅读、修改、自用、个人学习与研究、非商业的开源项目里使用；
-- **不可以**：商业用途 —— 包括打包销售、按订阅/服务收费、作为商业产品的一部分分发、
-  公司内部的生产性使用（条款里对 "commercial purpose" 的定义含 *anticipated commercial application*）；
-- 需要商业授权请通过仓库 issue 联系作者。
-
-说明：
-
-1. 这是 **source-available**，不是 OSI 定义的开源许可 —— GitHub 不会给它打 Open Source 标签，
-   Debian / Homebrew core 之类的发行渠道也不接收。
-2. **版权仍归作者**：作者自己不受这些限制（可以商用、也可以随时换一个更宽松的许可）。
-3. 第三方依赖各自独立授权（viva Apache-2.0、goja MIT、dagre MIT …），本项目的许可**不改变**它们的条款，
-   详见 [`doc/third-party.md`](doc/third-party.md)。
-4. 任何许可都挡不住「别人读了代码自己重写一个」，它约束的是**复制与分发**，不是思想。
