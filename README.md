@@ -52,3 +52,21 @@ COLLECTION=../api-doc-go-proj ENV_NAME= bin/dev start   # 换集合 / 关环境
 
 仓库带 Viva 官方的 `building-with-viva` skill（`.claude/skills/` 与 `.agents/skills/` 各一份只读拷贝，
 对应 v0.6.9）：写界面、改交互之前先读它。项目约定、硬规则与提交前检查见 [`AGENTS.md`](AGENTS.md)。
+
+## 许可
+
+**MIT + Commons Clause**（全文见 `LICENSE`）。
+
+简单说：**所有人都可以免费使用，但不能把这个软件本身拿去卖钱**。
+
+- **可以**：免费使用（含公司内部生产使用）、修改、再分发、把它嵌进自己的产品一起分发甚至销售——
+  只要你的产品不是「实质上就是这个软件」；
+- **不可以**：把它本身（或改个名字、改几个函数名）拿来卖，或者只把它的功能包一层就做成收费服务；
+- 商业授权（就是想卖它本身）请通过仓库 issue 联系作者。
+
+三点说明：
+
+1. 这不是 OSI 定义的开源许可（Commons Clause 明确不满足开源定义），请叫它 **source-available**；
+2. 版权仍归作者，作者本人不受这些限制，也可以随时换成更宽松的许可；
+3. 第三方依赖各自独立授权（viva Apache-2.0、goja MIT、dagre MIT …），本项目许可不改变其条款，
+   见 `doc/third-party.md`；另外 Commons Clause 要求再分发时保留本许可声明。
