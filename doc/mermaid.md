@@ -5,6 +5,21 @@
 
 ## 一、现状与约束
 
+### 渲染管线的五个可干预层
+
+2026-11-27 补：上一版只看了 `MarkdownStyle`，其实解析器 `github.com/vivaui/viva/markdown` 是**公开包**，
+加上 `MarkdownView.Codes()`，一共五个层次可以下手。按「改动越小越靠上」排：
+
+| 层 | 接口 | 能做的事 | 硬限制 |
+|---|---|---|---|
+| L1 源码 | 自己预处理字符串 | 把 ` ```mermaid ` 块改写成 `![mermaid](mermaid:<hash>)` | 预览文本与源码不再一一对应（行号偏移） |
+| L2 解析 | `markdown.Document{Blocks []Block}`、`Block.Kind/Info/Text/Start/End`、`Document.Spans(b)` | 读出每个 mermaid 块的源码、语言、字节范围 | `Block` 带未导出字段（inline spans 按块下标存在 Document 里），**不能就地替换 Blocks**，只能改文本重新 Parse |
+| L3 布局 | `MarkdownView.Layout(canvas, style, doc, width)`、`Codes() []MarkdownCode{Bounds, Text}` | 拿到每个代码块在版面里的矩形与内容 | 块高由**代码行数**决定，图撑不开；不能改布局 |
+| L4 样式 | `MarkdownStyle.Image func(dest) (gfx.Bitmap, bool)` | **唯一**能让「一块内容」以位图身份参与排版的出口 | 只对图片语法 / `Span.Image` 生效，对代码块无效 |
+| L5 绘制 | `MarkdownPaint`、`MarkdownStyle.CodeInset` | 在代码块矩形上覆盖画小部件（角标、按钮） | 与 L3 同理：画得下才算，画不下就被裁 |
+
+`MarkdownPaint` 里没有块级回调，`MarkdownLook` 只有颜色与圆角 —— 所以 L5 只能「覆盖」，不能「替换」。
+
 ### 组件只给两个扩展点
 
 `components.MarkdownStyle` 里能挂的只有：
@@ -54,7 +69,9 @@ Image     func(destination string) (gfx.Bitmap, bool)
 
 - 优点：零外部依赖、离线、配色跟主题走、尺寸可控、可缓存；
 - 缺点：工作量最大，每种图都要一个布局器，且只能覆盖子集；
-- 落地细节：位图用 `image.RGBA` 手画（圆角矩形、线段、箭头、文字），文字需 `golang.org/x/image/font/opentype`。
+- 落地细节：`gfx.Bitmap{Pix []byte, Width, Height, Stride}` 可以直接构造（premultiplied BGRA），
+  **不需要**第三方画图库；难的是字：viva 的字体引擎不对外暴露「把字画进我的像素缓冲」，
+  图内文字要么用 `golang.org/x/image/font` 自己排（与正文观感有差），要么只画图形 + 图例走正文。
 
 覆盖难度递增：`pie` → `flowchart TD/LR` → `sequenceDiagram` → `classDiagram` / `stateDiagram` → `gantt` / `timeline`。
 
@@ -75,19 +92,61 @@ Image     func(destination string) (gfx.Bitmap, bool)
 ## 三、三个必须一起考虑的点
 
 1. **缓存键**：源码 hash + 主题（明/暗）+ 渲染宽度。宽度变化会影响换行与布局，不能只按源码缓存。
-2. **后台渲染**：按 viva 的约定走 `ui.Effect`，先返回占位图（固定高度 + 「渲染中」），完成后 `Invalidate`，
-   不能在窗口线程里同步渲染。
+2. **后台渲染**：`MarkdownStyle.Image` 是**在 Layout 时**被问的（一张图还可能问多次——表格先量单元格），
+   所以渲染器不能同步跑。官方姿势是：首次返回 `false`（文档按 alt 文本排版），
+   渲染完成后 `Invalidate` 重排一次；位图给稳定的 `gfx.Bitmap.ID`，换图时递增 `Version`，
+   否则每帧都会把像素重新上传一次。走 `ui.Effect` 起后台任务。
 3. **导出**：`openExport("md"/"html")` 目前会原样带走代码块。要么导出时一并生成图片并改写引用，
    要么在导出面板里明确写「导出不含图」。
+4. **行号对齐（L1 特有）**：代码块换成图片语法后行数会变，将来若做「预览滚动同步源码」，
+   需要维护一张原文 ↔ 预览的偏移表，或者替换时补足空行。
 
-## 四、建议的落地顺序
+## 四、推荐方案的骨架（L1 + L4）
+
+```go
+// 1) L2 用来定位：不要用正则扫源码，缩进 / 引用里的 fence 会漏。
+var doc markdown.Document
+doc.Parse(src)
+for i := range doc.Blocks {
+    b := &doc.Blocks[i]
+    if b.Kind != markdown.Code {
+        continue
+    }
+    lang := strings.ToLower(strings.Fields(b.Info + " ")[0]) // Info 可能带额外参数
+    if lang != "mermaid" {
+        continue
+    }
+    // b.Start / b.End 是含 fence 的字节范围 → 在这一段上做替换，其余原样拷贝
+}
+
+// 2) L1 替换：![mermaid](mermaid:<sha1>)；alt 文本留在正文里，搜索与复制仍能命中
+func rewriteMermaid(src string) string
+
+// 3) L4 接住：只在 Image 回调里分派，文档其余图片仍走 docImage
+Image: func(destination string) (gfx.Bitmap, bool) {
+    if hash, ok := strings.CutPrefix(destination, "mermaid:"); ok {
+        return m.mermaidBitmap(hash) // 命中缓存返回位图；没渲染好就 false（按 alt 排版）
+    }
+    return m.docImage(docBase(m.editor.file), destination)
+}
+
+// 4) 渲染器接口：外部命令与纯 Go 子集共用，谁先实现都不影响上层
+type DiagramRenderer interface {
+    // px 是目标像素宽（按 DPR 放大），返回的位图直接当布局尺寸用。
+    Render(src string, px int, dark bool) (gfx.Bitmap, error)
+}
+```
+
+替换时要保持「块的字节范围之外一个字符都不动」，这样同一份 `Document` 里其他块的 `Start/End` 仍然可对回原文。
+
+## 五、建议的落地顺序
 
 1. **先做 A 的骨架**：扫描 + 替换成图片引用 + 缓存 + 没有渲染器时降级成代码块。
    这一步不引外部依赖，能立刻把「mermaid 不显示」变成「结构正确、可读」；
 2. 再补 **B 的前两种图**（`pie`、`flowchart`），在 `Image` 回调里优先自绘；
 3. 最后做 **C 的检测**（有 `mmdc` 就交给它，覆盖 class / gantt 这类难图）。
 
-## 五、待定问题
+## 六、待定问题
 
 - 自绘的字体与 viva 画布不同源，同一篇文档里图内文字与正文会有细微差异，可接受否？
 - 图要不要支持「点击放大 / 复制源码」？这会牵扯预览区的命中区域。
