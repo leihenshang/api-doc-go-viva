@@ -120,7 +120,7 @@ func renderBody(docs []Doc, sel Selection) (body string, entries []tocEntry) {
 		for _, sec := range sections(doc.Col, sel) {
 			level := 2
 			if sec.Depth > 0 || sec.Title != doc.Col.Name {
-				level = min(sec.Depth+2, 5)
+				level = min(sec.Depth+1, 4)
 				anchor := emitHeading(level, sec.Title)
 				entries = append(entries, tocEntry{id: anchor, level: level, kind: "folder", text: html.EscapeString(sec.Title)})
 			}
@@ -130,7 +130,10 @@ func renderBody(docs []Doc, sel Selection) (body string, entries []tocEntry) {
 				if entry.Kind == explorer.KindDoc {
 					title = strings.TrimSpace("文档 " + entry.Name)
 				}
-				tag := "h" + strconv.Itoa(clampLevel(min(sec.Depth+3, 6)))
+				// 请求标题最多到 h5：单节展示靠「标题层级」切片，正文小节必须比它更深，
+				// 否则点了目录只能看到 summary（参数/请求头被当成同级标题截断）。
+				requestLevel := min(sec.Depth+2, 5)
+				tag := "h" + strconv.Itoa(clampLevel(requestLevel))
 				anchor := tocID(id)
 				out.WriteString("<" + tag + " id=\"" + anchor + "\">")
 				if entry.Kind != explorer.KindDoc && entry.Method != "" {
@@ -142,7 +145,7 @@ func renderBody(docs []Doc, sel Selection) (body string, entries []tocEntry) {
 					text: html.EscapeString(title), method: strings.ToUpper(entry.Method),
 				})
 				id++
-				writeEntryBody(&out, entry, 4)
+				writeEntryBody(&out, entry, requestLevel)
 			}
 		}
 	}
@@ -151,9 +154,12 @@ func renderBody(docs []Doc, sel Selection) (body string, entries []tocEntry) {
 
 // writeEntryBody 写一条请求的内容：概述、地址、参数 / 请求头 / 表单 / 请求体 / 字段 / 认证 / 文档。
 func writeEntryBody(b *strings.Builder, entry *explorer.Entry, headingLevel int) {
+	// 小节标题（参数 / 请求头 / 请求体…）和文档内标题都比请求标题深一级，
+	// 保证导出后的「单节展示」不会从中间被同级标题截断。
+	sectionLevel := clampLevel(headingLevel + 1)
 	if entry.Kind == explorer.KindDoc {
 		if text := strings.TrimSpace(entry.Content); text != "" {
-			b.WriteString(renderMarkdown(text))
+			b.WriteString(renderMarkdownAt(text, sectionLevel))
 		}
 		return
 	}
@@ -161,40 +167,41 @@ func writeEntryBody(b *strings.Builder, entry *explorer.Entry, headingLevel int)
 	if payload == nil {
 		return
 	}
-	heading := "h" + strconv.Itoa(clampLevel(headingLevel))
+	heading := "h" + strconv.Itoa(sectionLevel)
 	if payload.Summary != "" {
 		b.WriteString("<p class=\"summary\">" + html.EscapeString(payload.Summary) + "</p>\n")
 	}
 	if payload.HTTP.URL != "" {
 		b.WriteString("<p class=\"url\"><code>" + html.EscapeString(payload.HTTP.URL) + "</code></p>\n")
 	}
-	writeHTMLTable(b, "参数", []string{"名称", "值", "说明"}, kvRows(payload.HTTP.Params))
-	writeHTMLTable(b, "请求头", []string{"名称", "值", "说明"}, kvRows(payload.HTTP.Headers))
+	writeHTMLTable(b, sectionLevel, "参数", []string{"名称", "值", "说明"}, kvRows(payload.HTTP.Params))
+	writeHTMLTable(b, sectionLevel, "请求头", []string{"名称", "值", "说明"}, kvRows(payload.HTTP.Headers))
 	switch payload.HTTP.Body.Type {
 	case "", "none":
 	case "form", "multipart":
-		writeHTMLTable(b, "表单字段", []string{"名称", "值", "类型", "说明"}, formRows(payload.HTTP.Body, payload.HTTP.Body.Type == "multipart"))
+		writeHTMLTable(b, sectionLevel, "表单字段", []string{"名称", "值", "类型", "说明"}, formRows(payload.HTTP.Body, payload.HTTP.Body.Type == "multipart"))
 	default:
 		if raw := strings.TrimSpace(payload.HTTP.Body.Raw); raw != "" {
 			b.WriteString("<" + heading + ">请求体（" + html.EscapeString(payload.HTTP.Body.Type) + "）</" + heading + ">\n")
 			b.WriteString("<pre><code>" + html.EscapeString(raw) + "</code></pre>\n")
 		}
 	}
-	writeHTMLTable(b, "请求体字段", []string{"字段名", "类型", "必填", "示例", "说明"}, fieldRows(payload.HTTP.Body.Fields))
+	writeHTMLTable(b, sectionLevel, "请求体字段", []string{"字段名", "类型", "必填", "示例", "说明"}, fieldRows(payload.HTTP.Body.Fields))
 	if auth := authLine(payload.HTTP.Auth); auth != "" {
 		b.WriteString("<p class=\"auth\"><strong>认证</strong>：" + html.EscapeString(auth) + "</p>\n")
 	}
 	if docs := strings.TrimSpace(payload.Docs); docs != "" {
-		b.WriteString("<" + heading + ">文档</" + heading + ">\n" + renderMarkdown(docs))
+		b.WriteString("<" + heading + ">文档</" + heading + ">\n" + renderMarkdownAt(docs, sectionLevel))
 	}
 }
 
 // writeHTMLTable 写一张表；没有行就整节省略。
-func writeHTMLTable(b *strings.Builder, title string, head []string, rows [][]string) {
+func writeHTMLTable(b *strings.Builder, level int, title string, head []string, rows [][]string) {
 	if len(rows) == 0 {
 		return
 	}
-	b.WriteString("<h4>" + html.EscapeString(title) + "</h4>\n<table>\n<thead><tr>")
+	b.WriteString("<h" + strconv.Itoa(clampLevel(level)) + ">" + html.EscapeString(title) + "</h" +
+		strconv.Itoa(clampLevel(level)) + ">\n<table>\n<thead><tr>")
 	for _, cell := range head {
 		b.WriteString("<th>" + html.EscapeString(cell) + "</th>")
 	}
@@ -220,7 +227,13 @@ func entryTitle(entry *explorer.Entry) string {
 
 // renderMarkdown 把 Markdown 渲成 HTML：标题 / 段落 / 列表 / 代码块 / 表格 / 引用 / 分隔线。
 // 用 viva 自己的解析器，所以文档在界面里和导出里是同一套语义。
-func renderMarkdown(src string) string {
+// renderMarkdown 是「文档块最高标题落在 h3」的旧行为，保留给不关心层级的调用方。
+func renderMarkdown(src string) string { return renderMarkdownAt(src, 3) }
+
+// renderMarkdownAt 把文档里的标题整体压到 base 层之下：Markdown 的 h1 变成 h{base}，
+// h2 变成 h{base+1}……这样文档内容永远比承载它的标题更深一级，
+// 导出后的「单节展示」按标题层级切片时才不会从文档中间断开。
+func renderMarkdownAt(src string, base int) string {
 	var doc markdown.Document
 	doc.Parse(src)
 	var b strings.Builder
@@ -247,7 +260,7 @@ func renderMarkdown(src string) string {
 		}
 		switch block.Kind {
 		case markdown.Heading:
-			tag := "h" + strconv.Itoa(clampLevel(block.Level+2))
+			tag := "h" + strconv.Itoa(clampLevel(base+block.Level-1))
 			b.WriteString("<" + tag + ">" + renderSpans(doc.Spans(block)) + "</" + tag + ">\n")
 		case markdown.Paragraph:
 			b.WriteString("<p>" + renderSpans(doc.Spans(block)) + "</p>\n")

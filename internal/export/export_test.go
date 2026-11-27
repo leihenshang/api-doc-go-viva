@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -155,6 +156,47 @@ func TestHTMLExportEscapesUserText(t *testing.T) {
 	}
 	if !strings.Contains(out, "&lt;script&gt;alert(1)&lt;/script&gt;") {
 		t.Fatal("转义后的脚本文本应当作为文字出现")
+	}
+}
+
+// TestExportHeadingLevelsStayInsideParents：正文小节与文档内标题都必须比承载它们的
+// 标题更深一级 —— 导出的「单节展示」是按标题层级切片的，同级标题会把请求正文截断
+// （之前「参数」被写成 h4、和请求标题同级，点开只看到 summary）。
+func TestExportHeadingLevelsStayInsideParents(t *testing.T) {
+	col := buildCollection(t)
+
+	// Markdown：文档里的 # 标题要被压到条目标题之下
+	md := Markdown([]Doc{col})
+	if strings.Contains(md, "\n# 约定") {
+		t.Fatalf("文档标题没有降级：\n%s", md)
+	}
+	if !strings.Contains(md, "\n#### 约定") {
+		t.Fatalf("文档标题应降为 ####：\n%s", md)
+	}
+
+	// HTML：带 POST 徽标的请求标题之后，小节标题必须比它深一级
+	out := HTML([]Doc{col})
+	body := out[strings.Index(out, `<main class="content">`):strings.Index(out, "</main>")]
+	badge := strings.Index(body, `class="tm m-post">POST<`)
+	if badge < 0 {
+		t.Fatal("找不到 POST 请求标题")
+	}
+	hStart := strings.LastIndex(body[:badge], "<h")
+	if hStart < 0 {
+		t.Fatal("请求标题不在正文里")
+	}
+	reqLevel := int(body[hStart+2] - '0')
+	want := "<h" + strconv.Itoa(reqLevel+1) + ">参数</h" + strconv.Itoa(reqLevel+1) + ">"
+	if !strings.Contains(body, want) {
+		t.Fatalf("「参数」应是 h%d（比请求标题 h%d 深一级）", reqLevel+1, reqLevel)
+	}
+	// 请求标题之后紧跟的第一个标题也必须更深，否则单节展示会从这里截断。
+	after := body[badge:]
+	next := regexp.MustCompile(`<h(\d)[ >]`).FindStringSubmatch(after)
+	if next != nil {
+		if lvl, _ := strconv.Atoi(next[1]); lvl <= reqLevel {
+			t.Fatalf("请求标题后紧跟 h%d，不深于 h%d，单节展示会从这里截断", lvl, reqLevel)
+		}
 	}
 }
 

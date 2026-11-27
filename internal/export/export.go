@@ -151,7 +151,9 @@ func writeMarkdownEntry(b *strings.Builder, entry *explorer.Entry, level int) {
 	payload := entry.Payload
 	if entry.Kind == explorer.KindDoc {
 		if text := strings.TrimSpace(entry.Content); text != "" {
-			b.WriteString(text + "\n\n")
+			// 文档自己的 # 标题要压到条目标题之下，否则导出后结构被顶乱
+			// （「### 接口约定」下面紧接着一个「# 约定」）。
+			b.WriteString(demoteMarkdown(text, clampLevel(level)) + "\n\n")
 		}
 		return
 	}
@@ -181,8 +183,41 @@ func writeMarkdownEntry(b *strings.Builder, entry *explorer.Entry, level int) {
 		b.WriteString("**认证**：" + auth + "\n\n")
 	}
 	if docs := strings.TrimSpace(payload.Docs); docs != "" {
-		b.WriteString("**文档**\n\n" + docs + "\n\n")
+		b.WriteString("**文档**\n\n" + demoteMarkdown(docs, clampLevel(level)) + "\n\n")
 	}
+}
+
+// demoteMarkdown 把 Markdown 里的标题整体加深 shift 级（上限 h6），
+// 让文档内容永远落在承载它的标题之下。代码块里的 # 不动。
+func demoteMarkdown(text string, shift int) string {
+	if shift <= 0 {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	inFence := false
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		hashes := 0
+		for hashes < len(trimmed) && hashes < 6 && trimmed[hashes] == '#' {
+			hashes++
+		}
+		if hashes == 0 || hashes >= len(trimmed) || trimmed[hashes] != ' ' {
+			continue
+		}
+		level := hashes + shift
+		if level > 6 {
+			level = 6
+		}
+		lines[i] = strings.Repeat("#", level) + trimmed[hashes:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // writeMarkdownTable 写一张两列以上的表；没有行就整节省略。
