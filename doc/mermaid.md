@@ -228,7 +228,36 @@ A 只在「今天就要看到图、且不改预览结构」时选。
 
 如果只是想「今天就看到图」而不动预览结构，才退回去做 **A**（半天，但留下行号偏移与位图缩放的债）。
 
-## 七、待定问题
+## 七、要不要改 viva 源码（2026-11-27 结论）
+
+**不需要。** 方案 E 需要的每一项能力都在公开 API 里：
+
+| 需要什么 | 用哪个公开接口 |
+|---|---|
+| 认出 mermaid 块、拿到源码范围 | `markdown.Document.Blocks` 的 `Kind / Info / Start / End` |
+| 切成段、各自重排 | `Block.Start/End` 切原文 → 各自 `Parse` + `MarkdownView.Layout` |
+| 在窗口上自绘一张图 | `ui.Box.Draw(func(d *ui.DrawContext))`，`d.Canvas` / `d.Theme` / `d.Rect` / `d.State` |
+| 画矩形 / 圆角 / 边框 | `Canvas.Fill`、`Rounded`、`Border`、`RoundedBorder`、`DrawContext.DashedBorder` |
+| 画文字与量文字 | `Canvas.Label`、`LabelAligned`、`LabelCenter`、`TextWidth` / `TextWidthStyle`（用的是 viva 自己的字体引擎，和正文同源） |
+| 画任意斜线 / 曲线 | `gfx.Icon{ViewBox, Stroke, Cap, Join, Commands []PathCommand}`（`MoveTo/LineTo/CubicTo/ClosePath`）+ `ui.Icon` 或 canvas 画 icon |
+| 贴位图（外部渲染器出图） | `Canvas.DrawBitmap`；或 `MarkdownStyle.Image`（走方案 A 时） |
+| 命中 / 点击放大 | `Canvas.Hit` / `HitWithLabel`，或 `ui.Slot(...).Hit(...)` |
+| 主题色 | `d.Theme`（明暗主题各自一套，自绘天然跟随） |
+
+只有一处**不顺手**：`Canvas` 没有 `Stroke(path, width, color)` 这种通用描边方法，
+画任意路径只能借 `gfx.Icon`（viewBox 缩放 + 描边），
+mermaid 的连线/箭头得一条条做成 icon 再摆到位置，虚线、marker 变体要自己拼。
+**能画，但胶水多。** 如果要把「自绘」当成长期路线，值得给上游提一个
+`Canvas.Stroke(commands []PathCommand, width float32, color Color)` —— 这是锦上添花，不是必需。
+
+两个附带说明：
+
+- **没有公开的离屏 canvas**，所以「自绘 → 位图」这条路不通（除非自己光栅化文字）；
+  方案 E 是直接画到窗口 canvas，不需要离屏，正好绕开这一点。
+- **唯一真要上游改的情形**：不想做切分、希望 `MarkdownView` 自己就把 mermaid 块渲染成图
+  —— 那需要一个节点级回调（goldmark `NodeRenderer` 那种）。这属于「省事」，不是「必需」。
+
+## 八、待定问题
 
 - 自绘的字体与 viva 画布不同源，同一篇文档里图内文字与正文会有细微差异，可接受否？
 - 段间距要与 MarkdownView 内部的块间距对齐，得先量出它的实际值（`LineHeight` 起算，可能要试）。
