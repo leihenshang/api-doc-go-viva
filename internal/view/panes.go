@@ -1011,11 +1011,31 @@ func (m *Model) docPreviewPane(c ui.C, textWidth float32) {
 // base 是源文本所在目录：图片的相对路径按它解析。
 func (m *Model) previewBlock(c ui.C, source, key, base string, width float32) {
 	height := m.previewHeight(c, key, source, base, width)
-	ui.Slot(c).FillWidth().Height(height).Draw(func(d *ui.DrawContext) {
-		m.docs.view.Paint(d.Canvas, components.MarkdownPaint{
-			Look: m.docs.look,
-			X:    d.Rect.X,
-			Y:    d.Rect.Y,
+	segs := m.docs.segs
+	if len(segs) == 0 {
+		ui.Slot(c).FillWidth().Height(height).Draw(func(d *ui.DrawContext) {
+			m.docs.view.Paint(d.Canvas, components.MarkdownPaint{
+				Look: m.docs.look,
+				X:    d.Rect.X,
+				Y:    d.Rect.Y,
+			})
 		})
+		return
+	}
+	// 有 mermaid 块：按段依次画，段间距与正文行距同源。
+	ui.Slot(c).FillWidth().Height(height).Draw(func(d *ui.DrawContext) {
+		y := d.Rect.Y
+		for _, seg := range segs {
+			if seg.diagram != nil {
+				paintMermaid(d.Canvas, seg.diagram, d.Rect.X, y, d.Theme)
+			} else {
+				seg.view.Paint(d.Canvas, components.MarkdownPaint{
+					Look: m.docs.look,
+					X:    d.Rect.X,
+					Y:    y,
+				})
+			}
+			y += seg.height + mermaidSegmentGap
+		}
 	})
 }

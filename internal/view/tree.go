@@ -370,41 +370,7 @@ func (m *Model) treeContent(i int) {
 	case nodeRoot:
 		m.rootRow(c, row, i)
 	case nodeFolder:
-		name := ui.Text(c, row.name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i))
-		folder := row.folder
-		ui.ContextMenu(c, name, func(menu *ui.MenuItems) {
-			if menu.Item("新建请求").Icon(IconPlus).Clicked() {
-				m.openNewRequestIn(folder.Dir)
-			}
-			if menu.Item("新建文档").Icon(IconFilePlus).Clicked() {
-				c.After(m.createDoc)
-			}
-			if menu.Item("新建分组").Icon(IconFolderOpen).Clicked() {
-				c.After(func() { m.openNewFolderIn(folder.Dir) })
-			}
-			if menu.Item("导入 cURL…").Icon(IconImport).Clicked() {
-				c.After(func() {
-					m.activateFolderRoot(row.root)
-					m.openCurlImport(folder.Dir)
-				})
-			}
-			menu.Separator()
-			if menu.Item("重命名").Clicked() {
-				c.After(func() { m.openRenameFolder(folder) })
-			}
-			if menu.Item("克隆分组").Icon(IconCopy).Clicked() {
-				c.After(func() {
-					m.activateFolderRoot(row.root)
-					m.cloneFolder(folder)
-				})
-			}
-			if menu.Item("删除到回收站").Icon(IconTrash).Destructive().Clicked() {
-				c.After(func() {
-					m.activateFolderRoot(row.root)
-					m.askDeleteFolder(folder)
-				})
-			}
-		})
+		m.folderRow(c, row, i)
 	default:
 		m.entryRow(c, row, i)
 	}
@@ -1022,5 +988,77 @@ func (m *Model) followMovedTab(srcRoot, dstRoot int, oldRel, newRel string) {
 	m.reloadRoot(dstRoot)
 	if entry := m.entryByFile(newRel); entry != nil {
 		m.openEntry(entry)
+	}
+}
+
+// folderRow 是分组行：名字 + 行尾「⋯」。
+// 菜单项与右键完全一致 —— 右键不够显眼，行尾按钮才是主要入口。
+func (m *Model) folderRow(c ui.C, row *treeRow, i int) {
+	folder := row.folder
+	name := ui.Text(c, row.name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i))
+	ui.Spacer(c)
+	hovered := gfx.ID{}
+	if canvas := c.Canvas(); canvas != nil {
+		hovered = canvas.Hovered()
+	}
+	key := row.key
+	moreID := ui.ID(c)
+	more := ui.Row(c).Size(px(22), px(22)).Shrink(0).Center().Radius(px(4)).
+		Hover(ui.Look{}.Background(m.pal.hover)).
+		Hit(moreID, "更多 "+row.name)
+	// 分组行的「⋯」常显：树上的分组行不参与条目行的 hover 判定，
+	// 而且用户要的正是「不用先右键才知道有菜单」。指针移到按钮上时再加深。
+	_ = hovered
+	more.Children(func() {
+		ui.Icon(c, IconEllipsis).Size(px(14), px(14)).Color(m.theme.MutedForeground).StateFrom(more)
+	})
+	if more.Clicked() {
+		c.After(func() {
+			m.menuFolder = key
+			m.menuOpen = true
+		})
+	}
+	if m.menuFolder == key {
+		ui.Menu(c, more, &m.menuOpen, func(menu *ui.MenuItems) {
+			m.folderMenuItems(c, menu, row, folder)
+		})
+	}
+	ui.ContextMenu(c, name, func(menu *ui.MenuItems) {
+		m.folderMenuItems(c, menu, row, folder)
+	})
+}
+
+// folderMenuItems 是分组的两套入口（右键 / 行尾「⋯」）共用的菜单项。
+func (m *Model) folderMenuItems(c ui.C, menu *ui.MenuItems, row *treeRow, folder *explorer.Folder) {
+	if menu.Item("新建请求").Icon(IconPlus).Clicked() {
+		m.openNewRequestIn(folder.Dir)
+	}
+	if menu.Item("新建文档").Icon(IconFilePlus).Clicked() {
+		c.After(m.createDoc)
+	}
+	if menu.Item("新建分组").Icon(IconFolderOpen).Clicked() {
+		c.After(func() { m.openNewFolderIn(folder.Dir) })
+	}
+	if menu.Item("导入 cURL…").Icon(IconImport).Clicked() {
+		c.After(func() {
+			m.activateFolderRoot(row.root)
+			m.openCurlImport(folder.Dir)
+		})
+	}
+	menu.Separator()
+	if menu.Item("重命名").Clicked() {
+		c.After(func() { m.openRenameFolder(folder) })
+	}
+	if menu.Item("克隆分组").Icon(IconCopy).Clicked() {
+		c.After(func() {
+			m.activateFolderRoot(row.root)
+			m.cloneFolder(folder)
+		})
+	}
+	if menu.Item("删除到回收站").Icon(IconTrash).Destructive().Clicked() {
+		c.After(func() {
+			m.activateFolderRoot(row.root)
+			m.askDeleteFolder(folder)
+		})
 	}
 }

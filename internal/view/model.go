@@ -109,6 +109,9 @@ type docState struct {
 	doc    markdown.Document
 	view   components.MarkdownView
 	look   components.MarkdownLook
+	// segs 是「正文里有 mermaid 块」时的分段结果（文本段 / mermaid 段交替）；
+	// 为空表示走单 Document 的老路径。
+	segs []*docSegmentView
 }
 
 // docEditor 是一篇文档的编辑状态：正文可改，frontmatter 原样保留。
@@ -599,9 +602,11 @@ type Model struct {
 	selectFile    string
 	selectPending bool
 	// selKey 是当前高亮的行（Tree 的选中由应用决定，组件只按 TreeNode.Selected 上色）。
-	selKey             string
-	menuRoot           int
-	menuEntry          string
+	selKey    string
+	menuRoot  int
+	menuEntry string
+	// menuFolder 是分组行「⋯」当前展开的目录 key（与右键菜单共用一套项）。
+	menuFolder         string
 	envMenuOpen        bool
 	collectionMenuOpen bool
 	menuOpen           bool
@@ -1446,6 +1451,12 @@ func (m *Model) previewHeight(c ui.C, key, source, base string, width float32) f
 		return m.docs.height
 	}
 	m.docs.key, m.docs.source, m.docs.base, m.docs.width = key, source, base, width
+	// 正文里有 mermaid 块：切成段，每段各自排版（见 mermaid.go 与 doc/mermaid.md 的方案 E）。
+	if segs := splitMermaidSegments(source); len(segs) > 0 {
+		m.layoutMermaidSegments(c, segs, base, width)
+		return m.docs.height
+	}
+	m.docs.segs = nil
 	m.docs.doc.Parse(source)
 	m.docs.height = m.docs.view.Layout(c.Canvas(), components.MarkdownStyle{
 		Size: m.theme.Metrics.FontSizeM - 1,
@@ -1455,6 +1466,36 @@ func (m *Model) previewHeight(c ui.C, key, source, base string, width float32) f
 		},
 	}, &m.docs.doc, width)
 	return m.docs.height
+}
+
+// layoutMermaidSegments 给每一段各自排版：文本段交给 MarkdownView，mermaid 段自己量。
+func (m *Model) layoutMermaidSegments(c ui.C, segs []mermaidSegment, base string, width float32) {
+	style := components.MarkdownStyle{
+		Size: m.theme.Metrics.FontSizeM - 1,
+		Image: func(destination string) (gfx.Bitmap, bool) {
+			return m.docImage(base, destination)
+		},
+	}
+	views := make([]*docSegmentView, len(segs))
+	height := float32(0)
+	for i, seg := range segs {
+		v := &docSegmentView{text: seg.text}
+		if seg.mermaid {
+			v.diagram = parseMermaid(seg.text)
+			layoutMermaid(v.diagram, c.Canvas(), width)
+			v.height = v.diagram.height
+		} else {
+			v.doc.Parse(seg.text)
+			v.height = v.view.Layout(c.Canvas(), style, &v.doc, width)
+		}
+		views[i] = v
+		height += v.height
+		if i > 0 {
+			height += mermaidSegmentGap
+		}
+	}
+	m.docs.segs = views
+	m.docs.height = height
 }
 
 // contentWidth 是详情页可用的文字宽度：整窗宽减去侧栏、分隔条与两侧内边距。
