@@ -643,11 +643,15 @@ func measureFlowNodes(d *mermaidDiagram, canvas *gfx.Canvas, width float32) {
 	for i := range d.nodes {
 		n := &d.nodes[i]
 		pad := 2 * mermaidNodePadX
+		labelRoom := maxWidth - pad - 6
 		if n.shape == shapeDiamond {
-			pad += 18 // 菱形斜边吃宽度，多给一点
+			// 菱形的斜边占掉两侧空间，中间能放字的只有六成左右；高度也不能太扁，
+			// 否则尖角看不出来（之前 h 固定 30+10，宽 140 的菱形被压成 3.5:1，像圆角矩形）。
+			pad += 34
+			labelRoom = labelRoom * 0.8
 		}
 		// 先按最大宽度断行，再取最长的一行做节点宽度：长标签不再被裁，而是折成多行。
-		n.lines = wrapLabel(canvas, n.label, maxWidth-pad-6, size)
+		n.lines = wrapLabel(canvas, n.label, labelRoom, size)
 		w := float32(24)
 		for _, line := range n.lines {
 			if tw := canvas.TextWidth(line, size); tw > w {
@@ -663,7 +667,13 @@ func measureFlowNodes(d *mermaidDiagram, canvas *gfx.Canvas, width float32) {
 			n.h = mermaidNodeH
 		}
 		if n.shape == shapeDiamond {
-			n.h += 10
+			// 高度跟着宽度走：宽高比约 1.8:1，尖角才立得起来
+			if want := n.w * 0.55; want > n.h {
+				n.h = want
+			}
+			if n.h < 52 {
+				n.h = 52
+			}
 		}
 	}
 }
@@ -1403,13 +1413,14 @@ func paintDiamond(canvas *gfx.Canvas, bounds gfx.Rect, border, fill gfx.Color) {
 			t = -t
 		}
 		half := hw * (1 - t)
-		if half < 0.5 {
-			continue
+		if half < 0.75 {
+			half = 0.75 // 顶点/底点保底，别让尖角整行被丢掉
 		}
 		y := bounds.Y + float32(row)
 		canvas.Fill(gfx.Rect{X: cx - half, Y: y, Width: half * 2, Height: 1}, fill)
-		canvas.Fill(gfx.Rect{X: cx - half, Y: y, Width: 1, Height: 1}, border)
-		canvas.Fill(gfx.Rect{X: cx + half - 1, Y: y, Width: 1, Height: 1}, border)
+		// 描边用 1.6 宽（重叠覆盖）：1px 在非整数 DPR 下会被摊薄到几乎看不见。
+		canvas.Fill(gfx.Rect{X: cx - half, Y: y, Width: 1.6, Height: 1}, border)
+		canvas.Fill(gfx.Rect{X: cx + half - 1.6, Y: y, Width: 1.6, Height: 1}, border)
 	}
 }
 
