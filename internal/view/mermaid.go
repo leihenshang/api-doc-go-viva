@@ -1280,21 +1280,23 @@ func paintFlowRoutes(canvas *gfx.Canvas, d *mermaidDiagram, x, y float32, linkCo
 		for j := range route {
 			pts[j] = [2]float32{x + route[j][0], y + route[j][1]}
 		}
+		// dagre 给的连接点落在节点边界的任意位置，箭头因此会偏在一侧；
+		// 先把两端吸附到「节点边的中心」（偏差太大就保留 dagre 的走线）。
+		pts = snapRouteEnds(d, e.from, e.to, pts, x, y)
 		// dagre 给的 points 是贝塞尔的控制点，直接连折线就是硬邦邦的斜直线；
 		// 过一遍 Catmull-Rom 采成密集点再画，拐角才是圆的（对应 mermaid 的 curve: basis）。
-		strokePath(canvas, smoothPath(pts), linkColor)
-		last, prev := pts[len(pts)-1], pts[len(pts)-2]
-		*arrows = append(*arrows, flowArrow{
-			x: last[0], y: last[1],
-			dirX: last[0] - prev[0], dirY: last[1] - prev[1],
-		})
+		smooth := smoothPath(pts)
+		last, prev := smooth[len(smooth)-1], smooth[len(smooth)-2]
+		dx, dy := last[0]-prev[0], last[1]-prev[1]
+		*arrows = append(*arrows, flowArrow{x: last[0], y: last[1], dirX: dx, dirY: dy})
+		// 线画到箭头根部就停：否则 1px 的线会从箭头中间穿出来，看着像没接上。
+		strokePath(canvas, trimTail(smooth, 6), linkColor)
 		if e.label != "" {
-			// 标签放在第一段的中点旁边：贴近出线处，不会被裁。
-			mx := (pts[0][0] + pts[1][0]) / 2
-			my := (pts[0][1] + pts[1][1]) / 2
-			lx, ly := mx+6, my-16
+			// 标签放在路径 38% 处旁边：贴第一段会压到节点，放中点又会落在拐弯上。
+			mx, my := pointAlong(smooth, 0.5)
+			lx, ly := mx+10, my-20
 			if d.leftToRight {
-				lx, ly = mx-8, my-16
+				lx, ly = mx-12, my-20
 			}
 			canvas.Label(e.label, gfx.Rect{X: lx + float32(outSeq[e.from])*18, Y: ly, Width: 60, Height: 16}, gfx.TextStyle{
 				Size: 10, Color: linkColor,
@@ -1443,6 +1445,81 @@ func paintPie(canvas *gfx.Canvas, d *mermaidDiagram, x, y float32, theme *ui.The
 	}
 }
 
+// snapRouteEnds 把路由两端吸附到源节点出口、目标节点入口的中心。
+// dagre 给的是「边与节点边界的交点」，可能在边的偏侧；差值超过 28px 时说明
+// 这条边是绕着走的，保留原样更安全。
+func snapRouteEnds(d *mermaidDiagram, from, to int, pts [][2]float32, x, y float32) [][2]float32 {
+	if len(pts) < 2 || from >= len(d.nodes) || to >= len(d.nodes) {
+		return pts
+	}
+	const maxShift float32 = 28
+	src, dst := d.nodes[from], d.nodes[to]
+	var outEntry, inEntry [2]float32
+	if d.leftToRight {
+		outEntry = [2]float32{x + src.x + src.w, y + src.y + src.h/2}
+		inEntry = [2]float32{x + dst.x, y + dst.y + dst.h/2}
+	} else {
+		outEntry = [2]float32{x + src.x + src.w/2, y + src.y + src.h}
+		inEntry = [2]float32{x + dst.x + dst.w/2, y + dst.y}
+	}
+	out := make([][2]float32, len(pts))
+	copy(out, pts)
+	if absF(out[0][0]-outEntry[0]) <= maxShift && absF(out[0][1]-outEntry[1]) <= maxShift {
+		out[0] = outEntry
+	}
+	last := len(out) - 1
+	if absF(out[last][0]-inEntry[0]) <= maxShift && absF(out[last][1]-inEntry[1]) <= maxShift {
+		out[last] = inEntry
+	}
+	return out
+}
+
+// pointAlong 返回路径上按长度比例 frac 处的点（用于给边标签找位置）。
+func pointAlong(pts [][2]float32, frac float32) (float32, float32) {
+	if len(pts) == 0 {
+		return 0, 0
+	}
+	total := float32(0)
+	for i := 1; i < len(pts); i++ {
+		total += float32(math.Hypot(float64(pts[i][0]-pts[i-1][0]), float64(pts[i][1]-pts[i-1][1])))
+	}
+	if total <= 0 {
+		return pts[0][0], pts[0][1]
+	}
+	target := total * frac
+	walked := float32(0)
+	for i := 1; i < len(pts); i++ {
+		dx := pts[i][0] - pts[i-1][0]
+		dy := pts[i][1] - pts[i-1][1]
+		seg := float32(math.Hypot(float64(dx), float64(dy)))
+		if walked+seg >= target && seg > 0.0001 {
+			t := (target - walked) / seg
+			return pts[i-1][0] + dx*t, pts[i-1][1] + dy*t
+		}
+		walked += seg
+	}
+	return pts[len(pts)-1][0], pts[len(pts)-1][1]
+}
+
+// trimTail 把路径末端沿最后一段方向回退 dist 像素（给箭头留出位置）。
+func trimTail(pts [][2]float32, dist float32) [][2]float32 {
+	n := len(pts)
+	if n < 2 {
+		return pts
+	}
+	tip, prev := pts[n-1], pts[n-2]
+	dx, dy := tip[0]-prev[0], tip[1]-prev[1]
+	length := float32(math.Hypot(float64(dx), float64(dy)))
+	if length < 0.001 {
+		return pts
+	}
+	dx, dy = dx/length, dy/length
+	out := make([][2]float32, n)
+	copy(out, pts)
+	out[n-1] = [2]float32{tip[0] - dx*dist, tip[1] - dy*dist}
+	return out
+}
+
 // smoothPath 用 Catmull-Rom 样条把折线采成密集点（每条线段按 3px 一个采样）。
 // 端点复制自身，保证起点 / 终点仍落在节点边界上。
 func smoothPath(pts [][2]float32) [][2]float32 {
@@ -1465,7 +1542,7 @@ func smoothPath(pts [][2]float32) [][2]float32 {
 		}
 		dx, dy := p2[0]-p1[0], p2[1]-p1[1]
 		length := float32(math.Hypot(float64(dx), float64(dy)))
-		steps := int(length/3) + 6
+		steps := int(length/1.5) + 1
 		for s := 0; s < steps; s++ {
 			t := float32(s) / float32(steps)
 			out = append(out, catmullRom(p0, p1, p2, p3, t))
@@ -1484,48 +1561,29 @@ func catmullRom(p0, p1, p2, p3 [2]float32, t float32) [2]float32 {
 	return [2]float32{f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])}
 }
 
-// strokePath 顺着采样点画线：每段走带覆盖率柔化的 aaLine，避免斜线出现阶梯。
+// strokePath 把采样路径画成连续线。
+//
+// 做法：沿路径每 1px 一步，每步落一个 1.6×1.6 的小方块 —— 相邻步必然重叠 0.6px，
+// 无论 DPR 是不是整数都不会留缝。之前试过三种「精确」画法（1×1 逐像素、按整数列、
+// 整段矩形），在 2560 物理宽 / 1089 逻辑宽的窗口里都会出现隔行丢弃的条纹，看着就是虚线；
+// 用重叠覆盖是唯一稳的。代价是线视觉上略粗一点点。
 func strokePath(canvas *gfx.Canvas, pts [][2]float32, color gfx.Color) {
+	if len(pts) < 2 {
+		return
+	}
 	for i := 1; i < len(pts); i++ {
-		aaLine(canvas, pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1], color)
-	}
-}
-
-// aaLine 画一条 1px 的柔和线：按主轴逐列，把上下两行的覆盖率拆成 alpha，
-// 斜线因此不再是一格一格的阶梯（canvas 没有原生抗锯齿描边，只能自己分配）。
-func aaLine(canvas *gfx.Canvas, x0, y0, x1, y1 float32, color gfx.Color) {
-	steep := absF(y1-y0) > absF(x1-x0)
-	if steep {
-		x0, y0 = y0, x0
-		x1, y1 = y1, x1
-	}
-	if x0 > x1 {
-		x0, y0, x1, y1 = x1, y1, x0, y0
-	}
-	dx, dy := x1-x0, y1-y0
-	grad := float32(0)
-	if dx > 0.0001 {
-		grad = dy / dx
-	}
-	start := int(math.Floor(float64(x0)))
-	stop := int(math.Ceil(float64(x1)))
-	for xi := start; xi < stop; xi++ {
-		xc := float32(xi) + 0.5
-		if xc < x0 || xc > x1 {
-			continue
+		x0, y0 := pts[i-1][0], pts[i-1][1]
+		x1, y1 := pts[i][0], pts[i][1]
+		dx, dy := x1-x0, y1-y0
+		length := float32(math.Hypot(float64(dx), float64(dy)))
+		steps := int(length) + 1
+		for step := 0; step <= steps; step++ {
+			t := float32(step) / float32(steps)
+			canvas.Fill(gfx.Rect{
+				X: x0 + dx*t - 0.5, Y: y0 + dy*t - 0.5,
+				Width: 1.6, Height: 1.6,
+			}, color)
 		}
-		yc := y0 + (xc-x0)*grad
-		base := float32(math.Floor(float64(yc)))
-		frac := yc - base
-		strong := color.WithAlpha(color.Alpha * (1 - frac))
-		weak := color.WithAlpha(color.Alpha * frac)
-		if steep {
-			canvas.Fill(gfx.Rect{X: base, Y: xc - 0.5, Width: 1, Height: 1}, strong)
-			canvas.Fill(gfx.Rect{X: base + 1, Y: xc - 0.5, Width: 1, Height: 1}, weak)
-			continue
-		}
-		canvas.Fill(gfx.Rect{X: xc - 0.5, Y: base, Width: 1, Height: 1}, strong)
-		canvas.Fill(gfx.Rect{X: xc - 0.5, Y: base + 1, Width: 1, Height: 1}, weak)
 	}
 }
 
