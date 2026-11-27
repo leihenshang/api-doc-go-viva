@@ -84,3 +84,24 @@ func TestMermaidClassDefAndStyle(t *testing.T) {
 		t.Fatalf(":::dashed 没生效：className=%q dashed=%v", c.className, c.style.dashed)
 	}
 }
+
+// smoothPath 曾经在 i==0 时直接取 pts[i-1]，Go 先求值再判断，一上来就是 -1 越界 panic；
+// 这条用例守住三种点数（2 / 3 / 退化直线）。
+func TestMermaidSmoothPath(t *testing.T) {
+	cases := [][][2]float32{
+		{{0, 0}, {10, 10}},
+		{{0, 0}, {10, 0}, {20, 10}},
+		{{0, 0}, {0, 10}},
+		{{0, 0}, {10, 0}, {20, 0}, {30, 10}},
+	}
+	for i, pts := range cases {
+		out := smoothPath(pts)
+		if len(out) < len(pts) {
+			t.Fatalf("case %d：采样后点数变少 %d -> %d", i, len(pts), len(out))
+		}
+		// 首末点必须落在原点上（否则线头会离节点有缝）
+		if out[0] != pts[0] || out[len(out)-1] != pts[len(pts)-1] {
+			t.Fatalf("case %d：端点漂了，首 %v 末 %v", i, out[0], out[len(out)-1])
+		}
+	}
+}

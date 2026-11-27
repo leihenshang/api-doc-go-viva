@@ -1280,9 +1280,9 @@ func paintFlowRoutes(canvas *gfx.Canvas, d *mermaidDiagram, x, y float32, linkCo
 		for j := range route {
 			pts[j] = [2]float32{x + route[j][0], y + route[j][1]}
 		}
-		for j := 1; j < len(pts); j++ {
-			drawLine(canvas, pts[j-1][0], pts[j-1][1], pts[j][0], pts[j][1], linkColor)
-		}
+		// dagre 给的 points 是贝塞尔的控制点，直接连折线就是硬邦邦的斜直线；
+		// 过一遍 Catmull-Rom 采成密集点再画，拐角才是圆的（对应 mermaid 的 curve: basis）。
+		strokePath(canvas, smoothPath(pts), linkColor)
 		last, prev := pts[len(pts)-1], pts[len(pts)-2]
 		*arrows = append(*arrows, flowArrow{
 			x: last[0], y: last[1],
@@ -1441,6 +1441,99 @@ func paintPie(canvas *gfx.Canvas, d *mermaidDiagram, x, y float32, theme *ui.The
 		})
 		ly += 20
 	}
+}
+
+// smoothPath 用 Catmull-Rom 样条把折线采成密集点（每条线段按 3px 一个采样）。
+// 端点复制自身，保证起点 / 终点仍落在节点边界上。
+func smoothPath(pts [][2]float32) [][2]float32 {
+	n := len(pts)
+	if n < 3 {
+		return pts
+	}
+	out := make([][2]float32, 0, n*8)
+	for i := 0; i < n-1; i++ {
+		// 端点用自身的复制，注意不能写 pts[i-1] 再判断 i==0 —— Go 会先求值再判断，直接 -1 越界。
+		p0 := pts[0]
+		if i > 0 {
+			p0 = pts[i-1]
+		}
+		p1 := pts[i]
+		p2 := pts[i+1]
+		p3 := pts[n-1]
+		if i+2 < n {
+			p3 = pts[i+2]
+		}
+		dx, dy := p2[0]-p1[0], p2[1]-p1[1]
+		length := float32(math.Hypot(float64(dx), float64(dy)))
+		steps := int(length/3) + 6
+		for s := 0; s < steps; s++ {
+			t := float32(s) / float32(steps)
+			out = append(out, catmullRom(p0, p1, p2, p3, t))
+		}
+	}
+	out = append(out, pts[n-1])
+	return out
+}
+
+// catmullRom 是张力 0.5 的标准 Catmull-Rom 插值（过 p1、p2）。
+func catmullRom(p0, p1, p2, p3 [2]float32, t float32) [2]float32 {
+	t2, t3 := t*t, t*t*t
+	f := func(a, b, c, d float32) float32 {
+		return 0.5 * (2*b + (-a+c)*t + (2*a-5*b+4*c-d)*t2 + (-a+3*b-3*c+d)*t3)
+	}
+	return [2]float32{f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])}
+}
+
+// strokePath 顺着采样点画线：每段走带覆盖率柔化的 aaLine，避免斜线出现阶梯。
+func strokePath(canvas *gfx.Canvas, pts [][2]float32, color gfx.Color) {
+	for i := 1; i < len(pts); i++ {
+		aaLine(canvas, pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1], color)
+	}
+}
+
+// aaLine 画一条 1px 的柔和线：按主轴逐列，把上下两行的覆盖率拆成 alpha，
+// 斜线因此不再是一格一格的阶梯（canvas 没有原生抗锯齿描边，只能自己分配）。
+func aaLine(canvas *gfx.Canvas, x0, y0, x1, y1 float32, color gfx.Color) {
+	steep := absF(y1-y0) > absF(x1-x0)
+	if steep {
+		x0, y0 = y0, x0
+		x1, y1 = y1, x1
+	}
+	if x0 > x1 {
+		x0, y0, x1, y1 = x1, y1, x0, y0
+	}
+	dx, dy := x1-x0, y1-y0
+	grad := float32(0)
+	if dx > 0.0001 {
+		grad = dy / dx
+	}
+	start := int(math.Floor(float64(x0)))
+	stop := int(math.Ceil(float64(x1)))
+	for xi := start; xi < stop; xi++ {
+		xc := float32(xi) + 0.5
+		if xc < x0 || xc > x1 {
+			continue
+		}
+		yc := y0 + (xc-x0)*grad
+		base := float32(math.Floor(float64(yc)))
+		frac := yc - base
+		strong := color.WithAlpha(color.Alpha * (1 - frac))
+		weak := color.WithAlpha(color.Alpha * frac)
+		if steep {
+			canvas.Fill(gfx.Rect{X: base, Y: xc - 0.5, Width: 1, Height: 1}, strong)
+			canvas.Fill(gfx.Rect{X: base + 1, Y: xc - 0.5, Width: 1, Height: 1}, weak)
+			continue
+		}
+		canvas.Fill(gfx.Rect{X: xc - 0.5, Y: base, Width: 1, Height: 1}, strong)
+		canvas.Fill(gfx.Rect{X: xc - 0.5, Y: base + 1, Width: 1, Height: 1}, weak)
+	}
+}
+
+func absF(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // drawLine 画一条任意方向的 1px 线：水平/垂直走整段矩形，斜段逐像素（Bresenham 简化版）。
