@@ -396,7 +396,42 @@ mermaid.js 的样式来自 `themeVariables` + CSS 作用在 SVG 上；自绘要�
 - 现实组合：**D 做可选增强 + 现有自绘做兜底**（没装 mmdc 时 flowchart/pie 也能看），
   两边加起来不到 10 人日，比 A 档更划算。
 
-## 十、待定问题
+## 十一、给 viva 的 PR 建议（2026-11-27，从这次实践倒推）
+
+这次自绘 mermaid 踩到的每一处限制，都可以变成 viva 的一个 PR。按「阻塞程度 / 改动规模」排：
+
+| 现状 | 我们的绕法 | 建议 API | 规模 |
+|---|---|---|---|
+| `MarkdownStyle` 只有 `Highlight` / `Image`，没有代码块回调 | 切段 + 自绘（整个方案 E） | `MarkdownStyle.Block func(kind markdown.Kind, info, text string, bounds Rect, canvas *Canvas) bool`，返回 true 表示接管 | 中 |
+| `markdown.Block` 带未导出字段、spans 按下标私有，不能就地替换 | 只能改文本重新 `Parse` | `Document.ReplaceBlock(i int, blocks ...Block)` 或 `Blocks` 可写且维护 spans | 小–中 |
+| `Canvas` 没有通用描边 | 水平/垂直走整段 `Fill`，斜线 Bresenham 逐像素，箭头拼矩形 | `Canvas.Line(x0,y0,x1,y1,width,color)`、`Canvas.StrokePath(cmds []PathCommand, width, color)` | 小（Icon 的描边实现已有） |
+| `Canvas` 画不了 Icon | `ui.Icon` 只能当元素 | `Canvas.DrawIcon(icon gfx.Icon, bounds Rect)` | 小 |
+| 虚线只能 `DrawContext.DashedBorder` | 自己按 4px 段拼 | 把 `DashedBorder` 下沉到 Canvas | 小 |
+| 没有文字断行 | 手写 `wrapLabel`（逐字调 `TextWidth`） | `Canvas.Wrap(value string, maxWidth, size float32) []string` | 小（Markdown/表格里已有断行逻辑） |
+| 没有离屏渲染 | 饼图逐像素手写 BGRA（画不了字） | `Canvas.RenderToBitmap(w, h int, draw func(*Canvas)) Bitmap` | 中 |
+| `ui.Tabs` 只能均分宽度的纯文字 | 请求栏标签自绘 | `.Item(func(c ui.C, i int, active bool))` 或导出 TabsList 的测量/命中 | 中 |
+| `Modal` 的 open 指针忘了置 true 就静默不显示 | 靠截图才发现（MCP 确认框） | 声明 Modal 时若指针为 false 但传了内容，Debug 里打一条警告；或加 `ModalVisible()` | 小 |
+| `Snapshot().Texts` 给的是布局坐标，不是裁剪后的可见坐标 | 测试里手工排除滚动区外文本 | `Snapshot` 的文本带上 `Clipped bool` 或给裁剪后的 bounds | 小 |
+| `ui.TextArea` 不暴露光标/选区 | 源码区改用 `codeeditor` | `TextArea` 复用一个 `text.Editor`，或暴露 `Caret()/Selection()` | 中 |
+
+**最值得提的三个**（收益/成本比最高）：
+
+1. **`MarkdownStyle.Block` 回调** —— 有了它，mermaid / 数学公式 / plantuml / 自定义嵌入都不用切段，
+   高度和绘制都由应用决定。这正是 markdown-it 的 `renderer.rules.fence`、goldmark 的 `NodeRenderer`
+   在做的事，也是我们整个方案 E 存在的唯一理由。
+2. **`Canvas.StrokePath` + `Line`** —— 现在画一条斜线要 Bresenham 逐像素 `Fill`（dagre 每条边 3 段，
+   一个图几百次 `Fill`）；把内部已有的 path 描边暴露出来，收益直接且实现成本低。
+3. **`Canvas.RenderToBitmap`** —— 缩略图、导出 PNG、缓存复杂绘制都需要；现在只能逐像素手写，
+   而且**画不了文字**（没有可用的 offscreen）。
+
+提 PR 的注意点：
+
+- viva 的习惯是「组件 + `internal/componentdemo` 里的演示 + 同包 `_test.go`」，PR 最好三件套齐全；
+- 新增可选字段（如 `MarkdownStyle.Block`）不破坏兼容；改 `Canvas` 的方法签名会破坏，
+  但**加方法**是安全的；
+- `gfx.Canvas` 是热路径，新方法要在注释里写清「每帧调用是否昂贵」（例如 `Wrap` 应该由调用方缓存）。
+
+## 十二、待定问题
 
 - 自绘的字体与 viva 画布不同源，同一篇文档里图内文字与正文会有细微差异，可接受否？
 - 段间距要与 MarkdownView 内部的块间距对齐，得先量出它的实际值（`LineHeight` 起算，可能要试）。
