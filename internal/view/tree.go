@@ -995,20 +995,22 @@ func (m *Model) followMovedTab(srcRoot, dstRoot int, oldRel, newRel string) {
 // 菜单项与右键完全一致 —— 右键不够显眼，行尾按钮才是主要入口。
 func (m *Model) folderRow(c ui.C, row *treeRow, i int) {
 	folder := row.folder
-	name := ui.Text(c, row.name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i))
-	ui.Spacer(c)
 	hovered := gfx.ID{}
 	if canvas := c.Canvas(); canvas != nil {
 		hovered = canvas.Hovered()
 	}
 	key := row.key
+	name := ui.Text(c, row.name).FontSize(fs(13)).Ellipsis().LabelFor(m.tree.RowID(i))
+	ui.Spacer(c)
+	// 和条目行完全一套写法：行尾「⋯」一直声明、靠 Opacity 控制可见性。
+	// （之前误以为分组行不生效，其实是截图截到了另一个旧实例的窗口。）
 	moreID := ui.ID(c)
 	more := ui.Row(c).Size(px(22), px(22)).Shrink(0).Center().Radius(px(4)).
 		Hover(ui.Look{}.Background(m.pal.hover)).
 		Hit(moreID, "更多 "+row.name)
-	// 分组行的「⋯」常显：树上的分组行不参与条目行的 hover 判定，
-	// 而且用户要的正是「不用先右键才知道有菜单」。指针移到按钮上时再加深。
-	_ = hovered
+	if !entryMenuVisible(hovered == m.tree.RowID(i), hovered == moreID, m.menuFolder == key) {
+		more.Opacity(0)
+	}
 	more.Children(func() {
 		ui.Icon(c, IconEllipsis).Size(px(14), px(14)).Color(m.theme.MutedForeground).StateFrom(more)
 	})
