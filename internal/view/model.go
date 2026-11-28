@@ -31,6 +31,7 @@ import (
 	"github.com/vivaui/viva/ui"
 	"github.com/vivaui/viva/ui/codeeditor"
 	"github.com/vivaui/viva/ui/descriptions"
+	"github.com/vivaui/viva/ui/overflowlist"
 	"github.com/vivaui/viva/ui/popconfirm"
 	"github.com/vivaui/viva/ui/typography"
 	"github.com/vivaui/viva/ui/validate"
@@ -539,6 +540,15 @@ type workspaceUI struct {
 
 // Model 一次运行的界面状态。
 type Model struct {
+	// 地址栏补全：候选来自环境变量名与集合里已有的 URL（都不含历史，历史在 examples 里）。
+	urlPopoverOpen bool
+	urlCandidates  []string
+	urlMatches     []string
+	urlCandFor     int // 候选按集合版本缓存，-1 表示还没建
+
+	// 概览页「更多动作」的折叠行（v0.6.10 的 ui/overflowlist）：放不下的按钮进「⋯」菜单。
+	overviewMore *overflowlist.OverflowList
+
 	// 只读详情面板的跨行选中（v0.6.10 的 ui.TextSelectionArea）：MCP 审计、
 	// gRPC 连接信息这类「几行到几十行」的文本，用户可以拖选并 Ctrl+C。
 	selDetail ui.TextSelectionState

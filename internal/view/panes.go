@@ -53,7 +53,10 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 		address := ui.TextField(c, &m.req.url, "地址", "{{host}}/api/users").Grow(1)
 		if m.varTipField(address, m.req.url).Changed() {
 			m.markEdited()
+			// 地址一变就重算候选：环境变量名 + 集合里已有 URL。
+			m.refreshURLSuggest()
 		}
+		m.urlSuggest(c, address)
 		saveLabel := "保存请求"
 		if m.scratch {
 			saveLabel = "另存为"
@@ -99,6 +102,89 @@ func (m *Model) requestBar(c ui.C, entry *explorer.Entry) {
 		if send.Clicked() {
 			m.start(entry)
 		}
+	})
+}
+
+// refreshURLSuggest 在地址变化时更新候选；输入太短（<2 个字符）就不弹，免得一敲字就被挡住。
+func (m *Model) refreshURLSuggest() {
+	typed := strings.TrimSpace(m.req.url)
+	if len([]rune(typed)) < 2 {
+		m.urlPopoverOpen = false
+		return
+	}
+	lower := strings.ToLower(typed)
+	matches := m.urlMatches[:0]
+	for _, candidate := range m.urlCandidatesAll() {
+		if candidate == typed {
+			continue
+		}
+		if strings.Contains(strings.ToLower(candidate), lower) || strings.Contains(lower, "{{") && strings.Contains(candidate, "{{") {
+			matches = append(matches, candidate)
+			if len(matches) >= 8 {
+				break
+			}
+		}
+	}
+	m.urlMatches = matches
+	m.urlPopoverOpen = len(matches) > 0
+}
+
+// urlCandidatesAll 是全部候选：`{{变量名}}` 与集合里出现过的 URL。
+// 按集合的「条目数」缓存，集合没变就不重建（每帧遍历所有请求太浪费）。
+func (m *Model) urlCandidatesAll() []string {
+	stamp := len(m.vars)*1000 + len(m.col.Entries)
+	if m.urlCandFor == stamp && len(m.urlCandidates) > 0 {
+		return m.urlCandidates
+	}
+	m.urlCandFor = stamp
+	out := m.urlCandidates[:0]
+	for name := range m.vars {
+		out = append(out, "{{"+name+"}}")
+	}
+	seen := map[string]bool{}
+	for _, entry := range m.col.Entries {
+		if entry.Payload == nil || entry.Payload.HTTP.URL == "" {
+			continue
+		}
+		url := entry.Payload.HTTP.URL
+		if seen[url] {
+			continue
+		}
+		seen[url] = true
+		out = append(out, url)
+	}
+	m.urlCandidates = out
+	return out
+}
+
+// urlSuggest 是地址栏下方的补全列表：点一条就写回地址（值仍是自由文本，不锁死）。
+func (m *Model) urlSuggest(c ui.C, anchor ui.Box) {
+	if !m.urlPopoverOpen || len(m.urlMatches) == 0 {
+		return
+	}
+	ui.Popover(c, anchor, &m.urlPopoverOpen, ui.PopoverSpec{
+		Align: ui.Start, Padding: 4, Instant: true, KeepOpenOnAnchor: true,
+	}, func() {
+		ui.Column(c).FillWidth().Gap(px(2)).Children(func() {
+			for _, candidate := range m.urlMatches {
+				text := candidate
+				row := ui.Row(c).FillWidth().Items(ui.Center).PadX(px(8)).PadY(px(4)).
+					Radius(px(4)).Hover(ui.Look{}.Background(c.Theme().Hover))
+				hit := ui.ID(c)
+				row = row.Hit(hit, "补全 "+text)
+				row.Children(func() {
+					ui.Text(c, text).FontSize(fs(12)).Mono().Ellipsis()
+				})
+				if row.Clicked() {
+					c.After(func() {
+						m.req.url = text
+						m.urlPopoverOpen = false
+						m.markEdited()
+						m.invalidator.Invalidate()
+					})
+				}
+			}
+		})
 	})
 }
 

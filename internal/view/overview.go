@@ -6,6 +6,7 @@ import (
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 	"github.com/vivaui/viva/ui/card"
+	"github.com/vivaui/viva/ui/overflowlist"
 )
 
 // overviewPage 是固定「集合」页：四个数字卡 + 常用动作，尺寸对齐参考图。
@@ -19,36 +20,34 @@ func (m *Model) overviewPage(c ui.C) {
 			m.statCard(c, "变量环境", strconv.Itoa(len(m.ui.envs)))
 			m.statCard(c, "存储格式", "纯文本 YAML")
 		})
+		// 主操作固定在最左，其余随宽度收进「⋯」（v0.6.10 的 ui/overflowlist）：
+		// 七个按钮在窄窗口里会挤成一排省略号，折叠后放不下的自动进菜单。
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			if ui.Button(c, "新建请求").Icon(IconPlus).Weight(gfx.WeightRegular).Clicked() {
 				m.openNewRequest()
 			}
-			if ui.Button(c, "新建文档").Icon(IconFilePlus).Secondary().Weight(gfx.WeightRegular).Clicked() {
-				c.After(m.createDoc)
+			if m.overviewMore == nil {
+				m.overviewMore = overflowlist.New()
 			}
-			if ui.Button(c, "打开集合").Icon(IconFolderOpen).Secondary().Weight(gfx.WeightRegular).Clicked() {
-				c.After(m.chooseCollection)
+			m.overviewMore.View(c, "更多动作", overflowlist.Spec{
+				Items: overviewActions, Min: 2, Gap: px(8), MoreLabel: "更多动作",
+			}).Grow(1)
+			if index, ok := m.overviewMore.Clicked(); ok {
+				switch index {
+				case 0:
+					c.After(m.createDoc)
+				case 1:
+					c.After(m.chooseCollection)
+				case 2:
+					c.After(m.openDefaults)
+				case 3:
+					m.openSettings()
+				case 4:
+					c.After(func() { m.openExport("md") })
+				case 5:
+					c.After(func() { m.openExport("html") })
+				}
 			}
-			if ui.Button(c, "公共参数").Icon(IconGear).Secondary().Weight(gfx.WeightRegular).
-				Tooltip("集合级默认请求头与认证").Clicked() {
-				c.After(m.openDefaults)
-			}
-			if ui.Button(c, "设置").Icon(IconGear).Secondary().Weight(gfx.WeightRegular).Clicked() {
-				m.openSettings()
-			}
-		})
-		// 导出接口文档：菜单里也有（顶部「⋯」），但集合详情是「我要把这套接口交出去」时
-		// 最先看的地方，入口不该藏起来。
-		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
-			if ui.Button(c, "导出 Markdown").Icon(IconImport).Secondary().Weight(gfx.WeightRegular).
-				Tooltip("把整套集合导出成一份 Markdown 接口文档，可勾选范围").Clicked() {
-				c.After(func() { m.openExport("md") })
-			}
-			if ui.Button(c, "导出 HTML").Icon(IconImport).Secondary().Weight(gfx.WeightRegular).
-				Tooltip("把整套集合导出成单文件 HTML 接口文档，可勾选范围").Clicked() {
-				c.After(func() { m.openExport("html") })
-			}
-			ui.Text(c, "导出前可勾选要包含的分组与请求").FontSize(fs(11)).Muted()
 		})
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			for _, hint := range overviewHints {
@@ -61,6 +60,17 @@ func (m *Model) overviewPage(c ui.C) {
 			FontSize(11).Muted().Color(theme.MutedForeground)
 		ui.Spacer(c)
 	})
+}
+
+// overviewActions 是概览页「更多动作」里的条目，顺序必须与 overviewPage 里的
+// switch index 一一对应（0 新建文档 / 1 打开集合 / 2 公共参数 / 3 设置 / 4 导出 MD / 5 导出 HTML）。
+var overviewActions = []overflowlist.Item{
+	{Label: "新建文档", Icon: IconFilePlus},
+	{Label: "打开集合", Icon: IconFolderOpen},
+	{Label: "公共参数", Icon: IconSliders},
+	{Label: "设置", Icon: IconGear},
+	{Label: "导出 Markdown", Icon: IconImport},
+	{Label: "导出 HTML", Icon: IconGlobe},
 }
 
 // overviewHints 是概览页的快捷键提示（包级切片，避免每帧分配）。
