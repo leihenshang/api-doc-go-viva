@@ -95,8 +95,10 @@ func (m *Model) overviewActions(c ui.C) {
 		return
 	}
 	measure := func(action overviewAction) float32 {
-		// Button 的水平内边距 + 图标 + 图标与文字的间距 + 文字宽（Small 尺寸下这些值对本页够用）。
-		return 28 + 14 + 6 + canvas.TextWidth(action.label, fs(12))
+		// Button 的实际宽度：水平内边距 + 图标 + 图标与文字的间距 + 文字宽。
+		// 这几个常量比看起来的要大一点 —— 估小了会让动作行越过内容区右边界
+		// （TestMCPContentKeepsClearOfScrollbar 就是量这个的）。
+		return 36 + 16 + 8 + canvas.TextWidth(action.label, fs(13))
 	}
 	gap := px(8)
 	// 可用宽度直接算出来：概览页两边的 Pad(24) +「新建请求」占的那一段。
