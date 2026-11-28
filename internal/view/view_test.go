@@ -4205,3 +4205,30 @@ func TestMCPOriginsField(t *testing.T) {
 		t.Fatalf("来源没落盘：%v", model.settings.MCPAllowOrigins)
 	}
 }
+
+// overviewVisibleCount 决定概览页动作行里放几个按钮（其余进「⋯」）。
+// 这里不碰界面，只验算宽度：所有按钮同宽 100、间距 8 时的边界。
+func TestOverviewVisibleCount(t *testing.T) {
+	measure := func(overviewAction) float32 { return 100 }
+	const gap float32 = 8
+	// 六个都放得下：6*100 + 5*8 = 640
+	if got := overviewVisibleCount(700, gap, measure); got != len(overviewActions) {
+		t.Fatalf("700 宽应放下全部 %d 个，实际 %d", len(overviewActions), got)
+	}
+	// 刚够放全部：640
+	if got := overviewVisibleCount(640, gap, measure); got != len(overviewActions) {
+		t.Fatalf("640 宽应放下全部，实际 %d", got)
+	}
+	// 差一点：639 → 要么少一个并给「⋯」留位置
+	// 5 个 +「⋯」= 5*100 + 4*8 + 108 = 640（正好等于 639 之上），所以 5 个也放不下 → 4 个
+	if got := overviewVisibleCount(639, gap, measure); got >= len(overviewActions) {
+		t.Fatalf("639 宽不该放下全部，实际 %d", got)
+	}
+	// 很窄：只剩「新建请求」的空间
+	if got := overviewVisibleCount(50, gap, measure); got != 0 {
+		t.Fatalf("50 宽应一个都放不下，实际 %d", got)
+	}
+	if got := overviewVisibleCount(0, gap, measure); got != 0 {
+		t.Fatalf("0 宽应返回 0，实际 %d", got)
+	}
+}

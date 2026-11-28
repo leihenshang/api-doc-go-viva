@@ -6,7 +6,6 @@ import (
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 	"github.com/vivaui/viva/ui/card"
-	"github.com/vivaui/viva/ui/overflowlist"
 )
 
 // overviewPage 是固定「集合」页：四个数字卡 + 常用动作，尺寸对齐参考图。
@@ -20,34 +19,13 @@ func (m *Model) overviewPage(c ui.C) {
 			m.statCard(c, "变量环境", strconv.Itoa(len(m.ui.envs)))
 			m.statCard(c, "存储格式", "纯文本 YAML")
 		})
-		// 主操作固定在最左，其余随宽度收进「⋯」（v0.6.10 的 ui/overflowlist）：
-		// 七个按钮在窄窗口里会挤成一排省略号，折叠后放不下的自动进菜单。
+		// 动作行：主操作「新建请求」固定，其余是「图标 + 文字」按钮，放不下的收进「⋯」。
+		// 没有用 ui/overflowlist —— 它把每个按钮硬编码成 IconOnly，而这一页要的是图标带文字。
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			if ui.Button(c, "新建请求").Icon(IconPlus).Weight(gfx.WeightRegular).Clicked() {
 				m.openNewRequest()
 			}
-			if m.overviewMore == nil {
-				m.overviewMore = overflowlist.New()
-			}
-			m.overviewMore.View(c, "更多动作", overflowlist.Spec{
-				Items: overviewActions, Min: 2, Gap: px(8), MoreLabel: "更多动作",
-			}).Grow(1)
-			if index, ok := m.overviewMore.Clicked(); ok {
-				switch index {
-				case 0:
-					c.After(m.createDoc)
-				case 1:
-					c.After(m.chooseCollection)
-				case 2:
-					c.After(m.openDefaults)
-				case 3:
-					m.openSettings()
-				case 4:
-					c.After(func() { m.openExport("md") })
-				case 5:
-					c.After(func() { m.openExport("html") })
-				}
-			}
+			m.overviewActions(c)
 		})
 		ui.Row(c).FillWidth().Gap(px(8)).Children(func() {
 			for _, hint := range overviewHints {
@@ -62,15 +40,95 @@ func (m *Model) overviewPage(c ui.C) {
 	})
 }
 
-// overviewActions 是概览页「更多动作」里的条目，顺序必须与 overviewPage 里的
-// switch index 一一对应（0 新建文档 / 1 打开集合 / 2 公共参数 / 3 设置 / 4 导出 MD / 5 导出 HTML）。
-var overviewActions = []overflowlist.Item{
-	{Label: "新建文档", Icon: IconFilePlus},
-	{Label: "打开集合", Icon: IconFolderOpen},
-	{Label: "公共参数", Icon: IconSliders},
-	{Label: "设置", Icon: IconGear},
-	{Label: "导出 Markdown", Icon: IconImport},
-	{Label: "导出 HTML", Icon: IconGlobe},
+// overviewAction 是概览页的一个次要动作：图标 + 文字，附带执行函数。
+type overviewAction struct {
+	label string
+	icon  gfx.Icon
+	run   func(m *Model, c ui.C)
+}
+
+// overviewActions 是「新建请求」右侧的次要动作，顺序就是显示顺序。
+var overviewActions = []overviewAction{
+	{"新建文档", IconFilePlus, func(m *Model, c ui.C) { c.After(m.createDoc) }},
+	{"打开集合", IconFolderOpen, func(m *Model, c ui.C) { c.After(m.chooseCollection) }},
+	{"公共参数", IconSliders, func(m *Model, c ui.C) { c.After(m.openDefaults) }},
+	{"设置", IconGear, func(m *Model, c ui.C) { m.openSettings() }},
+	{"导出 Markdown", IconImport, func(m *Model, c ui.C) { c.After(func() { m.openExport("md") }) }},
+	{"导出 HTML", IconGlobe, func(m *Model, c ui.C) { c.After(func() { m.openExport("html") }) }},
+}
+
+// overviewVisibleCount 返回行内放得下几个次要动作（放不下时给「⋯」留位置）。
+// 抽成纯函数是为了能单测：宽度估算依赖 canvas，显示数量不该依赖渲染。
+func overviewVisibleCount(avail, gap float32, measure func(overviewAction) float32) int {
+	n := len(overviewActions)
+	if avail <= 0 || n == 0 {
+		return 0
+	}
+	total := func(count int) float32 {
+		var w float32
+		for i := 0; i < count; i++ {
+			w += measure(overviewActions[i])
+		}
+		if count > 1 {
+			w += gap * float32(count-1)
+		}
+		return w
+	}
+	moreWidth := measure(overviewAction{label: "更多"}) + gap
+	for k := n; k >= 1; k-- {
+		need := total(k)
+		if k < n {
+			need += moreWidth
+		}
+		if need <= avail {
+			return k
+		}
+	}
+	return 0
+}
+
+// overviewActions 画次要动作：按当前宽度决定行内放几个，其余进「⋯」菜单。
+// 宽度用 canvas 量文字 + 图标 + 内边距估算，不用 overflowlist 的「每个都当方形图标」假设。
+func (m *Model) overviewActions(c ui.C) {
+	canvas := c.Canvas()
+	if canvas == nil || len(overviewActions) == 0 {
+		return
+	}
+	measure := func(action overviewAction) float32 {
+		// Button 的水平内边距 + 图标 + 图标与文字的间距 + 文字宽（Small 尺寸下这些值对本页够用）。
+		return 28 + 14 + 6 + canvas.TextWidth(action.label, fs(12))
+	}
+	gap := px(8)
+	// 可用宽度直接算出来：概览页两边的 Pad(24) +「新建请求」占的那一段。
+	// 不用 c.AtLeast —— 它读的是上一帧布局，静态页面不重绘时会一直停在初始的「放不下」。
+	avail := m.paneWidth(c) - 2*px(24) - measure(overviewAction{label: "新建请求"}) - gap
+	shown := overviewVisibleCount(avail, gap, measure)
+	for i := 0; i < shown; i++ {
+		action := overviewActions[i]
+		if ui.Button(c, action.label).Icon(action.icon).Secondary().Weight(gfx.WeightRegular).
+			Tooltip(action.label).Clicked() {
+			action.run(m, c)
+		}
+	}
+	if shown >= len(overviewActions) {
+		return
+	}
+	// 溢出菜单：剩下的一律列进「⋯」，名字完整可读。
+	more := ui.Button(c, "更多动作").Icon(IconEllipsis).Secondary().Ghost().IconOnly().Tooltip("更多动作")
+	if more.Clicked() {
+		c.After(func() { m.overviewMoreOpen = !m.overviewMoreOpen })
+	}
+	if !m.overviewMoreOpen {
+		return
+	}
+	ui.Menu(c, more, &m.overviewMoreOpen, func(menu *ui.MenuItems) {
+		for i := shown; i < len(overviewActions); i++ {
+			action := overviewActions[i]
+			if menu.Item(action.label).Icon(action.icon).Clicked() {
+				action.run(m, c)
+			}
+		}
+	})
 }
 
 // overviewHints 是概览页的快捷键提示（包级切片，避免每帧分配）。
