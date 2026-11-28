@@ -6,6 +6,7 @@ import (
 	"github.com/leihenshang/api-doc-go-viva/internal/explorer"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/ui/indicator"
 )
 
 // Page 声明整窗：工具条 + （集合树 | 分隔条 | 详情）。
@@ -739,10 +740,16 @@ func (m *Model) detail(c ui.C, entry *explorer.Entry) {
 				methodBadge(c, entry)
 				ui.Text(c, entry.Name).FontSize(fs(17)).Bold()
 				ui.Spacer(c)
+				// 未保存时给「保存」按钮挂角标（v0.6.10 的 ui/indicator）：
+				// 角标不占位，比另起一行「未保存」省地方，也更像桌面应用。
+				var save ui.Box
 				if m.grpcDirty {
-					ui.Text(c, "未保存").FontSize(fs(11)).Color(c.Theme().Danger)
+					indicator.View(c, "有未保存的改动", indicator.Spec{Count: 1, Dot: true}, func() {
+						save = ui.Button(c, "保存").Outline()
+					})
+				} else {
+					save = ui.Button(c, "保存").Outline()
 				}
-				save := ui.Button(c, "保存").Outline()
 				save.Disabled(!m.grpcDirty)
 				if save.Clicked() {
 					c.After(m.saveGRPC)

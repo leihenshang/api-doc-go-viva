@@ -778,22 +778,26 @@ func (m *Model) mcpDialog(c ui.C) {
 					})
 					ui.Divider(c)
 				})
-				if len(m.ui.mcpAuditRows) == 0 {
-					ui.Text(c, "还没有调用记录。").FontSize(fs(11)).Muted()
-				}
-				for _, row := range m.ui.mcpAuditRows {
-					one := row
-					ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
-						ui.Text(c, one.Time.Format("15:04:05")).FontSize(fs(10)).Mono().Muted()
-						ui.Text(c, one.Tool).FontSize(fs(11)).Mono().Ellipsis()
-						if one.Write {
-							ui.Text(c, "写").FontSize(fs(10)).Color(c.Theme().Danger)
-						}
-						if !one.OK {
-							ui.Text(c, "失败").FontSize(fs(10)).Color(c.Theme().Danger)
-						}
-					})
-				}
+				// 审计列表是纯只读文本：用 TextSelectionArea 包起来，可以拖选跨行复制
+				// （之前只能一行行看，想贴给别人得手打）。
+				ui.TextSelectionArea(c, &m.selDetail).FillWidth().Gap(px(2)).Children(func() {
+					if len(m.ui.mcpAuditRows) == 0 {
+						ui.Text(c, "还没有调用记录。").FontSize(fs(11)).Muted()
+					}
+					for _, row := range m.ui.mcpAuditRows {
+						one := row
+						ui.Row(c).FillWidth().Gap(px(10)).Items(ui.Center).Children(func() {
+							ui.Text(c, one.Time.Format("15:04:05")).FontSize(fs(10)).Mono().Muted()
+							ui.Text(c, one.Tool).FontSize(fs(11)).Mono().Ellipsis()
+							if one.Write {
+								ui.Text(c, "写").FontSize(fs(10)).Color(c.Theme().Danger)
+							}
+							if !one.OK {
+								ui.Text(c, "失败").FontSize(fs(10)).Color(c.Theme().Danger)
+							}
+						})
+					}
+				})
 				if m.copyNote != "" {
 					ui.Text(c, m.copyNote).FontSize(fs(11)).Muted()
 				}

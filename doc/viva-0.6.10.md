@@ -35,6 +35,15 @@ bash scripts/check.sh                    # 全绿
 | `ui/inputtag` | 参数/请求头是表格编辑器（`fields.go`） | 不建议换：表格要「名/值/说明/启用」四列，tag 输入承载不了 |
 | `ui/indicator` | 脏标记靠标签上的圆点（自绘） | 可换，收益低 |
 
+## 落地情况（2026-11-28）
+
+| 能力 | 状态 |
+|---|---|
+| `TextSelectionArea` | **已用**：MCP 设置里的审计列表（`dialogs.go`）整体包进 `ui.TextSelectionArea(c, &m.selDetail)`，可以拖选跨行复制；`Model` 里加了 `selDetail` 字段 |
+| `ui/indicator` | **已用**：gRPC 页头的「保存」按钮，有未保存改动时挂红点角标（`Dot: true`），替换掉原来单独一行的「未保存」文字 |
+| `ui/autocomplete` | **暂缓**：它要求调用方自己持有 `*ui.Field`（`View(c, field *ui.Field, …)`），而地址栏用的是 `ui.TextField(c, &m.req.url, …)`，内部构造 Field 但只返回 `Box`。要用它得把地址栏改成自己声明 Field + 手画输入框样式，会牵动 IME 绑定与 `varTipField` 的变量提示，不是一次小改 |
+| `ui/overflowlist` | **不适用**：它的 `Item` 只有 `Label / Icon / Disabled`，是「一排动作按钮」的模型。标签栏需要关闭按钮、激活态、拖拽排序，塞不进去；如果要用，更适合放在概览页那排动作按钮上（那排现在有 7 个，窄窗口确实会挤） |
+
 ## 建议的下一步
 
 1. **`TextSelectionArea` 用在「详情小面板」**（低风险、立刻能感觉到）：

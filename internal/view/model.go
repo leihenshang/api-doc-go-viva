@@ -539,6 +539,10 @@ type workspaceUI struct {
 
 // Model 一次运行的界面状态。
 type Model struct {
+	// 只读详情面板的跨行选中（v0.6.10 的 ui.TextSelectionArea）：MCP 审计、
+	// gRPC 连接信息这类「几行到几十行」的文本，用户可以拖选并 Ctrl+C。
+	selDetail ui.TextSelectionState
+
 	// 多个集合根：roots 按打开顺序排，col 始终是 active 指向的那个（界面只读 col）。
 	roots  []*rootState
 	active int
