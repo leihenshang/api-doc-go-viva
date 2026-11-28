@@ -7,7 +7,7 @@ require (
 	github.com/dop251/goja v0.0.0-20260926152631-39ec2650adc9
 	github.com/leihenshang/api-doc-go-share v0.15.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/vivaui/viva v0.6.9
+	github.com/vivaui/viva v0.6.10
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1

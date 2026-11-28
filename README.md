@@ -44,6 +44,7 @@ COLLECTION=../api-doc-go-proj ENV_NAME= bin/dev start   # 换集合 / 关环境
 | [`doc/mermaid.md`](doc/mermaid.md) | 文档预览渲染 Mermaid：五个方案的取舍、实现原理（切段 + goja 跑 dagre + canvas 绘制）、给 viva 的 PR 建议 |
 | [`doc/环境与崩溃.md`](doc/环境与崩溃.md) | 本机踩过的崩溃、软件 Vulkan 规定、xdotool 截图规则 |
 | [`doc/viva-0.6.9.md`](doc/viva-0.6.9.md) | 升级 v0.6.9 的破坏性变更迁移、已替换的自有实现、没换的项与原因、复查清单 |
+| [`doc/viva-0.6.10.md`](doc/viva-0.6.10.md) | 升级 v0.6.10 的记录：无破坏性变更、skills 差异、新组件的适配评估 |
 | [`doc/ime-linux.md`](doc/ime-linux.md) | Linux 下系统输入法打不出中文的原因与证据 |
 | [`doc/third-party.md`](doc/third-party.md) | 第三方依赖与许可：直接 / 间接依赖、嵌入的 dagre.min.js、经 viva 引入的图标字体、分发义务 |
 | [`ui_reference/README.md`](ui_reference/README.md) | Wails 版 UI 参考：截图、metrics、令牌 |
